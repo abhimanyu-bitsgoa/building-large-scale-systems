@@ -1,0 +1,7 @@
+services:
+  workshop:
+    build: .
+    volumes:
+      - .:/workspace
+    network_mode: host  # Simplifies localhost networking for the workshop
+    command: tail -f /dev/null
