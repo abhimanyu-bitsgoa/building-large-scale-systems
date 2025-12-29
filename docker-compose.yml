@@ -3,5 +3,8 @@ services:
     build: .
     volumes:
       - .:/workspace
-    network_mode: host  # Simplifies localhost networking for the workshop
+    ports:
+      - "5000-5010:5000-5010" # Map ports for nodes
+      - "61208:61208" # Map port for Glances
+    # network_mode: host       # Disabled for Mac compatibility
     command: tail -f /dev/null

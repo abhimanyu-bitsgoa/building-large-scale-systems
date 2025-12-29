@@ -22,11 +22,13 @@ If you see a bar chart, you are ready to go!
 
 ## 📂 Workshop Structure
 
-- **`workshop_materials/`**: Your workspace. Contains skeleton code and visualization tools.
-    - `01_nodes/`: Module 1 (Processes & RPC)
-    - `02_networking/`: Module 2 (Load Balancing & Rate Limiting)
-    - `03_sharding/`: Module 3 (Sharding & Consistent Hashing)
-    - `05_availability/`: Module 5 (Quorums)
+- **`workshop_materials/`**: Your workspace.
+    - `01_nodes/`: Hour 1 (Nodes & RPC)
+    - `02_networking/`: Hour 2 (Load Balancing & Rate Limiting)
+    - `03_sharding/`: Hours 3 & 4 (Sharding & Consistent Hashing) - *Combined as they share the Router logic.*
+    - `05_availability/`: Hour 5 (Quorums)
+    - `06_capstone/`: Hour 6 (The Final Challenge)
+    - `chaos/`: Tools for destruction
 - **`solutions/`**: Reference implementations (Don't peek unless stuck! 😉)
 
 ## 🧪 Visualizations
