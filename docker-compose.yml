@@ -4,7 +4,7 @@ services:
     volumes:
       - .:/workspace
     ports:
-      - "5000-5010:5000-5010" # Map ports for nodes
+      - "8000-8010:5000-5010" # Map Host 8000+ -> Container 5000+ (Avoids AirPlay port 5000 conflict)
       - "61208:61208" # Map port for Glances
     # network_mode: host       # Disabled for Mac compatibility
     command: tail -f /dev/null
