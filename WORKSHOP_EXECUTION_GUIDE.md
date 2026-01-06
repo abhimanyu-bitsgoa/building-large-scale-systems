@@ -1,6 +1,6 @@
 # Workshop Execution Guide: Step-by-Step Instructions
 
-This guide provides **exact commands** to run each module of the InstaScale workshop.
+This guide provides **exact commands** to run each module of the Distributed Systems workshop.
 
 ---
 
@@ -62,6 +62,29 @@ python3 workshop_materials/01_nodes/client.py
 ```
 
 **Expected Output**: Continuous health check requests hitting Node 1.
+
+### Step 4: Demonstrate "The Noisy Neighbor" (CPU Load)
+Now, let's simulate a busy server to understand why we need load balancing.
+
+**1. Start a "Slow" Node:**
+```bash
+# In a new terminal
+python3 workshop_materials/01_nodes/node.py --port 5002 --id 2 --load-factor 30
+```
+*(This tells the node to calculate the 30th Fibonacci number for every data request)*
+
+**2. Send a Request & Watch Latency:**
+```bash
+# In another terminal, count the time
+time curl -X POST http://localhost:5002/data -d '{"key":"k","value":"v"}'
+```
+You should see a noticeable delay (e.g., 0.1s - 0.5s) compared to Node 1.
+
+**3. Check Active Requests:**
+```bash
+curl http://localhost:5002/stats
+```
+If you hit this while a heavy request is running, you'll see `"active_requests": 1`.
 
 ---
 
