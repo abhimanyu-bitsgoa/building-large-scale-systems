@@ -1,45 +1,51 @@
 # Module 1: Nodes & RPC
 
 ## Goal
-Understand how distributed systems are just processes talking over a network.
+Understand how distributed systems are just processes talking over a network, and how they behave under load.
 
 ## Key Concepts
-- **Node**: A process listening on a port
-- **RPC**: Remote Procedure Call (HTTP in our case)
-- **Serialization**: JSON for data exchange
+- **Node**: A process listening on a port.
+- **RPC**: Remote Procedure Call (HTTP in our case).
+- **Serialization**: JSON for data exchange.
+- **Vertical Scaling**: Adding more power (workers) to a single node.
+- **Horizontal Scaling**: Adding more nodes to handle traffic.
 
 ## Files
-- `node.py`: The server that stores data
-- `client.py`: The client that talks to nodes
+- `node.py`: The server that stores data. Now supports load simulation.
+- `client.py`: The client that talks to nodes. Now supports concurrent load testing.
 
-## Exercise
+## Usage
 
-### 1. Start Multiple Nodes
-Open 3 terminal windows and run:
+### 1. Basic Node
+Start a simple node:
 ```bash
 python3 workshop_materials/01_nodes/node.py --port 5001 --id 1
-python3 workshop_materials/01_nodes/node.py --port 5002 --id 2
-python3 workshop_materials/01_nodes/node.py --port 5003 --id 3
 ```
 
-### 2. Test Manually
+### 2. "Heavy" Node (Simulate CPU Load)
+Start a node that performs heavy calculation (Fibonacci) for every data request:
 ```bash
-# Check health
-curl http://localhost:5001/health
-
-# Store data
-curl -X POST http://localhost:5001/data \
-  -H "Content-Type: application/json" \
-  -d '{"key": "user_123", "value": "Alice"}'
-
-# Retrieve data
-curl http://localhost:5001/data/user_123
+# --load-factor 35 means calculate fib(35) for every request
+python3 workshop_materials/01_nodes/node.py --port 5002 --id 2 --load-factor 35
 ```
 
-### 3. Run the Client
+### 3. Vertically Scaled Node (Multiple Workers)
+To run with multiple worker processes (e.g., 10), Uvicorn needs to import the app string.
+**Copy the file to root first** (workaround for simple import paths):
 ```bash
-python3 workshop_materials/01_nodes/client.py
+cp workshop_materials/01_nodes/node.py node.py
+python3 node.py --port 5002 --workers 10 --load-factor 35
+```
+
+### 4. Concurrent Client
+Run the client to flood a node with requests:
+```bash
+# --concurrent 5: Fire 5 requests at once
+# --target ...: Focus fire on a specific node
+python3 workshop_materials/01_nodes/client.py --concurrent 5 --target http://localhost:5002
 ```
 
 ## Challenge
-Modify `client.py` to implement **Round Robin** load balancing instead of always hitting Node 1.
+1.  **Crash a Node**: Use the concurrent client to make the Single-Worker node unresponsive ("Noisy Neighbor").
+2.  **Scale It**: Restart with `--workers 10` and see the difference.
+3.  **Break It Again**: Increase concurrency until even 10 workers can't keep up.

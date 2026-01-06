@@ -63,28 +63,87 @@ python3 workshop_materials/01_nodes/client.py
 
 **Expected Output**: Continuous health check requests hitting Node 1.
 
-### Step 4: Demonstrate "The Noisy Neighbor" (CPU Load)
-Now, let's simulate a busy server to understand why we need load balancing.
+### Step 4: The Scaling Journey 🚀
+In this step, we will intentionally break a single node to understand the limits of **Vertical Scaling** and the need for **Horizontal Scaling**.
 
-**1. Start a "Slow" Node:**
-```bash
-# In a new terminal
-python3 workshop_materials/01_nodes/node.py --port 5002 --id 2 --load-factor 30
-```
-*(This tells the node to calculate the 30th Fibonacci number for every data request)*
+#### Phase 1: The "Noisy Neighbor" (Single Process)
+First, let's see what happens when a single node process gets overwhelmed.
 
-**2. Send a Request & Watch Latency:**
-```bash
-# In another terminal, count the time
-time curl -X POST http://localhost:5002/data -d '{"key":"k","value":"v"}'
-```
-You should see a noticeable delay (e.g., 0.1s - 0.5s) compared to Node 1.
+1.  **Start a Single-Worker Node** (Simulating a standard Python app):
+    ```bash
+    # Terminal 1
+    # --id 2: We use Node 2 as our test subject
+    # --load-factor 35: High CPU load (Fibonacci) per request
+    python3 workshop_materials/01_nodes/node.py --port 5002 --id 2 --load-factor 35
+    ```
 
-**3. Check Active Requests:**
-```bash
-curl http://localhost:5002/stats
-```
-If you hit this while a heavy request is running, you'll see `"active_requests": 1`.
+2.  **Flood it with Requests:**
+    ```bash
+    # Terminal 2 (Client)
+    # Fire 5 concurrent requests at Node 2
+    python3 workshop_materials/01_nodes/client.py --concurrent 5 --target http://localhost:5002
+    ```
+
+    **Observation**:
+    - You will see high latency (e.g., `Latency: 2000ms+`).
+    - `Active: 5`: Requests pile up because a single process can only handle one CPU-heavy task at a time (GIL).
+
+#### Phase 2: Vertical Scaling (Bigger Server)
+Let's "buy a bigger server" by adding more CPU cores (Processes).
+
+1.  **Restart Node 2 with 10 Workers**:
+    ```bash
+    # Terminal 1 (Ctrl+C first)
+    # We copy the file to root to allow 'node:app' import style for Uvicorn workers
+    cp workshop_materials/01_nodes/node.py node.py
+    python3 node.py --port 5002 --id 2 --load-factor 35 --workers 10
+    ```
+
+2.  **Flood it Again:**
+    ```bash
+    # Terminal 2
+    python3 workshop_materials/01_nodes/client.py --concurrent 5 --target http://localhost:5002
+    ```
+
+    **Observation**:
+    - **Latency Drops**: Responses are much faster!
+    - **Why?**: 10 separate processes can handle 5 requests *in parallel*. Use `Active` stats to see them clearing instantly.
+
+#### Phase 3: The Limit (Overload Again)
+Vertical scaling has limits. What if we get *too much* traffic?
+
+1.  **Flood with 20 concurrent requests**:
+    ```bash
+    # Terminal 2
+    python3 workshop_materials/01_nodes/client.py --concurrent 20 --target http://localhost:5002
+    ```
+
+    **Observation**:
+    - Latency spikes again! 10 workers cannot handle 20 heavy requests simultaneously. Queueing returns.
+
+#### Phase 4: Horizontal Scaling (Load Balancing)
+The solution is to add **More Nodes**, not just bigger ones.
+
+1.  **Start Node 1 & Node 3** (Normal, no load factor):
+    ```bash
+    # Terminal 3
+    python3 workshop_materials/01_nodes/node.py --port 5001 --id 1
+    
+    # Terminal 4
+    python3 workshop_materials/01_nodes/node.py --port 5003 --id 3
+    ```
+
+2.  **Run Client in Round-Robin Mode**:
+    ```bash
+    # Terminal 2
+    # Remove --target to use all 3 nodes
+    python3 workshop_materials/01_nodes/client.py --concurrent 20
+    ```
+
+    **Observation**:
+    - Requests distributed to Node 1 and 3 are **FAST**.
+    - Requests hitting Node 2 are **SLOW**.
+    - **Lesson**: We need a Load Balancer (Module 2) to intelligently route around the slow node!
 
 ---
 
