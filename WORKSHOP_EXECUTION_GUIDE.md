@@ -94,9 +94,8 @@ Let's "buy a bigger server" by adding more CPU cores (Processes).
 1.  **Restart Node 2 with 10 Workers**:
     ```bash
     # Terminal 1 (Ctrl+C first)
-    # We copy the file to root to allow 'node:app' import style for Uvicorn workers
-    cp workshop_materials/01_nodes/node.py node.py
-    python3 node.py --port 5002 --id 2 --load-factor 35 --workers 10
+    # We use workers=10 to scale vertically
+    python3 workshop_materials/01_nodes/node.py --port 5002 --id 2 --load-factor 35 --workers 10
     ```
 
 2.  **Flood it Again:**

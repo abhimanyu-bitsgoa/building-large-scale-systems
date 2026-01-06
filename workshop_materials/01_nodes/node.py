@@ -2,6 +2,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel
 import argparse
+import os
 import math
 import time
 
@@ -108,12 +109,10 @@ if __name__ == "__main__":
     print(f"Starting Node {NODE_ID} on port {args.port} (Load Factor: {LOAD_FACTOR}, Workers: {args.workers})")
     
     if args.workers > 1:
-        # For multiple workers, we must pass the app as an import string
-        # assuming the file is named 'node.py' in the 'workshop_materials/01_nodes' module path
-        # BUT since we are running as a script, this is tricky.
-        # Standard Uvicorn practice for scripts is to use the App object directly only for 1 worker.
-        # To support workers, we will rely on the fact that this is a workshop script.
-        # We'll print a warning that workers might require different launch command if not module-based.
-        uvicorn.run("node:app", host="0.0.0.0", port=args.port, workers=args.workers)
+        # Get the directory where this script is located
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Pass the directory to Uvicorn so workers can find 'node:app'
+        uvicorn.run("node:app", host="0.0.0.0", port=args.port, workers=args.workers, app_dir=current_dir)
     else:
+        # For single worker, we can pass the app object directly
         uvicorn.run(app, host="0.0.0.0", port=args.port)

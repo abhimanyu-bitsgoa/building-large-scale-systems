@@ -30,11 +30,9 @@ python3 workshop_materials/01_nodes/node.py --port 5002 --id 2 --load-factor 35
 ```
 
 ### 3. Vertically Scaled Node (Multiple Workers)
-To run with multiple worker processes (e.g., 10), Uvicorn needs to import the app string.
-**Copy the file to root first** (workaround for simple import paths):
+To run with multiple worker processes (e.g., 10):
 ```bash
-cp workshop_materials/01_nodes/node.py node.py
-python3 node.py --port 5002 --workers 10 --load-factor 35
+python3 workshop_materials/01_nodes/node.py --port 5002 --workers 10 --load-factor 35
 ```
 
 ### 4. Concurrent Client
