@@ -307,6 +307,94 @@ python3 workshop_materials/06_capstone/capstone_client.py
 
 ---
 
+## Module 07: Gossip Protocol
+
+### Step 1: Start 4 Nodes
+```bash
+python3 workshop_materials/07_gossip/gossip_node.py --port 7001 --id 1 --neighbors 7002,7003,7004
+python3 workshop_materials/07_gossip/gossip_node.py --port 7002 --id 2 --neighbors 7001,7003,7004
+python3 workshop_materials/07_gossip/gossip_node.py --port 7003 --id 3 --neighbors 7001,7002,7004
+python3 workshop_materials/07_gossip/gossip_node.py --port 7004 --id 4 --neighbors 7001,7002,7003
+```
+
+### Step 2: Run Visualizer
+```bash
+python3 workshop_materials/07_gossip/visualize_gossip.py
+```
+
+### Step 3: Trigger Update
+```bash
+curl -X POST http://localhost:7001/update
+```
+
+---
+
+## Module 08: Leader Election (Bully)
+
+### Step 1: Start 3 Nodes
+```bash
+python3 workshop_materials/08_consensus/bully_node.py --port 8001 --id 1 --nodes 1:8001,2:8002,3:8003
+python3 workshop_materials/08_consensus/bully_node.py --port 8002 --id 2 --nodes 1:8001,2:8002,3:8003
+python3 workshop_materials/08_consensus/bully_node.py --port 8003 --id 3 --nodes 1:8001,2:8002,3:8003
+```
+
+### Step 2: Run Visualizer
+```bash
+python3 workshop_materials/08_consensus/visualize_election.py
+```
+
+---
+
+## Module 09: Circuit Breaker
+
+### Step 1: Start Flaky Server
+```bash
+python3 workshop_materials/09_patterns/flaky_server.py
+```
+
+### Step 2: Run Visualizer
+```bash
+cd workshop_materials/09_patterns
+python3 visualize_breaker.py
+```
+
+### Step 3: Fail & Recover
+```bash
+curl -X POST http://localhost:9001/fail
+curl -X POST http://localhost:9001/recover
+```
+
+---
+
+## Module 10: Thundering Herd
+
+### Step 1: Run Simulation
+```bash
+python3 workshop_materials/10_concurrency/cache_stampede.py
+```
+
+---
+
+## Module 11: Service Discovery
+
+### Step 1: Start Registry
+```bash
+python3 workshop_materials/11_membership/registry.py
+```
+
+### Step 2: Run Visualizer
+```bash
+python3 workshop_materials/11_membership/visualize_membership.py
+```
+
+### Step 3: Start Nodes
+```bash
+python3 workshop_materials/11_membership/heartbeat_node.py --port 6001 --id node1
+python3 workshop_materials/11_membership/heartbeat_node.py --port 6002 --id node2
+```
+
+---
+
 ## Stopping Everything
 
 ```bash
