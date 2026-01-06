@@ -395,6 +395,111 @@ python3 workshop_materials/11_membership/heartbeat_node.py --port 6002 --id node
 
 ---
 
+---
+
+## Module 12: Backpressure
+
+### Step 1: Start Consumer
+```bash
+# NORMAL MODE (No backpressure)
+python3 workshop_materials/12_backpressure/consumer.py --port 12000
+
+# BACKPRESSURE MODE
+python3 workshop_materials/12_backpressure/consumer.py --port 12000 --backpressure
+```
+
+### Step 2: Run Visualizer
+```bash
+python3 workshop_materials/12_backpressure/visualize_backpressure.py
+```
+
+### Step 3: Start Producer
+```bash
+python3 workshop_materials/12_backpressure/producer.py --rate 0.05
+```
+
+---
+
+## Module 13: Replication Lag
+
+### Step 1: Start Nodes
+```bash
+python3 workshop_materials/13_replication/primary.py --port 13000 --secondaries 13001,13002 --delay 5
+python3 workshop_materials/13_replication/secondary.py --port 13001 --id 1
+python3 workshop_materials/13_replication/secondary.py --port 13002 --id 2
+```
+
+### Step 2: Run Visualizer
+```bash
+python3 workshop_materials/13_replication/visualize_lag.py
+```
+
+---
+
+## Module 14: Distributed Locking
+
+### Step 1: Start Lock Server
+```bash
+python3 workshop_materials/14_locking/lock_server.py
+```
+
+### Step 2: Run Visualizer
+```bash
+python3 workshop_materials/14_locking/visualize_locking.py
+```
+
+### Step 3: Run Workers
+```bash
+python3 workshop_materials/14_locking/book_ticket.py --id NodeA
+python3 workshop_materials/14_locking/book_ticket.py --id NodeB
+```
+
+---
+
+## Module 15: Poison Pills & DLQ
+
+### Step 1: Run Simulation
+```bash
+python3 workshop_materials/15_dead_letter/queue_processor.py
+```
+
+---
+
+## Module 16: Clock Skew
+
+### Step 1: Start Nodes
+```bash
+python3 workshop_materials/16_clocks/skewed_node.py --port 16001 --offset 0
+python3 workshop_materials/16_clocks/skewed_node.py --port 16002 --offset -300
+```
+
+---
+
+## Module 17: Saga Pattern
+
+### Step 1: Run Simulation
+```bash
+python3 workshop_materials/17_saga/saga_orchestrator.py
+```
+
+---
+
+## Module 18: Byzantine Faults
+
+### Step 1: Run Simulation
+```bash
+python3 workshop_materials/18_byzantine/byzantine_demo.py
+```
+
+---
+
+## Module 19: Vector Clocks
+
+### Step 1: Run Simulation
+```bash
+python3 workshop_materials/19_vector/vector_clocks.py
+```
+
 ## Stopping Everything
 
 ```bash
