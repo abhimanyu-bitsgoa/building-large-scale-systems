@@ -500,6 +500,33 @@ python3 workshop_materials/18_byzantine/byzantine_demo.py
 python3 workshop_materials/19_vector/vector_clocks.py
 ```
 
+---
+
+## Module 20: Bloom Filters
+
+### Step 1: Run Visualizer
+```bash
+python3 workshop_materials/20_bloom/visualize_bloom.py
+```
+
+---
+
+## Module 21: CRDTs
+
+### Step 1: Run Visualizer
+```bash
+python3 workshop_materials/21_crdt/visualize_crdt.py
+```
+
+---
+
+## Module 22: 2-Phase Commit
+
+### Step 1: Run Simulation
+```bash
+python3 workshop_materials/22_2pc/two_phase_commit.py
+```
+
 ## Stopping Everything
 
 ```bash
