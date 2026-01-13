@@ -72,104 +72,101 @@ def draw_node_box(node: dict) -> list:
     return lines
 
 def get_node_hash_position(node_id: str) -> int:
-    """Get consistent hash position (0-359 degrees) for a node."""
+    """Get consistent hash position (0-99 for display) for a node."""
     import hashlib
     hash_val = int(hashlib.md5(node_id.encode()).hexdigest(), 16)
-    return hash_val % 360
+    return hash_val % 100
 
 def draw_ring(nodes: list) -> list:
-    """Draw an ASCII consistent hashing ring with node positions."""
+    """Draw a LINEAR consistent hashing ring (0-100 scale) for clarity."""
     if not nodes:
         return ["  (no nodes registered)"]
     
     lines = []
     
-    # Calculate positions for each node (0-359 degrees)
+    # Calculate positions for each node (0-99)
     node_positions = []
     for node in nodes:
         pos = get_node_hash_position(node["node_id"])
         node_positions.append((pos, node))
     node_positions.sort(key=lambda x: x[0])
     
-    # ASCII ring (simplified 8-segment representation)
-    #       0°
-    #    7     1
-    #   6   ●   2
-    #    5     3
-    #       4
+    # Create linear bar (60 characters wide = 0-100 scaled)
+    bar_width = 60
+    bar = list("─" * bar_width)
     
-    # Map 360 degrees to 8 segments
-    segments = ["·"] * 8
-    node_at_segment = [None] * 8
-    
+    # Mark node positions on the bar
+    node_markers = {}
     for pos, node in node_positions:
-        segment = (pos * 8) // 360
+        bar_pos = (pos * bar_width) // 100
+        bar_pos = min(bar_pos, bar_width - 1)
         color = Colors.GREEN if node.get("status") == "alive" else Colors.RED
         symbol = "●" if node.get("status") == "alive" else "✕"
-        segments[segment] = f"{color}{symbol}{Colors.RESET}"
-        node_at_segment[segment] = node["node_id"]
+        bar[bar_pos] = f"{color}{symbol}{Colors.RESET}"
+        node_markers[bar_pos] = node["node_id"]
     
-    # Draw the ring
-    lines.append(f"                    {segments[0]}           ← 0° (top of ring)")
-    lines.append(f"               {segments[7]}         {segments[1]}")
-    lines.append(f"              {segments[6]}    ◯    {segments[2]}")
-    lines.append(f"               {segments[5]}         {segments[3]}")
-    lines.append(f"                    {segments[4]}")
+    # Draw the linear ring
+    lines.append(f"  {Colors.BOLD}Hash Ring (0 ────────────────────────────────────────── 100){Colors.RESET}")
+    lines.append(f"  ╔{'═' * bar_width}╗")
+    lines.append(f"  ║{''.join(bar)}║")
+    lines.append(f"  ╚{'═' * bar_width}╝")
     lines.append("")
     
-    # Node position legend with hash ranges
-    lines.append(f"  {Colors.BOLD}Node Positions on Ring:{Colors.RESET}")
+    # Legend showing node positions
+    lines.append(f"  {Colors.BOLD}Nodes on Ring:{Colors.RESET}")
     for pos, node in node_positions:
         color = Colors.GREEN if node.get("status") == "alive" else Colors.RED
-        status_icon = "●" if node.get("status") == "alive" else "✕"
-        lines.append(f"    {color}{status_icon}{Colors.RESET} {node['node_id']:10} at {pos:3}°")
-    
-    # Explain key ownership
-    lines.append("")
-    lines.append(f"  {Colors.CYAN}Keys are stored on the NEXT node clockwise from their hash position.{Colors.RESET}")
+        status = "ALIVE" if node.get("status") == "alive" else "DEAD "
+        bar_pos = (pos * bar_width) // 100
+        lines.append(f"    {color}●{Colors.RESET} {node['node_id']:10} at position {pos:2} ({color}{status}{Colors.RESET})")
     
     return lines
 
 def draw_key_migration_demo(nodes: list) -> list:
-    """Show how adding/removing a node affects key distribution."""
+    """Show how keys are routed to nodes using consistent hashing."""
     lines = []
     
     alive_nodes = [n for n in nodes if n.get("status") == "alive"]
     
-    if len(alive_nodes) < 2:
-        return ["  (need 2+ alive nodes to show migration)"]
+    if len(alive_nodes) < 1:
+        return ["  (need at least 1 alive node)"]
     
     # Demo with sample keys
-    sample_keys = ["user:alice", "user:bob", "config:db", "session:xyz"]
+    sample_keys = ["user:alice", "user:bob", "config:db", "session:xyz", "cache:home"]
     
-    lines.append(f"  {Colors.BOLD}Sample Key Ownership:{Colors.RESET}")
-    lines.append(f"  {'Key':<15} {'Hash°':>6}  {'Owner':<12}")
-    lines.append(f"  {'-'*35}")
+    lines.append(f"  {Colors.BOLD}Key → Node Routing:{Colors.RESET}")
+    lines.append(f"  {'Key':<15} {'Hash':>4}  {'Routed To':<12} {'Reason'}")
+    lines.append(f"  {'-'*55}")
     
-    # Calculate positions
+    # Calculate node positions
     node_positions = [(get_node_hash_position(n["node_id"]), n) for n in alive_nodes]
     node_positions.sort(key=lambda x: x[0])
     
     for key in sample_keys:
-        key_hash = get_node_hash_position(key) 
+        key_hash = get_node_hash_position(key)
         
         # Find owner (first node with position >= key_hash, wrap around)
         owner = None
+        reason = ""
         for pos, node in node_positions:
             if pos >= key_hash:
                 owner = node["node_id"]
+                reason = f"next node after {key_hash}"
                 break
         if owner is None:
-            owner = node_positions[0][1]["node_id"]  # Wrap around
+            owner = node_positions[0][1]["node_id"]
+            reason = f"wrapped to first node"
         
-        lines.append(f"  {key:<15} {key_hash:>5}°  → {owner:<12}")
+        lines.append(f"  {key:<15} {key_hash:>4}  → {owner:<12} ({reason})")
     
-    # Show what happens if a node dies
+    # Show impact of node failure
     if len(alive_nodes) >= 2:
+        first_node = alive_nodes[0]["node_id"]
+        second_node = alive_nodes[1]["node_id"] if len(alive_nodes) > 1 else "next"
         lines.append("")
-        lines.append(f"  {Colors.YELLOW}💡 If {alive_nodes[0]['node_id']} dies:{Colors.RESET}")
-        lines.append(f"     Only keys owned by {alive_nodes[0]['node_id']} move to the next node.")
-        lines.append(f"     Other keys stay put! This is why consistent hashing is efficient.")
+        lines.append(f"  {Colors.YELLOW}💡 If {first_node} dies:{Colors.RESET}")
+        lines.append(f"     Only its keys move → {second_node}")
+        lines.append(f"     Keys on other nodes stay put (minimal redistribution!)")
     
     return lines
 

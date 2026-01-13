@@ -96,18 +96,28 @@ python3 workshop_materials/23_resilient_system/resilient_node.py --port 5003 --i
 python3 workshop_materials/23_resilient_system/unified_dashboard.py
 ```
 
-You should see all 3 nodes with green heartbeat indicators.
+You should see all 3 nodes with green status and a linear hash ring visualization.
 
 ### Step 4: Test Data Operations
 ```bash
-# Write data
+# Write data (goes to 2+ nodes for quorum)
 curl -X POST http://localhost:5000/data \
   -H "Content-Type: application/json" \
   -d '{"key": "user_123", "value": "Alice"}'
 
-# Read data
+# Read data (with automatic failover)
 curl http://localhost:5000/data/user_123
+
+# Check cluster health
+curl http://localhost:5000/cluster-status
 ```
+
+### Step 5: Load Test (See Distribution!)
+```bash
+python3 workshop_materials/23_resilient_system/load_test.py
+```
+
+This sends 50 requests and shows which nodes received them — demonstrating consistent hashing in action!
 
 ---
 
@@ -115,13 +125,26 @@ curl http://localhost:5000/data/user_123
 
 Now let's break things and watch the system heal.
 
-### Challenge 1: Kill a Node
+### Challenge 1: Kill a Node (For scale-up nodes)
 ```bash
-# Kill node-2
+# First, add a new node via scale-up
+curl -X POST http://localhost:5000/scale-up
+
+# Now kill it (this one will fully terminate)
+curl -X POST http://localhost:5000/kill/node-4
+```
+
+**Watch the dashboard.** Node-4 should disappear.
+
+### Challenge 2: Simulate Node Death (For manually-started nodes)
+For nodes you started manually (node-1, node-2, node-3), the kill command marks them as dead but you need to press **Ctrl+C** in their terminal to fully stop them.
+
+```bash
+# This marks node-2 as dead in the registry
 curl -X POST http://localhost:5000/kill/node-2
 ```
 
-**Watch the dashboard.** Node-2 should turn red within 5 seconds.
+Then press Ctrl+C in node-2's terminal.
 
 **Try another write.** It should still succeed! (Quorum of 2 from remaining nodes)
 
