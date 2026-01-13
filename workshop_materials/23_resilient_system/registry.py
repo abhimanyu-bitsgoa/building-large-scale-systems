@@ -243,24 +243,64 @@ def scale_up():
 # ========================
 
 import requests as http_client
+import hashlib
+
+# Configuration
+REPLICATION_FACTOR = 3  # Each key lives on N nodes
+
+def get_hash(key: str) -> int:
+    """Get consistent hash for a key (0-999)."""
+    return int(hashlib.md5(key.encode()).hexdigest(), 16) % 1000
+
+def get_replicas_for_key(key: str, alive_nodes: list) -> list:
+    """Get the N nodes responsible for this key using consistent hashing."""
+    if not alive_nodes:
+        return []
+    
+    # Sort nodes by their hash position
+    node_hashes = [(get_hash(n["node_id"]), n) for n in alive_nodes]
+    node_hashes.sort(key=lambda x: x[0])
+    
+    key_hash = get_hash(key)
+    
+    # Find first node with hash >= key_hash (or wrap around)
+    start_idx = 0
+    for i, (h, node) in enumerate(node_hashes):
+        if h >= key_hash:
+            start_idx = i
+            break
+    
+    # Collect REPLICATION_FACTOR nodes starting from start_idx
+    n_replicas = min(REPLICATION_FACTOR, len(node_hashes))
+    replicas = []
+    for i in range(n_replicas):
+        idx = (start_idx + i) % len(node_hashes)
+        replicas.append(node_hashes[idx][1])
+    
+    return replicas
 
 @app.post("/data")
 def write_data(payload: DataPayload):
-    """Write data with quorum (W=2)."""
+    """Write data with dynamic quorum using consistent hashing."""
     with lock:
         alive_nodes = [n for n in nodes.values() if n["status"] == "alive"]
     
-    if len(alive_nodes) < 2:
+    if len(alive_nodes) < 1:
         raise HTTPException(
             status_code=503,
-            detail=f"Quorum not available. Need 2 nodes, have {len(alive_nodes)}"
+            detail="No nodes available"
         )
     
-    # Write to all alive nodes, count successes
+    # Get replicas for this key using consistent hashing
+    replicas = get_replicas_for_key(payload.key, alive_nodes)
+    n = len(replicas)  # Actual replication count (might be < REPLICATION_FACTOR)
+    w = (n // 2) + 1   # Write quorum = majority
+    
+    # Write to replica nodes only (not all nodes!)
     successes = []
     failures = []
     
-    for node in alive_nodes:
+    for node in replicas:
         try:
             resp = http_client.post(
                 f"{node['address']}/data",
@@ -274,21 +314,27 @@ def write_data(payload: DataPayload):
         except Exception as e:
             failures.append({"node_id": node["node_id"], "error": str(e)})
     
-    if len(successes) >= 2:
+    if len(successes) >= w:
         return {
             "status": "success",
             "quorum_met": True,
+            "key": payload.key,
+            "N": n,
+            "W": w,
             "acks": len(successes),
-            "nodes": successes,
-            "key": payload.key
+            "replica_nodes": [r["node_id"] for r in replicas],
+            "written_to": successes,
+            "message": f"Written to {len(successes)}/{n} replicas (W={w} required). Gossip will propagate to others."
         }
     else:
         raise HTTPException(
             status_code=503,
             detail={
                 "error": "Quorum not met",
+                "N": n,
+                "W": w,
                 "acks": len(successes),
-                "required": 2,
+                "required": w,
                 "failures": failures
             }
         )

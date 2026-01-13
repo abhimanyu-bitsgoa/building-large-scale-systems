@@ -190,6 +190,55 @@ def fetch_node_stats(address: str) -> dict:
         pass
     return None
 
+def fetch_gossip_events(nodes: list) -> list:
+    """Fetch recent gossip events from all nodes."""
+    all_events = []
+    for node in nodes:
+        if node.get("status") == "alive":
+            try:
+                resp = requests.get(f"{node['address']}/gossip-events", timeout=1)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for event in data.get("events", []):
+                        all_events.append(event)
+            except:
+                pass
+    # Sort by time, newest first
+    all_events.sort(key=lambda x: x.get("time", 0), reverse=True)
+    return all_events[:10]  # Last 10 events
+
+def draw_gossip_section(gossip_events: list) -> list:
+    """Draw the gossip propagation visualization."""
+    lines = []
+    
+    if not gossip_events:
+        lines.append(f"  {Colors.YELLOW}No gossip activity yet. Write some data!{Colors.RESET}")
+        return lines
+    
+    lines.append(f"  {'Time':>8}  {'From':<10} → {'To':<10}  {'Key':<15} {'Action':<12}")
+    lines.append(f"  {'-'*60}")
+    
+    for event in gossip_events[:8]:
+        from_node = event.get("from", "?")
+        to_node = event.get("to", "?")
+        key = event.get("key", "?")[:15]
+        action = event.get("action", "?")
+        
+        # Color based on action
+        if action == "accepted":
+            color = Colors.GREEN
+            arrow = "→"
+        elif action == "already_synced":
+            color = Colors.CYAN
+            arrow = "↔"
+        else:
+            color = Colors.YELLOW
+            arrow = "→"
+        
+        lines.append(f"  {'now':>8}  {from_node:<10} {color}{arrow}{Colors.RESET} {to_node:<10}  {key:<15} {color}{action:<12}{Colors.RESET}")
+    
+    return lines
+
 def main():
     registry_url = "http://localhost:5000"
     
@@ -297,6 +346,15 @@ def main():
             print(f"  {Colors.YELLOW}No data stored yet.{Colors.RESET}")
             print(f"  Try: curl -X POST http://localhost:5000/data -H 'Content-Type: application/json' -d '{{\"key\":\"test\",\"value\":\"hello\"}}'")
         
+        print(f"{Colors.BOLD}└──────────────────────────────────────────────────────────────────────────────┘{Colors.RESET}")
+        
+        # Gossip Propagation (anti-entropy sync)
+        print(f"\n{Colors.BOLD}┌─── GOSSIP PROTOCOL (EVENTUAL CONSISTENCY) ─────────────────────────────────┐{Colors.RESET}")
+        gossip_events = fetch_gossip_events(nodes)
+        gossip_lines = draw_gossip_section(gossip_events)
+        for line in gossip_lines:
+            print(line)
+        print(f"  {Colors.CYAN}💡 Data spreads via gossip even if initial write only hits some replicas{Colors.RESET}")
         print(f"{Colors.BOLD}└──────────────────────────────────────────────────────────────────────────────┘{Colors.RESET}")
         
         # Controls

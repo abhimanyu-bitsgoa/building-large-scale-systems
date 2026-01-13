@@ -31,13 +31,28 @@ This module combines **everything** you've learned:
 |---------|---------------|
 | **Service Discovery** (Module 11) | Registry tracks which nodes are alive via heartbeats |
 | **Heartbeats** (Module 11) | Nodes ping the registry every 2 seconds |
-| **Consistent Hashing** (Module 3) | Keys are distributed across nodes; adding/removing nodes moves minimal data |
-| **Quorum Writes** (Module 5) | Data is written to W=2 nodes before acknowledging success |
-| **Replication** (Module 13) | Each key is stored on multiple nodes for redundancy |
+| **Consistent Hashing** (Module 3) | Keys go to specific N replicas (not all nodes!) |
+| **Dynamic Quorum** (Module 5) | W = floor(N/2)+1. With 3 replicas, W=2 for majority |
+| **Gossip Protocol** (Module 7) | Data spreads to all nodes via anti-entropy sync |
+| **Replication** (Module 13) | Each key is stored on N nodes for redundancy |
 | **Circuit Breaker** (Module 9) | Client stops hitting dead nodes immediately |
 | **Retry with Jitter** (Module 10) | Prevents thundering herd on recovery |
 
----
+### How Quorum + Gossip Work Together
+
+```
+Write "user:alice" (N=3 replicas, W=2)
+  │
+  ├─→ node-1: ✅ ACK          ─┐
+  ├─→ node-2: ✅ ACK           ├─→ Quorum met! Return success
+  └─→ node-3: ❌ Timeout      ─┘
+  
+Later (gossip every 3s):
+  node-1 ──gossip──→ node-3: "I have user:alice v1"
+  node-3: "Thanks! Now I have it too"
+  
+Result: EVENTUAL CONSISTENCY
+```
 
 ## 🏗️ System Architecture
 
