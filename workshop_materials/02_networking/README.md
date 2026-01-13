@@ -1,42 +1,98 @@
 # Module 2: Load Balancing & Rate Limiting
 
-## Goal
-Protect your system from overload and distribute traffic evenly.
+## 🎯 The Scenario
 
-## Key Concepts
-- **Load Balancing**: Distributing requests across multiple nodes
-- **Rate Limiting**: Preventing abuse by limiting request frequency
-- **Token Bucket**: A common rate limiting algorithm
+**Problem 1:** You have 3 servers, but one is overloaded while others sit idle. Requests aren't distributed evenly.
 
-## Files
-- `visualize_load_balance.py`: Shows traffic distribution
-- `visualize_rate_limit.py`: Demonstrates rate limiting in action
-- `rate_limit_middleware.py`: Token Bucket implementation
+**Problem 2:** A single customer is sending 10,000 requests per second. They're using 90% of your capacity and crowding out everyone else.
 
-## Exercise
+*How do you fix both?*
 
-### 1. Test Load Balancing Visualization
-Start 3 nodes, then run:
+---
+
+## 🧠 Pause and Think
+
+1. If you randomly pick a server, will traffic be evenly distributed?
+2. What's the fairest way to limit abusive clients without hurting good ones?
+3. What happens if the rate limit is too aggressive?
+
+---
+
+## 💡 The Concepts
+
+### Load Balancing
+Distributing incoming requests across multiple servers. Common strategies:
+- **Round-robin:** Rotate through servers in order
+- **Random:** Pick a random server
+- **Least connections:** Send to the server with fewest active requests
+- **Consistent hashing:** Route based on request content (see Module 3)
+
+### Rate Limiting
+Controlling how many requests a client can make in a time window.
+- **Token Bucket:** Clients "spend" tokens; tokens refill over time
+- **Fixed Window:** Count requests per time window (e.g., 100/minute)
+- **Sliding Window:** Rolling window for smoother limiting
+
+---
+
+## 🚀 How to Run
+
+### Part A: Load Balancing Visualization
+
+**Step 1:** Ensure 3 nodes are running (from Module 1)
+```bash
+python3 workshop_materials/01_nodes/node.py --port 5001 --id 1
+python3 workshop_materials/01_nodes/node.py --port 5002 --id 2
+python3 workshop_materials/01_nodes/node.py --port 5003 --id 3
+```
+
+**Step 2:** Run the visualizer
 ```bash
 python3 workshop_materials/02_networking/visualize_load_balance.py
 ```
-You'll see a live bar chart showing request distribution.
 
-### 2. Add Rate Limiting to Your Node
-Edit your `node.py`:
-```python
-from workshop_materials.networking.rate_limit_middleware import RateLimitMiddleware
+**What you'll see:** An ASCII bar chart showing requests distributed across nodes.
 
-# Add before uvicorn.run()
-app.add_middleware(RateLimitMiddleware, requests_per_second=5)
-```
+---
 
-### 3. Test Rate Limiting
-Start your rate-limited node on port 5001, then:
+### Part B: Rate Limiting Demo
+
 ```bash
 python3 workshop_materials/02_networking/visualize_rate_limit.py
 ```
-Watch the "Bad Actor" get blocked with 429 errors!
 
-## Challenge
-Implement a **Fixed Window** rate limiting strategy and swap it in using the Strategy Pattern.
+**What you'll see:**
+- **Good User:** Gets `200 OK` responses
+- **Bad Actor:** Gets `429 Too Many Requests` after exceeding limit
+
+---
+
+## 📚 The Real Incidents
+
+### Cloudflare August 2025 — Single Customer Saturation
+
+A single customer began requesting cached objects at such a high rate that they **saturated Cloudflare's peering links** with AWS us-east-1. The outage lasted 3 hours.
+
+**Root cause:** No per-customer traffic quota.  
+**Fix:** Manual rate limiting of the customer's traffic.
+
+**Lesson:** Rate limiting isn't just for attacks—it prevents one customer from monopolizing shared infrastructure.
+
+---
+
+### GitHub July 2022 — Rate Limiter Misconfiguration
+
+GitHub deployed a new feature flag system. The rate limiter for this system was set too aggressively. Internal services couldn't fetch configuration files fast enough, causing partial outages.
+
+**Lesson:** Rate limits that are too strict break your own systems. Test with realistic internal traffic patterns.
+
+---
+
+## 🏆 Challenge
+
+Implement a **Fixed Window** rate limiting strategy:
+1. Count requests per 60-second window
+2. Reject requests once the count exceeds 100
+3. Reset the count at the start of each new window
+
+Swap it into the visualizer using the Strategy Pattern.

@@ -1,40 +1,55 @@
-# Hour 6: The Capstone - Surviving the Chaos 🌪️
+# Module 06: The Capstone Challenge (Mini)
+
+## 🎯 About This Module
+
+This module serves as a **mid-workshop checkpoint** where you combine Modules 1-5.
+
+For the **Grand Capstone** (combining ALL concepts), see [Module 23: The Resilient System](../23_resilient_system/README.md).
+
+---
 
 ## The Challenge
-Welcome to the final hour. You have built:
-1. Nodes that can run independently.
-2. A Sharding Router to distribute keys.
-3. A Quorum Client to read/write reliably.
 
-Now, we break it.
+Keep a client running and successfully reading/writing data while the "Chaos Script" randomly kills your nodes.
 
-## The Goal
-Keep your `client.py` running and successfully writing/reading data while the "Chaos Script" randomly kills your nodes.
+---
 
-## Instructions
+## 🚀 How to Run
 
-### 1. Setup the Cluster
-Start 3 Nodes and your Chaos Monkey.
+### Step 1: Start 3 Nodes
 ```bash
-# Terminal 1
 python3 workshop_materials/01_nodes/node.py --port 5001 --id 1
-# ... run nodes 2 & 3 similarly ...
+python3 workshop_materials/01_nodes/node.py --port 5002 --id 2
+python3 workshop_materials/01_nodes/node.py --port 5003 --id 3
+```
 
-# Terminal 2 (The Villain)
+### Step 2: Start Chaos Script
+```bash
 python3 workshop_materials/chaos/kill_script.py
 ```
 
-### 2. Implement "Resilient Client"
-Modify your `client.py` to combine all skills:
-- **Discovery**: If a node connection fails, mark it as `DOWN` in your local list.
-- **Routing**: Use `ConsistentHashing` to find the *primary* node for a key.
-- **Replication**: If Primary is down, try the *next* node in the ring.
-- **Quorums**: Ensure you get `W=2` acks before saying "Success".
+### Step 3: Implement & Run Resilient Client
+Edit `workshop_materials/06_capstone/capstone_client.py` and implement:
+- `write_quorum()` — Write to W nodes
+- `read_quorum()` — Read from R nodes
 
-### 3. Victory Condition
-Your client prints: 
-`✅ Write Success (Key: user_123)` 
-...even when `kill_script.py` prints:
-`🔫 Killing process 12345`
+Then run:
+```bash
+python3 workshop_materials/06_capstone/capstone_client.py
+```
 
-Good luck!
+---
+
+## ✅ Victory Condition
+
+Your client prints `"✅ Write Success"` even while nodes are being killed.
+
+---
+
+## 🎓 Ready for More?
+
+Once you've completed this, proceed to **[Module 23: The Resilient System](../23_resilient_system/README.md)** for the full experience with:
+- Service Discovery & Heartbeats
+- Unified Dashboard
+- Dynamic Scaling
+- Graduation Easter Egg 🎉

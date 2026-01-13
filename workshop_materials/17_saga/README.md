@@ -1,29 +1,68 @@
-# Module 17: Saga Pattern (The Distributed Undo)
+# Module 17: Saga Pattern
 
-In a monolithic app, you can use a Database Transaction: `BEGIN -> Write A -> Write B -> COMMIT`. If Write B fails, the DB "Rolls back" A automatically.
+## 🎯 The Scenario
 
-But in Microservices? Flight booking is in Service A. Hotel booking is in Service B. There is no shared database to "Roll back".
+User books a trip: Flight + Hotel + Car Rental.
 
-### The Solution: The Saga Pattern
-A Saga is a sequence of local transactions. If one step fails, the system must trigger **Compensating Transactions** to undo the previous successful steps.
+1. Flight Service: "Flight booked! ✓"
+2. Hotel Service: "No rooms available! ✗"
 
-### Rules of a Saga
-1. Each action `A` must have a corresponding "Undo" action `A-inv`.
-2. The orchestrator tracks progress.
-3. If failure happens at step `N`, run `Undo(N-1) -> Undo(N-2)... -> Undo(1)`.
+The flight is booked, but the hotel isn't. **The user has a useless flight.**
 
-### How to Run
+*How do you "rollback" across independent services?*
 
-Run the simulation:
+---
+
+## 💡 The Concept
+
+### The Problem
+Unlike a database transaction, you can't `ROLLBACK` across microservices. Each service has its own database.
+
+### Saga Pattern
+A sequence of local transactions with **compensating actions**.
+
+```
+book_flight() → book_hotel() → book_car()
+       ↓             ↓
+   cancel_flight() ← if hotel fails, undo flight
+```
+
+### Saga Types
+| Type | Description |
+|------|-------------|
+| **Choreography** | Each service triggers the next. Decentralized. |
+| **Orchestration** | A central coordinator directs everything. |
+
+---
+
+## 🚀 How to Run
+
 ```bash
 python3 workshop_materials/17_saga/saga_orchestrator.py
 ```
 
-### What to Observe
-1. **Scenario 1 (SUCCESS)**:
-   - Flight Booked -> Hotel Booked -> Success!
-2. **Scenario 2 (FAILURE)**:
-   - Flight Booked (Success).
-   - Hotel Booking fails.
-   - The Orchestrator calls `cancel_flight()`. 
-   - Even though the systems are separate, the **State** is eventually consistent (No money was lost for a trip that didn't happen).
+**What you'll see:**
+1. **Success scenario:** Flight → Hotel → Success!
+2. **Failure scenario:** Flight booked → Hotel fails → Flight cancelled (compensation)
+
+---
+
+## 📚 The Real Use Case
+
+Uber uses Sagas for ride matching:
+1. Match rider with driver
+2. Deduct payment hold
+3. Start ride
+
+If Step 2 fails (card declined), Step 1 is compensated (unmatch driver).
+
+---
+
+## 🏆 Challenge
+
+Implement a Saga for e-commerce order:
+1. Reserve inventory
+2. Process payment
+3. Schedule shipping
+
+What's the compensating action for each step?

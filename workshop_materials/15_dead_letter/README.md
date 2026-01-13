@@ -1,29 +1,70 @@
-# Module 15: Poison Pills & Dead Letter Queues (DLQ)
+# Module 15: Poison Pills & Dead Letter Queues
 
-In a message-based system (like RabbitMQ, SQS, or Kafka), what happens if a message is "bad"? 
-Maybe it has malformed JSON, or a negative number where a positive one should be.
+## 🎯 The Scenario
 
-Your worker picks it up -> Crashes -> Message goes back to the queue (Automatic Retry) -> Worker picks it up again -> Crashes again.
+Your message queue has 1 million messages. Message #500 has malformed JSON.
 
-This is an **Infinite Retry Loop**. It wastes CPU, fills up logs, and can eventually crash your entire worker farm.
+Your worker:
+1. Picks up message #500
+2. Tries to parse it → crashes
+3. Message goes back to queue (auto-retry)
+4. Picks up message #500 again → crashes again
 
-### The Solution: Dead Letter Queue (DLQ)
-We track how many times a specific message has failed. If it fails more than $N$ times (e.g., 3), we decide it's a "Poison Pill" and move it to a separate side-queue called a **Dead Letter Queue**.
+**You're stuck in an infinite loop.** Messages #501-#1,000,000 never get processed.
 
-This allows the system to:
-1. Continue processing other "healthy" messages.
-2. Alert an engineer to look at the "Dead" messages manually.
+*How do you get past the bad message?*
 
-### How to Run
+---
 
-Run the simulation:
+## 💡 The Concept
+
+### Poison Pill
+A message that causes workers to fail repeatedly. Like one bad pill in a bottle.
+
+### Dead Letter Queue (DLQ)
+After N failures, move the message to a side queue for human review.
+
+```
+Main Queue: [msg1, msg2, POISON, msg4, msg5]
+              ↓
+Worker: processes msg1 ✓
+Worker: processes msg2 ✓
+Worker: processes POISON ✗ (retry 1)
+Worker: processes POISON ✗ (retry 2)
+Worker: processes POISON ✗ (retry 3)
+System: "POISON failed 3x, moving to DLQ"
+Worker: processes msg4 ✓ (continues!)
+```
+
+---
+
+## 🚀 How to Run
+
 ```bash
 python3 workshop_materials/15_dead_letter/queue_processor.py
 ```
 
-### What to Observe
-- Message 1 (Normal) succeeds instantly.
-- Message 2 (**POISON_PILL**) fails. It gets retried.
-- You'll see Message 3 and 4 get processed *between* retries of Message 2.
-- After 3 failures, Message 2 is moved to the **DLQ**, and the program finishes successfully. 
-- Without a DLQ, this program would run forever!
+**What you'll see:**
+- Normal messages succeed immediately
+- Poison message fails, retries, eventually moves to DLQ
+- Other messages continue processing
+
+---
+
+## 📚 The Real Impact
+
+Every major message queue system has DLQ support because poison pills are inevitable:
+- AWS SQS, Google Pub/Sub, RabbitMQ, Kafka (via error topics)
+
+Without DLQ, one bad message = complete system halt.
+
+---
+
+## 🏆 Challenge
+
+Implement **Exponential Backoff** for retries:
+- Retry 1: Wait 1 second
+- Retry 2: Wait 2 seconds
+- Retry 3: Wait 4 seconds
+
+This gives transient issues time to resolve.

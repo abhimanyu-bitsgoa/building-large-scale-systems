@@ -1,276 +1,85 @@
-# Workshop Execution Guide: Step-by-Step Instructions
+# Distributed Systems Workshop: Instructor's Manual
 
-This guide provides **exact commands** to run each module of the Distributed Systems workshop.
+> **Target Audience:** College students with no prior distributed systems experience  
+> **Duration:** 4-6 hours (can be split across 2 days)  
+> **Required:** Docker, terminal access, basic Python knowledge
 
 ---
 
-## Prerequisites
+## 📋 Workshop Overview
 
-1. **Start Docker Environment**:
+### Core Track (4 hours) — Must Cover
+| Module | Topic | Duration | Type |
+|--------|-------|----------|------|
+| 01 | Nodes & RPC | 45 min | Hands-on |
+| 02 | Load Balancing & Rate Limiting | 30 min | Hands-on |
+| 03 | Sharding & Consistent Hashing | 45 min | Hands-on |
+| 05 | Quorums & Availability | 30 min | Hands-on |
+| 07 | Gossip Protocol | 20 min | Demo + Challenge |
+| 09 | Circuit Breaker | 20 min | Demo + Challenge |
+| 23 | Resilient System (Capstone) | 60 min | Hands-on |
+
+### Extended Track (Optional) — Self-Study
+Modules 08 (Consensus), 10-22 (advanced patterns)
+
+---
+
+## 🕐 Suggested Schedule
+
+### Day 1 (3 hours)
+| Time | Module | Activity |
+|------|--------|----------|
+| 0:00-0:15 | Setup | Docker, verify environment |
+| 0:15-1:00 | **Module 01** | Nodes & Scaling |
+| 1:00-1:30 | **Module 02** | Load Balancing |
+| 1:30-1:45 | ☕ Break | |
+| 1:45-2:30 | **Module 03** | Sharding |
+| 2:30-3:00 | **Module 05** | Quorums |
+
+### Day 2 (3 hours)  
+| Time | Module | Activity |
+|------|--------|----------|
+| 0:00-0:20 | **Module 07** | Gossip (Demo) |
+| 0:20-0:40 | **Module 09** | Circuit Breaker (Demo) |
+| 0:40-0:55 | ☕ Break | |
+| 0:55-2:00 | **Module 23** | Capstone Challenge |
+| 2:00-2:30 | Wrap-up | Q&A, Further Reading |
+
+---
+
+## 🚀 Prerequisites Setup
+
 ```bash
-cd /Users/aronzx/Documents/code/building-large-scale-systems
+cd /path/to/building-large-scale-systems
 docker-compose up -d --build
 docker-compose exec workshop bash
 ```
 
-You should now be inside the container at `/workspace`.
+**✅ Checkpoint:** All students should see `/workspace` prompt inside container.
 
 ---
 
-## Module 1: Nodes & RPC
+## Module 01: Nodes & RPC
+**Duration: 45 minutes**
 
-### Step 1: Start 3 Nodes
-Open **3 separate terminal windows/tabs**, and in each one, enter the container and run:
+### 🎯 Learning Goals
+- Understand that distributed systems = processes talking over a network
+- Experience why vertical scaling has limits
+- See the need for horizontal scaling
 
-**Terminal 1 (Node 1):**
-```bash
-docker-compose exec workshop bash
-python3 workshop_materials/01_nodes/node.py --port 5001 --id 1
-```
+### 🗣️ Teaching Notes
 
-**Terminal 2 (Node 2):**
-```bash
-docker-compose exec workshop bash
-python3 workshop_materials/01_nodes/node.py --port 5002 --id 2
-```
+**Opening Hook (2 min):**
+> "Imagine your startup just went viral on HackerNews. Your single server is melting. What do you do?"
 
-**Terminal 3 (Node 3):**
-```bash
-docker-compose exec workshop bash
-python3 workshop_materials/01_nodes/node.py --port 5003 --id 3
-```
+**Key Concepts to Emphasize:**
+- A "node" is just a process on a port
+- HTTP is our RPC mechanism (Remote Procedure Call)
+- The GIL (Global Interpreter Lock) limits Python's single-process throughput
 
-### Step 2: Test Manually (New Terminal)
-```bash
-docker-compose exec workshop bash
+### 📝 Exact Commands
 
-# Check health
-curl http://localhost:5001/health
-
-# Store data
-curl -X POST http://localhost:5001/data \
-  -H "Content-Type: application/json" \
-  -d '{"key": "user_123", "value": "Alice"}'
-
-# Retrieve data
-curl http://localhost:5001/data/user_123
-```
-
-### Step 3: Run the Client
-```bash
-python3 workshop_materials/01_nodes/client.py
-```
-
-**Expected Output**: Continuous health check requests hitting Node 1.
-
-### Step 4: The Scaling Journey 🚀
-In this step, we will intentionally break a single node to understand the limits of **Vertical Scaling** and the need for **Horizontal Scaling**.
-
-#### Phase 1: The "Noisy Neighbor" (Single Process)
-First, let's see what happens when a single node process gets overwhelmed.
-
-1.  **Start a Single-Worker Node** (Simulating a standard Python app):
-    ```bash
-    # Terminal 1
-    # --id 2: We use Node 2 as our test subject
-    # --load-factor 35: High CPU load (Fibonacci) per request
-    python3 workshop_materials/01_nodes/node.py --port 5002 --id 2 --load-factor 35
-    ```
-
-2.  **Flood it with Requests:**
-    ```bash
-    # Terminal 2 (Client)
-    # Fire 5 concurrent requests at Node 2
-    python3 workshop_materials/01_nodes/client.py --concurrent 5 --target http://localhost:5002
-    ```
-
-    **Observation**:
-    - You will see high latency (e.g., `Latency: 2000ms+`).
-    - `Active: 5`: Requests pile up because a single process can only handle one CPU-heavy task at a time (GIL).
-
-#### Phase 2: Vertical Scaling (Bigger Server)
-Let's "buy a bigger server" by adding more CPU cores (Processes).
-
-1.  **Restart Node 2 with 10 Workers**:
-    ```bash
-    # Terminal 1 (Ctrl+C first)
-    # We use workers=10 to scale vertically
-    python3 workshop_materials/01_nodes/node.py --port 5002 --id 2 --load-factor 35 --workers 10
-    ```
-
-2.  **Flood it Again:**
-    ```bash
-    # Terminal 2
-    python3 workshop_materials/01_nodes/client.py --concurrent 5 --target http://localhost:5002
-    ```
-
-    **Observation**:
-    - **Latency Drops**: Responses are much faster!
-    - **Why?**: 10 separate processes can handle 5 requests *in parallel*. Use `Active` stats to see them clearing instantly.
-
-#### Phase 3: The Limit (Overload Again)
-Vertical scaling has limits. What if we get *too much* traffic?
-
-1.  **Flood with 20 concurrent requests**:
-    ```bash
-    # Terminal 2
-    python3 workshop_materials/01_nodes/client.py --concurrent 20 --target http://localhost:5002
-    ```
-
-    **Observation**:
-    - Latency spikes again! 10 workers cannot handle 20 heavy requests simultaneously. Queueing returns.
-
-#### Phase 4: Horizontal Scaling (Load Balancing)
-The solution is to add **More Nodes**, not just bigger ones.
-
-1.  **Start Node 1 & Node 3** (Normal, no load factor):
-    ```bash
-    # Terminal 3
-    python3 workshop_materials/01_nodes/node.py --port 5001 --id 1
-    
-    # Terminal 4
-    python3 workshop_materials/01_nodes/node.py --port 5003 --id 3
-    ```
-
-2.  **Run Client in Round-Robin Mode**:
-    ```bash
-    # Terminal 2
-    # Remove --target to use all 3 nodes
-    python3 workshop_materials/01_nodes/client.py --concurrent 20
-    ```
-
-    **Observation**:
-    - Requests distributed to Node 1 and 3 are **FAST**.
-    - Requests hitting Node 2 are **SLOW**.
-    - **Lesson**: We need a Load Balancer (Module 2) to intelligently route around the slow node!
-
----
-
-## Module 2A: Load Balancing Visualization
-
-### Step 1: Ensure 3 Nodes are Running
-(Use nodes from Module 1, or restart them if needed)
-
-### Step 2: Run the Visualizer
-```bash
-docker-compose exec workshop bash
-python3 workshop_materials/02_networking/visualize_load_balance.py
-```
-
-**Expected Output**: A live ASCII bar chart showing request distribution across the 3 nodes.
-
-**To Stop**: Press `Ctrl+C`.
-
----
-
-## Module 2B: Rate Limiting
-
-### Step 1: Start a Rate-Limited Node
-
-**Edit `node.py` temporarily** (or create a copy):
-```python
-# Add this import at the top
-import sys
-sys.path.append('/workspace')
-from workshop_materials.networking.rate_limit_middleware import RateLimitMiddleware
-
-# Add this BEFORE uvicorn.run()
-app.add_middleware(RateLimitMiddleware, requests_per_second=5)
-```
-
-**Run the modified node:**
-```bash
-python3 workshop_materials/01_nodes/node.py --port 5001 --id 1
-```
-
-### Step 2: Run the Rate Limit Visualizer
-```bash
-# In another terminal
-docker-compose exec workshop bash
-python3 workshop_materials/02_networking/visualize_rate_limit.py
-```
-
-**Expected Output**:
-- **Good User**: Gets 200 responses
-- **Bad Actor**: Gets 429 "Too Many Requests" errors
-
----
-
-## Module 3 & 4: Sharding & Consistent Hashing
-
-### Step 1: Run the Rebalancing Visualization
-```bash
-docker-compose exec workshop bash
-python3 workshop_materials/03_sharding/visualize_rebalancing.py
-```
-
-**Expected Output**:
-```
-🧪 Testing Strategy: MODULO
-Keys Moved:   746/1000
-Percentage:   74.6%
-⚠️ HIGH IMPACT!
-
-🧪 Testing Strategy: CONSISTENT_HASHING
-Keys Moved:   246/1000
-Percentage:   24.6%
-✅ LOW IMPACT!
-```
-
-### Step 2: Test the Router
-```bash
-python3 workshop_materials/03_sharding/router.py
-```
-
-**Expected Output**:
-```
-Key 'user_123' maps to Node B
-```
-
-### Step 3: Swap Strategies
-Edit `workshop_materials/03_sharding/router.py`:
-```python
-# Line 7: Comment out
-# self.strategy = ModuloStrategy()
-
-# Line 8: Uncomment
-self.strategy = ConsistentHashingStrategy(self.nodes)
-```
-
-Run again:
-```bash
-python3 workshop_materials/03_sharding/router.py
-```
-
----
-
-## Module 5: Quorums & Availability
-
-### Step 1: Run the Availability Simulation
-```bash
-docker-compose exec workshop bash
-python3 workshop_materials/05_availability/visualize_availability.py
-```
-
-**Expected Output**:
-```
---- SYSTEM HEALTHY ---
-Result: SUCCESS. Got Version 1 from ['Node 1', 'Node 2', 'Node 3']
-
---- 💥 DISASTER: KILLING NODE 2 ---
-Result: SUCCESS (Quorum Met). Got Version 1 from ['Node 1', 'Node 3']
-
---- 💥 CATASTROPHE: KILLING NODE 3 ---
-Result: FAILURE. Only 1/3 nodes alive. R=2 not met.
-```
-
----
-
-## Module 6: The Capstone Challenge
-
-### Step 1: Start 3 Nodes
-(Same as Module 1)
-
+**Step 1: Start 3 Nodes** (3 terminals)
 ```bash
 # Terminal 1
 python3 workshop_materials/01_nodes/node.py --port 5001 --id 1
@@ -282,34 +91,173 @@ python3 workshop_materials/01_nodes/node.py --port 5002 --id 2
 python3 workshop_materials/01_nodes/node.py --port 5003 --id 3
 ```
 
-### Step 2: Start the Chaos Script
+**Step 2: Test Manually**
 ```bash
-# Terminal 4
-docker-compose exec workshop bash
-python3 workshop_materials/chaos/kill_script.py
+curl http://localhost:5001/health
+curl -X POST http://localhost:5001/data -H "Content-Type: application/json" -d '{"key": "user_123", "value": "Alice"}'
+curl http://localhost:5001/data/user_123
 ```
 
-**Expected Output**: Every 10 seconds, it will randomly kill one node.
+**✅ Checkpoint:** Students see `{"status": "stored", "node_id": 1, ...}`
 
-### Step 3: Implement and Run the Resilient Client
+**Step 3: The Scaling Journey**
 
-**TODO for Students**: Edit `workshop_materials/06_capstone/capstone_client.py` and implement:
-- `write_quorum()`
-- `read_quorum()`
-
-Once implemented, run:
+**Phase 1 — Break a Single Node:**
 ```bash
-# Terminal 5
-python3 workshop_materials/06_capstone/capstone_client.py
+# Terminal 1 (restart with load)
+python3 workshop_materials/01_nodes/node.py --port 5002 --id 2 --load-factor 35
+
+# Terminal 2 (flood it)
+python3 workshop_materials/01_nodes/client.py --concurrent 5 --target http://localhost:5002
 ```
 
-**Victory Condition**: The client prints "✅ Write Success" even while nodes are being killed.
+**🗣️ Discussion Prompt:** *"Why is latency so high? What's happening inside the node?"*
+
+**Phase 2 — Vertical Scaling:**
+```bash
+# Restart with workers
+python3 workshop_materials/01_nodes/node.py --port 5002 --id 2 --load-factor 35 --workers 10
+
+# Flood again
+python3 workshop_materials/01_nodes/client.py --concurrent 5 --target http://localhost:5002
+```
+
+**✅ Checkpoint:** Latency drops significantly.
+
+**Phase 3 — Hit the Limit:**
+```bash
+python3 workshop_materials/01_nodes/client.py --concurrent 20 --target http://localhost:5002
+```
+
+**🗣️ Discussion Prompt:** *"10 workers can't handle 20 requests. What's our next option?"*
+
+**Phase 4 — Horizontal Scaling:**
+```bash
+# Distribute across all 3 nodes
+python3 workshop_materials/01_nodes/client.py --concurrent 20
+```
+
+**🎓 Key Takeaway:** We need a Load Balancer (Module 2)!
+
+---
+
+## Module 02: Load Balancing & Rate Limiting
+**Duration: 30 minutes**
+
+### 🎯 Learning Goals
+- Understand traffic distribution strategies
+- Learn rate limiting as protection against abuse
+
+### 🗣️ Teaching Notes
+
+**Opening Hook:**
+> "A single customer is sending 10x more requests than everyone else. They're about to crash your system. What do you do?"
+
+**Real-World Incident:** Cloudflare Aug 2025 — one customer saturated peering links for 3 hours.
+
+### 📝 Exact Commands
+
+**Step 1: Load Balancing Visualization**
+```bash
+# Ensure 3 nodes are running from Module 1, then:
+python3 workshop_materials/02_networking/visualize_load_balance.py
+```
+
+**✅ Checkpoint:** ASCII bar chart shows traffic distributed across nodes.
+
+**Step 2: Rate Limiting Demo**
+```bash
+python3 workshop_materials/02_networking/visualize_rate_limit.py
+```
+
+**🗣️ Discussion Prompt:** *"What's the difference between 200 OK and 429 Too Many Requests?"*
+
+---
+
+## Module 03: Sharding & Consistent Hashing
+**Duration: 45 minutes**
+
+### 🎯 Learning Goals
+- Understand why data must be partitioned
+- Compare modulo hashing vs. consistent hashing
+- See why consistent hashing minimizes data movement
+
+### 🗣️ Teaching Notes
+
+**Opening Hook:**
+> "Your database has 1 billion users. You need to add a 4th server. How many users need to move?"
+
+**Answer Preview:** With modulo hashing: ~75%. With consistent hashing: ~25%.
+
+### 📝 Exact Commands
+
+**Step 1: Visualization (The "Aha!" Moment)**
+```bash
+python3 workshop_materials/03_sharding/visualize_rebalancing.py
+```
+
+**✅ Checkpoint:** Students see the dramatic difference in keys moved.
+
+**Step 2: Router Demo**
+```bash
+python3 workshop_materials/03_sharding/router.py
+```
+
+**Step 3: Swap Strategies (Hands-on)**
+
+Have students edit `workshop_materials/03_sharding/router.py`:
+```python
+# Comment line 7, uncomment line 8
+self.strategy = ConsistentHashingStrategy(self.nodes)
+```
+
+Then run again and add a 4th node.
+
+**🎓 Key Takeaway:** DynamoDB, Cassandra, and Redis Cluster all use consistent hashing.
+
+---
+
+## Module 05: Quorums & Availability
+**Duration: 30 minutes**
+
+### 🎯 Learning Goals
+- Understand R + W > N formula
+- See how quorum enables fault tolerance
+- Recognize the CAP theorem trade-off
+
+### 🗣️ Teaching Notes
+
+**Opening Hook:**
+> "You have 3 replicas. 2 just died. Can you still serve reads? Can you still serve writes?"
+
+### 📝 Exact Commands
+
+**Step 1: Simulation**
+```bash
+python3 workshop_materials/05_availability/visualize_availability.py
+```
+
+**✅ Checkpoint:**
+- 3/3 nodes: SUCCESS
+- 2/3 nodes: SUCCESS (quorum met)
+- 1/3 nodes: FAILURE
+
+**🗣️ Discussion Prompt:** *"What if you set R=1 and W=1? What's the trade-off?"*
+
+**Real-World Incident:** XRP Ledger Feb 2025 — validators drifted, couldn't meet quorum, 1-hour halt.
 
 ---
 
 ## Module 07: Gossip Protocol
+**Duration: 20 minutes (Demo + Micro-Challenge)**
 
-### Step 1: Start 4 Nodes
+### 🎯 Learning Goals
+- Understand decentralized information propagation
+- See eventual consistency in action
+
+### 📝 Exact Commands
+
+**Step 1: Start 4 Gossip Nodes**
 ```bash
 python3 workshop_materials/07_gossip/gossip_node.py --port 7001 --id 1 --neighbors 7002,7003,7004
 python3 workshop_materials/07_gossip/gossip_node.py --port 7002 --id 2 --neighbors 7001,7003,7004
@@ -317,248 +265,160 @@ python3 workshop_materials/07_gossip/gossip_node.py --port 7003 --id 3 --neighbo
 python3 workshop_materials/07_gossip/gossip_node.py --port 7004 --id 4 --neighbors 7001,7002,7003
 ```
 
-### Step 2: Run Visualizer
+**Step 2: Visualizer**
 ```bash
 python3 workshop_materials/07_gossip/visualize_gossip.py
 ```
 
-### Step 3: Trigger Update
+**Step 3: Inject Update**
 ```bash
 curl -X POST http://localhost:7001/update
 ```
 
----
+**✅ Checkpoint:** Watch update propagate to all nodes within seconds.
 
-## Module 08: Leader Election (Bully)
-
-### Step 1: Start 3 Nodes
-```bash
-python3 workshop_materials/08_consensus/bully_node.py --port 8001 --id 1 --nodes 1:8001,2:8002,3:8003
-python3 workshop_materials/08_consensus/bully_node.py --port 8002 --id 2 --nodes 1:8001,2:8002,3:8003
-python3 workshop_materials/08_consensus/bully_node.py --port 8003 --id 3 --nodes 1:8001,2:8002,3:8003
-```
-
-### Step 2: Run Visualizer
-```bash
-python3 workshop_materials/08_consensus/visualize_election.py
-```
+### 🎮 Micro-Challenge
+> "Kill Node 3 (Ctrl+C). Update Node 1. How long until Node 4 gets the update? Does it still work?"
 
 ---
 
 ## Module 09: Circuit Breaker
+**Duration: 20 minutes (Demo + Micro-Challenge)**
 
-### Step 1: Start Flaky Server
+### 🎯 Learning Goals
+- Understand fast-fail vs. slow timeout
+- See the CLOSED → OPEN → HALF-OPEN state machine
+
+### 📝 Exact Commands
+
+**Step 1: Start Flaky Server**
 ```bash
 python3 workshop_materials/09_patterns/flaky_server.py
 ```
 
-### Step 2: Run Visualizer
+**Step 2: Visualizer**
 ```bash
 cd workshop_materials/09_patterns
 python3 visualize_breaker.py
 ```
 
-### Step 3: Fail & Recover
+**Step 3: Trigger Failure**
 ```bash
 curl -X POST http://localhost:9001/fail
+```
+
+**✅ Checkpoint:** Circuit opens after 3 failures.
+
+**Step 4: Recover**
+```bash
 curl -X POST http://localhost:9001/recover
 ```
 
----
-
-## Module 10: Thundering Herd
-
-### Step 1: Run Simulation
-```bash
-python3 workshop_materials/10_concurrency/cache_stampede.py
-```
+### 🎮 Micro-Challenge
+> "Before triggering /fail, predict: How many requests will fail before the circuit opens? Time yourself."
 
 ---
 
-## Module 11: Service Discovery
+## Module 23: Resilient System (Grand Capstone)
+**Duration: 60 minutes**
 
-### Step 1: Start Registry
+### 🎯 Learning Goals
+- Combine all concepts into a working system
+- Experience chaos engineering firsthand
+- Celebrate with the graduation easter egg!
+
+### 📝 Exact Commands
+
+**Step 1: Start Registry**
 ```bash
-python3 workshop_materials/11_membership/registry.py
+python3 workshop_materials/23_resilient_system/registry.py
 ```
 
-### Step 2: Run Visualizer
+**Step 2: Start 3 Nodes** (3 terminals)
 ```bash
-python3 workshop_materials/11_membership/visualize_membership.py
+python3 workshop_materials/23_resilient_system/resilient_node.py --port 5001 --id node-1
+python3 workshop_materials/23_resilient_system/resilient_node.py --port 5002 --id node-2
+python3 workshop_materials/23_resilient_system/resilient_node.py --port 5003 --id node-3
 ```
 
-### Step 3: Start Nodes
+**Step 3: Dashboard**
 ```bash
-python3 workshop_materials/11_membership/heartbeat_node.py --port 6001 --id node1
-python3 workshop_materials/11_membership/heartbeat_node.py --port 6002 --id node2
+python3 workshop_materials/23_resilient_system/unified_dashboard.py
 ```
+
+**✅ Checkpoint:** All 3 nodes show green in dashboard.
+
+**Step 4: Write Data**
+```bash
+curl -X POST http://localhost:5000/data -H "Content-Type: application/json" -d '{"key":"user:alice","value":"Alice"}'
+```
+
+**Step 5: Chaos Testing**
+```bash
+# Kill a node
+curl -X POST http://localhost:5000/kill/node-2
+
+# Try another write - should still work!
+curl -X POST http://localhost:5000/data -H "Content-Type: application/json" -d '{"key":"user:bob","value":"Bob"}'
+```
+
+**Step 6: Scale Up**
+```bash
+curl -X POST http://localhost:5000/scale-up
+```
+
+**Step 7: Graduation!**
+```bash
+curl http://localhost:5000/graduate
+```
+
+🎉 **Victory Condition:** Students see the graduation ASCII art!
 
 ---
 
----
+## 🛑 Troubleshooting Guide
 
-## Module 12: Backpressure
-
-### Step 1: Start Consumer
-```bash
-# NORMAL MODE (No backpressure)
-python3 workshop_materials/12_backpressure/consumer.py --port 12000
-
-# BACKPRESSURE MODE
-python3 workshop_materials/12_backpressure/consumer.py --port 12000 --backpressure
-```
-
-### Step 2: Run Visualizer
-```bash
-python3 workshop_materials/12_backpressure/visualize_backpressure.py
-```
-
-### Step 3: Start Producer
-```bash
-python3 workshop_materials/12_backpressure/producer.py --rate 0.05
-```
+| Problem | Solution |
+|---------|----------|
+| "ModuleNotFoundError" | Run `pip3 install -r requirements.txt` inside container |
+| "Address already in use" | Kill existing process: `lsof -i :5001` then `kill <PID>` |
+| Dashboard shows no nodes | Make sure nodes are running before dashboard |
+| "Connection refused" | Check that registry is running on port 5000 |
 
 ---
 
-## Module 13: Replication Lag
+## 📖 Further Reading (Extended Track)
 
-### Step 1: Start Nodes
-```bash
-python3 workshop_materials/13_replication/primary.py --port 13000 --secondaries 13001,13002 --delay 5
-python3 workshop_materials/13_replication/secondary.py --port 13001 --id 1
-python3 workshop_materials/13_replication/secondary.py --port 13002 --id 2
-```
-
-### Step 2: Run Visualizer
-```bash
-python3 workshop_materials/13_replication/visualize_lag.py
-```
-
----
-
-## Module 14: Distributed Locking
-
-### Step 1: Start Lock Server
-```bash
-python3 workshop_materials/14_locking/lock_server.py
-```
-
-### Step 2: Run Visualizer
-```bash
-python3 workshop_materials/14_locking/visualize_locking.py
-```
-
-### Step 3: Run Workers
-```bash
-python3 workshop_materials/14_locking/book_ticket.py --id NodeA
-python3 workshop_materials/14_locking/book_ticket.py --id NodeB
-```
-
----
-
-## Module 15: Poison Pills & DLQ
-
-### Step 1: Run Simulation
-```bash
-python3 workshop_materials/15_dead_letter/queue_processor.py
-```
-
----
-
-## Module 16: Clock Skew
-
-### Step 1: Start Nodes
-```bash
-python3 workshop_materials/16_clocks/skewed_node.py --port 16001 --offset 0
-python3 workshop_materials/16_clocks/skewed_node.py --port 16002 --offset -300
-```
-
----
-
-## Module 17: Saga Pattern
-
-### Step 1: Run Simulation
-```bash
-python3 workshop_materials/17_saga/saga_orchestrator.py
-```
-
----
-
-## Module 18: Byzantine Faults
-
-### Step 1: Run Simulation
-```bash
-python3 workshop_materials/18_byzantine/byzantine_demo.py
-```
-
----
-
-## Module 19: Vector Clocks
-
-### Step 1: Run Simulation
-```bash
-python3 workshop_materials/19_vector/vector_clocks.py
-```
-
----
-
-## Module 20: Bloom Filters
-
-### Step 1: Run Visualizer
-```bash
-python3 workshop_materials/20_bloom/visualize_bloom.py
-```
-
----
-
-## Module 21: CRDTs
-
-### Step 1: Run Visualizer
-```bash
-python3 workshop_materials/21_crdt/visualize_crdt.py
-```
-
----
-
-## Module 22: 2-Phase Commit
-
-### Step 1: Run Simulation
-```bash
-python3 workshop_materials/22_2pc/two_phase_commit.py
-```
-
-## Stopping Everything
-
-```bash
-# Exit all terminals with Ctrl+C
-
-# Stop the Docker container
-docker-compose down
-```
+| Module | Topic | Best For |
+|--------|-------|----------|
+| 10 | Thundering Herd | Understanding Roblox 2021 outage |
+| 13 | Replication Lag | Database consistency issues |
+| 14 | Distributed Locking | Preventing double-booking |
+| 17 | Saga Pattern | Microservices transactions |
+| 21 | CRDTs | Collaborative editing (Google Docs) |
+| 22 | 2-Phase Commit | Strict transactional consistency |
 
 ---
 
 ## Quick Reference: Port Mapping
 
-Since we're using Docker with port mapping:
-- **Inside Container**: `localhost:5001`, `localhost:5002`, `localhost:5003`
-- **From Your Mac (Host)**: `localhost:8001`, `localhost:8002`, `localhost:8003`
-
-If you want to test from your Mac's browser or `curl`:
-```bash
-# From your Mac terminal (outside Docker)
-curl http://localhost:8001/health
-```
+| Service | Inside Docker | From Host Mac |
+|---------|---------------|---------------|
+| Node 1 | localhost:5001 | localhost:8001 |
+| Node 2 | localhost:5002 | localhost:8002 |
+| Node 3 | localhost:5003 | localhost:8003 |
+| Registry | localhost:5000 | localhost:8000 |
 
 ---
 
-## Troubleshooting
+## 🎓 Closing Script
 
-| Problem | Solution |
-|---------|----------|
-| "ModuleNotFoundError: No module named 'fastapi'" | Run `pip3 install -r requirements.txt` inside the container |
-| "Address already in use" (port 5000) | Use ports 5001-5003 instead, or disable macOS AirPlay |
-| Chaos script says "No nodes found" | Make sure nodes are running with `node.py` in their process name |
-| Import errors for `sharding_lib` | Run scripts from the `/workspace` directory |
+> "Today you built a distributed system from scratch. You saw why single servers fail. You learned how load balancing, consistent hashing, and quorums work. And you built a system that survives chaos.
+> 
+> The real world is messy. AWS goes down. DNS records get deleted. Retry storms overwhelm control planes. But now you know the patterns that make systems resilient.
+> 
+> Go build things that don't break. 🚀"
 
-Happy Building! 🚀
+---
+
+*Happy Teaching!*

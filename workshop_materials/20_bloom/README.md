@@ -1,28 +1,51 @@
-# Module 20: Bloom Filters (The Fast Forgetter)
+# Module 20: Bloom Filters
 
-How do you check if a username exists in a database with 1 billion users? 
-- **Option A**: Search the database (Disk I/O = Slow).
-- **Option B**: Keep all usernames in a Hash Set (RAM = Very Expensive).
-- **Option C**: **Bloom Filter** (RAM = Tiny, Speed = Instant).
+## 🎯 The Scenario
 
-A Bloom Filter is a **probabilistic data structure**. It can tell you:
-1. "Definitely No" (The item is 100% not in the set).
-2. "Probably Yes" (The item might be in the set, or it might be a **False Positive**).
+You have 1 billion usernames. Someone tries to register "alice123".
 
-### How it Works
-1. You have a bit-array of size $M$, initially all 0s.
-2. When you add an item, you run it through $K$ hash functions. Each hash gives you an index. You set those bits to 1.
-3. When you check for an item, you hash it again. If **any** of those bits are 0, the item is definitely not there. If they are all 1, it might be.
+- **Option A:** Query database (slow disk I/O)
+- **Option B:** Keep all usernames in RAM (100GB+ memory)
+- **Option C:** Bloom Filter (50MB memory, instant lookup)
 
-### How to Run
+*How does 50MB represent 1 billion items?*
 
-Run the visualizer:
+---
+
+## 💡 The Concept
+
+### Probabilistic Data Structure
+A Bloom Filter tells you:
+- **"Definitely not in set"** → 100% accurate
+- **"Probably in set"** → Might be a false positive
+
+### How It Works
+1. Bit array of size M (all zeros)
+2. K hash functions
+3. On insert: set K bit positions to 1
+4. On lookup: if ALL K positions are 1, "probably yes"; if ANY is 0, "definitely no"
+
+---
+
+## 🚀 How to Run
+
 ```bash
 python3 workshop_materials/20_bloom/visualize_bloom.py
 ```
 
-### What to Observe
-- As you add fruits, notice the bit array filling up.
-- When we test for "pizza", the bits it hashes to might already be '1' because of other fruits (like apple or banana). 
-- If this happens, the filter says "Probably Yes" even though we never added pizza! This is a **False Positive**.
-- In the real world, we use Bloom Filters as a "Shield" in front of databases. If the filter says "No", we don't even bother hitting the disk.
+**What you'll see:**
+- Adding items fills the bit array
+- False positives occur when bits happen to overlap
+
+---
+
+## 📚 The Real Use Case
+
+- **Cassandra:** Bloom filters on SSTables prevent unnecessary disk reads
+- **Chrome:** Safe Browsing uses Bloom filters to check malicious URLs locally
+
+---
+
+## 🏆 Challenge
+
+Calculate: For 1% false positive rate with 1 million items, how many bits do you need? (Hint: m = -n*ln(p) / (ln(2))²)

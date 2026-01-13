@@ -1,37 +1,65 @@
-# Module 16: Clock Skew (The Time Traveler)
+# Module 16: Clock Skew
 
-In a distributed system, you can almost **never** trust `time.time()`. 
+## 🎯 The Scenario
 
-Crystals in motherboards vibrate at slightly different frequencies. Some clocks run fast, some run slow. This is called **Clock Skew**. If your system relies on "Last Write Wins" based on timestamps, clock skew can cause data loss.
+Server A says: "Write received at 12:00:00.000"
+Server B says: "Write received at 11:59:59.500"
+
+Server B's timestamp is *earlier*, but it happened *after*.
+
+Your database uses "last write wins" with timestamps. **Server A's write gets overwritten by Server B's older write.**
+
+*Can you trust clocks in a distributed system?*
+
+---
+
+## 💡 The Concept
+
+### Clock Skew
+The difference between clocks on different machines. Even with NTP, skew of 10-100ms is common.
 
 ### The Problem
-1. **Node A** (Clock perfectly on time) writes `User.name = "Alice"` at 10:00:00AM.
-2. **Node B** (Clock is 5 minutes behind) receives a write `User.name = "Bob"` at 10:01:00AM. But Node B thinks the time is 09:56:00AM.
-3. If Node B checks its database and sees a version from 10:00:00AM, it might **discard** the update "Bob" because 09:56 is *earlier* than 10:00, even though "Bob" happened later in the real world!
+If you use wall-clock timestamps for ordering:
+- Newer events can appear older (and be discarded)
+- Older events can appear newer (and overwrite)
 
-### How to Run
+### Solutions
+- **Logical Clocks**: Counters, not timestamps (see Module 19: Vector Clocks)
+- **Hybrid Logical Clocks**: Combine physical and logical time
+- **TrueTime (Google Spanner)**: GPS + atomic clocks with bounded uncertainty
 
-1. **Start Node A** (Correct Clock):
-   ```bash
-   python3 workshop_materials/16_clocks/skewed_node.py --port 16001 --offset 0
-   ```
+---
 
-2. **Start Node B** (5 Minutes Behind):
-   ```bash
-   python3 workshop_materials/16_clocks/skewed_node.py --port 16002 --offset -300
-   ```
+## 🚀 How to Run
 
-3. **Scenario: The "Time Traveler" Write**:
-   First, write to Node A:
-   ```bash
-   curl -X POST "http://localhost:16001/write/user_1?value=Alice"
-   ```
-   Now, try to write a "newer" value to Node B:
-   ```bash
-   curl -X POST "http://localhost:16002/write/user_1?value=Bob"
-   ```
+```bash
+python3 workshop_materials/16_clocks/skewed_node.py --port 16001 --offset 0
+python3 workshop_materials/16_clocks/skewed_node.py --port 16002 --offset -300
+```
 
-### What to Observe
-- Even though you sent "Bob" *after* "Alice", Node B will **REJECT** it. 
-- It thinks the write is from the past because its clock is skewed.
-- This is why systems like Google Spanner use "TrueTime" (GPS + Atomic Clocks) to bound this error, or why many systems prefer **Logical Clocks** (like Vector Clocks) instead of wall-clock time.
+Node 2's clock is 300 seconds (5 minutes) behind!
+
+---
+
+## 📚 The Real Incident
+
+### Cassandra Consistency Issue
+
+Cassandra uses client-supplied timestamps for versioning. If clients have different clock settings:
+- Client A writes at (real) T=100
+- Client B writes at (real) T=101 but sends timestamp T=50
+- Client B's "newer" write is ignored, Client A's "older" write wins
+
+About 1 in 10,000 operations showed stale data.
+
+**Lesson:** Never trust client timestamps. Use server-side lamport clocks or hybrid logical clocks.
+
+---
+
+## 🏆 Challenge
+
+Implement **Lamport Timestamps**:
+- Each node has a counter
+- On local event: counter++
+- On send: attach counter
+- On receive: counter = max(local, received) + 1

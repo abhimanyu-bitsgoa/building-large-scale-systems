@@ -1,32 +1,68 @@
 # Module 22: 2-Phase Commit (2PC)
 
-We previously looked at **Sagas** (Module 17), which use "Eventual Consistency" and compensating actions to undo failures. But what if you need **Strict Consistency**? 
+## 🎯 The Scenario
 
-For example, when moving money between two different banks, you absolutely cannot have a state where money has left Bank A but hasn't arrived at Bank B, even for a second.
+Transfer $100 from Bank A to Bank B.
 
-### The Solution: 2-Phase Commit
-2PC is a protocol that ensures an "All or Nothing" atomicity across multiple nodes. It uses a **Coordinator** to manage the process in two phases:
+1. Bank A: "Deducted $100" ✓
+2. Bank B: "System error, can't credit" ✗
 
-#### Phase 1: Prepare (Voting)
-1. The Coordinator asks all nodes: "Are you ready to commit this change?"
-2. Each node checks its local state (e.g. "Do I have enough balance?").
-3. Each node sends a "Vote" (READY or ABORT).
+**Money disappeared.** Bank A debited but Bank B never credited.
 
-#### Phase 2: Execution (Decision)
-1. If **ALL** nodes voted READY: The Coordinator sends a `COMMIT` signal. The change becomes permanent.
-2. If **ANY** node voted ABORT: The Coordinator sends a `ROLLBACK` signal. Everyone discards the changes.
+*How do you ensure all-or-nothing across separate databases?*
 
-### 2PC vs Sagas
-- **2PC**: Consistent, but blocks resources until the final decision (Slow).
-- **Sagas**: Highly available and non-blocking, but allows "Temporary Inconsistency" (Fast).
+---
 
-### How to Run
+## 💡 The Concept
 
-Run the simulation:
+### The Problem
+No shared transaction across independent databases.
+
+### 2-Phase Commit
+
+**Phase 1: Prepare (Voting)**
+```
+Coordinator → Bank A: "Can you deduct $100?"
+Bank A → Coordinator: "READY (locked funds)"
+
+Coordinator → Bank B: "Can you credit $100?"
+Bank B → Coordinator: "READY (prepared slot)"
+```
+
+**Phase 2: Commit/Abort**
+```
+If ALL voted READY:
+  Coordinator → All: "COMMIT"
+  
+If ANY voted ABORT:
+  Coordinator → All: "ROLLBACK"
+```
+
+---
+
+## 🚀 How to Run
+
 ```bash
 python3 workshop_materials/22_2pc/two_phase_commit.py
 ```
 
-### What to Observe
-1. **Scenario 1 (Success)**: Both nodes vote READY, and both commit.
-2. **Scenario 2 (Partial Failure)**: Node Beta crashes or votes ABORT during the prepare phase. The Coordinator forces both nodes to Rollback. The money never leaves Bank Alpha.
+**What you'll see:**
+- **Success:** Both nodes prepare, both commit
+- **Failure:** One node aborts, both rollback
+
+---
+
+## 📚 2PC vs Sagas
+
+| Feature | 2PC | Saga |
+|---------|-----|------|
+| Consistency | Strong | Eventual |
+| Performance | Blocking | Non-blocking |
+| Failure mode | Coordinator down = stuck | Compensate |
+| Use case | Financial transactions | Long-running workflows |
+
+---
+
+## 🏆 Challenge
+
+What happens if the Coordinator crashes after sending PREPARE but before sending COMMIT? Research **3-Phase Commit** for the solution.

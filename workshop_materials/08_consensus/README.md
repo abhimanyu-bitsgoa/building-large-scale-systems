@@ -1,39 +1,83 @@
 # Module 08: Leader Election (Bully Algorithm)
 
-In a distributed system, sometimes you need one node to be "the boss" (e.g., to coordinate writes, manage a database, or assign tasks). But what happens if the leader dies?
+## 🎯 The Scenario
 
-The cluster must **Elect** a new one.
+Your system has 3 nodes. Node 3 is the "leader"—it coordinates writes to ensure consistency.
+
+Node 3 just crashed. The other nodes are still running, but **who's in charge now?**
+
+*How do the remaining nodes agree on a new leader?*
+
+---
+
+## 🧠 Pause and Think
+
+1. If Node 1 and Node 2 both think they should be leader... what happens?
+2. How do you break ties?
+3. What if the old leader comes back online?
+
+---
+
+## 💡 The Concept
+
+### Leader Election
+Choosing a single node to coordinate operations. Only one leader at a time.
 
 ### The Bully Algorithm
-This algorithm is called "Bully" because nodes with higher IDs will always "bully" their way into leadership over lower-ID nodes.
+The node with the **highest ID** always wins.
 
-1. **Failure Detection**: When a node notices the leader isn't responding, it starts an election.
-2. **The "Election" Message**: It asks all nodes with a higher ID: "Are any of you alive?".
-3. **The "Alive" Response**: If a higher node is alive, it says "Yes, I'll take it from here" and starts its own election.
-4. **Victory**: If no higher node responds, the initiating node declares itself the leader and tells everyone ("Coordinator" message).
-5. **The Bully**: If a highest-ID node recovers, it immediately starts an election and takes over.
+1. Node detects leader is missing
+2. Sends "ELECTION" message to all higher-ID nodes
+3. If any respond ("I'm taking over"), wait for them to become leader
+4. If none respond, declare yourself leader and announce "VICTORY"
 
-### How to Run
+```
+Node 1: "Leader is dead. Anyone higher than me?"
+Node 2: "I'm higher than you. Sit down."
+Node 2: "Anyone higher than me?" (silence)
+Node 2: "I am the leader now!"
+```
 
-1. **Start 3 Bully Nodes**:
-   ```bash
-   # In Terminal 1
-   python3 workshop_materials/08_consensus/bully_node.py --port 8001 --id 1 --nodes 1:8001,2:8002,3:8003
-   
-   # In Terminal 2
-   python3 workshop_materials/08_consensus/bully_node.py --port 8002 --id 2 --nodes 1:8001,2:8002,3:8003
+---
 
-   # In Terminal 3
-   python3 workshop_materials/08_consensus/bully_node.py --port 8003 --id 3 --nodes 1:8001,2:8002,3:8003
-   ```
+## 🚀 How to Run
 
-2. **Run the Visualizer**:
-   ```bash
-   python3 workshop_materials/08_consensus/visualize_election.py
-   ```
+### Step 1: Start 3 Nodes
+```bash
+python3 workshop_materials/08_consensus/bully_node.py --port 8001 --id 1 --nodes 1:8001,2:8002,3:8003
+python3 workshop_materials/08_consensus/bully_node.py --port 8002 --id 2 --nodes 1:8001,2:8002,3:8003
+python3 workshop_materials/08_consensus/bully_node.py --port 8003 --id 3 --nodes 1:8001,2:8002,3:8003
+```
 
-3. **Kill the Leader**:
-   Kill Node 3 (the highest ID). Watch Node 1 and 2 detect the crash and elect Node 2.
+### Step 2: Run Visualizer
+```bash
+python3 workshop_materials/08_consensus/visualize_election.py
+```
 
-4. **The Bully Returns**:
-   Restart Node 3. Watch it take leadership back from Node 2 instantly!
+### Step 3: Kill the Leader
+Kill Node 3 (`Ctrl+C`). Watch Node 2 take over.
+
+---
+
+## 📚 The Real Incident
+
+### etcd Upgrade Bug (2024) — Zombie Members
+
+During etcd v3.5 to v3.6 upgrades, a bug caused removed nodes to persist as "zombies" in the membership list.
+
+The cluster thought: "We have 4 nodes. Need 3 votes for quorum."
+Reality: "We have 3 nodes. Zombie can't vote."
+
+When one real node went down for maintenance, the remaining 2 couldn't elect a leader (needed 3 votes). Kubernetes clusters froze.
+
+**Lesson:** Leader election depends on accurate membership. Corrupted membership lists break elections.
+
+---
+
+## 🏆 Challenge
+
+The Bully Algorithm is simple but has flaws. What happens if:
+1. The highest-ID node has a slow network?
+2. A node keeps crashing and restarting, triggering elections?
+
+Research **Raft** for a more robust approach.

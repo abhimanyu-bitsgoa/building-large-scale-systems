@@ -1,31 +1,56 @@
-# Module 18: Byzantine Faults (The Traitor Node)
+# Module 18: Byzantine Faults
 
-Most distributed systems assume nodes are either **Alive** or **Dead** (Crash-stop failure). But what if a node is alive and healthy, but sends **Wrong** or **Malicious** data?
+## 🎯 The Scenario
 
-This is a **Byzantine Fault**.
+You ask 3 generals: "Attack or Retreat?"
+- General 1: "Attack!"
+- General 2: "Attack!"
+- General 3: "Retreat!" (traitor or buggy)
 
-### The Problem
-If a client asks 3 nodes for a balance and gets:
-- Node 1: "$100"
-- Node 2: "$100"
-- Node 3: "$9,999,999"
+With 2 vs 1, you attack. But what if General 3 told other nodes something different?
 
-Who should the client trust? If Node 3 is compromised or has a buggy CPU, it's a "Traitor".
+*How do you reach consensus when nodes might lie?*
+
+---
+
+## 💡 The Concept
+
+### Crash Fault vs Byzantine Fault
+| Type | Behavior |
+|------|----------|
+| Crash | Node is dead. Simple. |
+| Byzantine | Node is alive but sends wrong/malicious data. |
 
 ### Byzantine Fault Tolerance (BFT)
-A system is Byzantine Fault Tolerant if it can reach a correct consensus even when some nodes are lying. Mathematically, to tolerate $F$ traitors, you usually need $3F + 1$ total nodes.
+To tolerate F traitors, you need **3F + 1** nodes.
+- 1 traitor → need 4 nodes
+- 2 traitors → need 7 nodes
 
-### How to Run
+### Where It Matters
+- Blockchain (adversarial environment)
+- Spacecraft (cosmic ray bit flips)
+- Financial systems (compromised nodes)
 
-Run the simulation:
+---
+
+## 🚀 How to Run
+
 ```bash
 python3 workshop_materials/18_byzantine/byzantine_demo.py
 ```
 
-### What to Observe
-1. **Scenario 1 (1 Traitor)**:
-   - 2 nodes say "ATTACK", 1 node says "RETREAT".
-   - The majority still wins. The "Traitor" is ignored.
-2. **Scenario 2 (2 Traitors)**:
-   - 1 node says "ATTACK", 2 nodes say "RETREAT".
-   - The system is now compromised. In this simple demo, the traitors "won" because they have the majority. This shows why critical systems (like Blockchain or Spacecraft) need higher node counts and cryptographic signatures to prevent this!
+**What you'll see:**
+- **1 traitor, 3 nodes:** Majority wins, traitor ignored
+- **2 traitors, 3 nodes:** Traitors control majority. Consensus broken!
+
+---
+
+## 📚 The Real-World Context
+
+Bitcoin and Ethereum solve Byzantine consensus at global scale using Proof of Work / Proof of Stake—making it economically expensive to be a traitor.
+
+---
+
+## 🏆 Challenge
+
+Research **PBFT (Practical Byzantine Fault Tolerance)**. How many message rounds does it require?
