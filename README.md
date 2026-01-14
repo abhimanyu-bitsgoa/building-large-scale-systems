@@ -1,6 +1,6 @@
 # Building Large Scale Systems: The Workshop 🏗️
 
-Welcome to **InstaScale**! In this workshop, you will learn how to build a resilient distributed system from scratch.
+Welcome to **The Workshop**! In this workshop, you will learn how to build a resilient distributed system from scratch.
 
 ## 🚀 Instant Start
 
