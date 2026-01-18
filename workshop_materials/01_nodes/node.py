@@ -8,9 +8,9 @@ import time
 
 app = FastAPI()
 
-# Global variable to store node ID (will be set at startup)
-NODE_ID = 0
-LOAD_FACTOR = 0
+# Global variables - read from environment (for multi-worker support)
+NODE_ID = int(os.environ.get("NODE_ID", 0))
+LOAD_FACTOR = int(os.environ.get("LOAD_FACTOR", 0))
 
 # Store data in-memory
 data_store = {}
@@ -103,10 +103,11 @@ if __name__ == "__main__":
     parser.add_argument("--workers", type=int, default=1, help="Number of Uvicorn worker processes")
     args = parser.parse_args()
     
-    NODE_ID = args.id
-    LOAD_FACTOR = args.load_factor
+    # Set environment variables so worker processes inherit them
+    os.environ["NODE_ID"] = str(args.id)
+    os.environ["LOAD_FACTOR"] = str(args.load_factor)
     
-    print(f"Starting Node {NODE_ID} on port {args.port} (Load Factor: {LOAD_FACTOR}, Workers: {args.workers})")
+    print(f"Starting Node {args.id} on port {args.port} (Load Factor: {args.load_factor}, Workers: {args.workers})")
     
     if args.workers > 1:
         # Get the directory where this script is located
@@ -114,5 +115,7 @@ if __name__ == "__main__":
         # Pass the directory to Uvicorn so workers can find 'node:app'
         uvicorn.run("node:app", host="0.0.0.0", port=args.port, workers=args.workers, app_dir=current_dir)
     else:
-        # For single worker, we can pass the app object directly
+        # For single worker, update globals directly (no re-import happens)
+        NODE_ID = args.id
+        LOAD_FACTOR = args.load_factor
         uvicorn.run(app, host="0.0.0.0", port=args.port)
