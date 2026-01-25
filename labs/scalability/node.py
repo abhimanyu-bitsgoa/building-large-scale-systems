@@ -31,7 +31,7 @@ class EndpointFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         # Suppress if the log message contains any of the internal endpoints
         msg = record.getMessage()
-        return not any(endpoint in msg for endpoint in ["GET /stats", "GET /health", "GET / "])
+        return not any(endpoint in msg for endpoint in ["GET /health", "GET / "])
 
 # Apply filter to uvicorn access logger
 logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
@@ -49,15 +49,11 @@ RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", 60))
 # In-memory data store
 data_store = {}
 
-# Internal endpoints to exclude from rate limiting and metrics
-INTERNAL_ENDPOINTS = {"/", "/health", "/stats", "/docs", "/openapi.json"}
+# Internal endpoints to exclude from metrics
+INTERNAL_ENDPOINTS = {"/", "/health", "/docs", "/openapi.json"}
 
 # Metrics tracking
 active_requests = 0
-total_requests = 0
-rate_limited_requests = 0
-total_latency_ms = 0.0
-latency_count = 0
 
 # ========================
 # Rate Limiter (Fixed Window)
@@ -152,7 +148,7 @@ async def request_middleware(request: Request, call_next):
     2. Rate limiting (excludes internal endpoints)
     3. Latency tracking
     """
-    global active_requests, total_requests, rate_limited_requests, total_latency_ms, latency_count
+    global active_requests
     
     path = request.url.path
     client_ip = request.client.host if request.client else "unknown"
@@ -169,7 +165,6 @@ async def request_middleware(request: Request, call_next):
         allowed, metadata = rate_limiter.is_allowed(client_ip)
         
         if not allowed:
-            rate_limited_requests += 1
             print(f"❌ [Node {NODE_ID}] RATE LIMITED: {request.method} {path} from {client_ip}")
             
             response = JSONResponse(
@@ -188,18 +183,15 @@ async def request_middleware(request: Request, call_next):
         else:
             print(f"✅ [Node {NODE_ID}] ALLOWED: {request.method} {path} (remaining: {metadata['remaining']})")
     
-    # Track active requests and latency
+    # Track active requests
     active_requests += 1
-    total_requests += 1
     start_time = time.time()
     
     try:
         response = await call_next(request)
         
-        # Track latency
+        # Track latency (header injection only)
         latency_ms = (time.time() - start_time) * 1000
-        total_latency_ms += latency_ms
-        latency_count += 1
         
         response.headers["X-Active-Requests"] = str(active_requests)
         response.headers["X-Node-ID"] = str(NODE_ID)
@@ -249,19 +241,6 @@ def health():
         "active_requests": active_requests
     }
 
-@app.get("/stats")
-def stats():
-    """Detailed node statistics (excludes internal endpoint requests)."""
-    avg_latency = (total_latency_ms / latency_count) if latency_count > 0 else 0.0
-    return {
-        "node_id": NODE_ID,
-        "active_requests": active_requests,
-        "total_requests": total_requests,
-        "rate_limited_requests": rate_limited_requests,
-        "avg_latency_ms": round(avg_latency, 2),
-        "load_factor": LOAD_FACTOR,
-        "rate_limit_enabled": rate_limiter is not None
-    }
 
 @app.post("/data")
 def store_data(payload: DataPayload):
