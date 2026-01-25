@@ -187,9 +187,6 @@ class LoadBalancer:
         """Record that a request has completed (for adaptive balancing)."""
         node_stats.record_request_end(node_url, response_time, success)
     
-    def get_stats(self) -> Dict[str, dict]:
-        """Get statistics for all nodes."""
-        return {node: node_stats.get_stats(node) for node in self.nodes}
 
 # ========================
 # Decorator for Load Balanced Requests

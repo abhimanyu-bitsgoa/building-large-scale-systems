@@ -135,11 +135,6 @@ class RateLimiter:
         self.window_seconds = window_seconds
         self.strategy_name = strategy
         self.strategy = self._create_strategy(strategy)
-        
-        # Metrics
-        self.total_requests = 0
-        self.allowed_requests = 0
-        self.rejected_requests = 0
     
     def _create_strategy(self, strategy_name: str) -> RateLimiterStrategy:
         """Create a strategy instance by name."""
@@ -158,26 +153,8 @@ class RateLimiter:
         Returns:
             Tuple of (is_allowed, metadata_dict)
         """
-        self.total_requests += 1
-        allowed, metadata = self.strategy.is_allowed(client_id)
-        
-        if allowed:
-            self.allowed_requests += 1
-        else:
-            self.rejected_requests += 1
-        
-        return allowed, metadata
+        return self.strategy.is_allowed(client_id)
     
-    def get_stats(self) -> dict:
-        """Get rate limiter statistics."""
-        return {
-            "strategy": self.strategy_name,
-            "max_requests": self.max_requests,
-            "window_seconds": self.window_seconds,
-            "total_requests": self.total_requests,
-            "allowed_requests": self.allowed_requests,
-            "rejected_requests": self.rejected_requests
-        }
 
 # ========================
 # Decorator for Rate Limited Endpoints

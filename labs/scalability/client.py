@@ -184,7 +184,7 @@ def run_client(nodes: list, concurrency: int, strategy: str,
     print_stats(nodes)
 
 def print_stats(nodes: list):
-    """Print final statistics."""
+    """Print final statistics with P95, median, and global stats."""
     print("\n" + "=" * 60)
     print("FINAL STATISTICS")
     print("=" * 60)
@@ -192,23 +192,79 @@ def print_stats(nodes: list):
     total = metrics.total_requests
     rate_limited = metrics.total_rate_limited
     
+    if total == 0:
+        print("No requests were made.")
+        return
+    
+    rate_pct = (rate_limited / total * 100) if total > 0 else 0
     print(f"Total Requests: {total}")
-    print(f"Rate Limited (429): {rate_limited} ({rate_limited/total*100:.1f}% if total else 0)")
+    print(f"Rate Limited (429): {rate_limited} ({rate_pct:.1f}%)")
     print()
+    
+    # Collect all latencies for global stats
+    all_latencies = []
+    total_success = 0
+    total_errors = 0
     
     # Per-node stats
     for node in nodes:
         success = metrics.requests_per_node[node]
         limited = metrics.rate_limited_per_node[node]
         errors = metrics.errors_per_node[node]
-        avg_latency = metrics.get_avg_latency(node)
+        latencies = metrics.latencies_per_node[node]
+        
+        # Add to global stats
+        all_latencies.extend(latencies)
+        total_success += success
+        total_errors += errors
+        
+        # Calculate percentiles
+        avg_latency = sum(latencies) / len(latencies) if latencies else 0.0
+        p95_latency = calculate_percentile(latencies, 95) if latencies else 0.0
         
         print(f"{node}:")
         print(f"  ✅ Success: {success}")
         print(f"  🚫 Rate Limited: {limited}")
         print(f"  ❌ Errors: {errors}")
         print(f"  ⏱️  Avg Latency: {avg_latency:.2f}ms")
+        print(f"  ⏱️  P95 Latency: {p95_latency:.2f}ms")
         print()
+    
+    # Global stats
+    print("=" * 60)
+    print("GLOBAL SYSTEM STATS")
+    print("=" * 60)
+    
+    if all_latencies:
+        global_avg = sum(all_latencies) / len(all_latencies)
+        global_p95 = calculate_percentile(all_latencies, 95)
+    else:
+        global_avg = global_p95 = 0.0
+    
+    print(f"  ✅ Total Success: {total_success}")
+    print(f"  🚫 Total Rate Limited: {rate_limited}")
+    print(f"  ❌ Total Errors: {total_errors}")
+    print(f"  ⏱️  Global Avg Latency: {global_avg:.2f}ms")
+    print(f"  ⏱️  Global P95 Latency: {global_p95:.2f}ms")
+    print()
+
+def calculate_percentile(data: list, percentile: float) -> float:
+    """Calculate the given percentile of a list of values."""
+    if not data:
+        return 0.0
+    sorted_data = sorted(data)
+    n = len(sorted_data)
+    index = (percentile / 100) * (n - 1)
+    
+    lower = int(index)
+    upper = lower + 1
+    
+    if upper >= n:
+        return sorted_data[-1]
+    
+    # Linear interpolation
+    weight = index - lower
+    return sorted_data[lower] * (1 - weight) + sorted_data[upper] * weight
 
 # ========================
 # Main Entry Point

@@ -20,6 +20,21 @@ import os
 import time
 from functools import wraps
 from collections import defaultdict
+import logging
+
+# ========================
+# Logging Configuration
+# ========================
+
+class EndpointFilter(logging.Filter):
+    """Filter to suppress access logs for internal endpoints."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Suppress if the log message contains any of the internal endpoints
+        msg = record.getMessage()
+        return not any(endpoint in msg for endpoint in ["GET /health", "GET / "])
+
+# Apply filter to uvicorn access logger
+logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 
 # ========================
 # Global Configuration
@@ -34,10 +49,11 @@ RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", 60))
 # In-memory data store
 data_store = {}
 
+# Internal endpoints to exclude from metrics
+INTERNAL_ENDPOINTS = {"/", "/health", "/docs", "/openapi.json"}
+
 # Metrics tracking
 active_requests = 0
-total_requests = 0
-rate_limited_requests = 0
 
 # ========================
 # Rate Limiter (Fixed Window)
@@ -128,20 +144,28 @@ app = FastAPI(title=f"Scalability Lab - Node {NODE_ID}")
 async def request_middleware(request: Request, call_next):
     """
     Middleware that handles:
-    1. Active request counting
-    2. Rate limiting (if enabled)
+    1. Active request counting (excludes internal endpoints)
+    2. Rate limiting (excludes internal endpoints)
+    3. Latency tracking
     """
-    global active_requests, total_requests, rate_limited_requests
+    global active_requests
     
+    path = request.url.path
     client_ip = request.client.host if request.client else "unknown"
     
-    # Rate limiting check (if enabled)
+    # Skip rate limiting and metrics for internal endpoints
+    is_internal = path in INTERNAL_ENDPOINTS
+    
+    if is_internal:
+        # Just forward the request without counting or rate limiting
+        return await call_next(request)
+    
+    # Rate limiting check (if enabled, only for non-internal endpoints)
     if rate_limiter is not None:
         allowed, metadata = rate_limiter.is_allowed(client_ip)
         
         if not allowed:
-            rate_limited_requests += 1
-            print(f"❌ [Node {NODE_ID}] RATE LIMITED: {request.method} {request.url.path} from {client_ip}")
+            print(f"❌ [Node {NODE_ID}] RATE LIMITED: {request.method} {path} from {client_ip}")
             
             response = JSONResponse(
                 status_code=429,
@@ -157,16 +181,21 @@ async def request_middleware(request: Request, call_next):
             response.headers["X-RateLimit-Reset"] = str(metadata["reset"])
             return response
         else:
-            print(f"✅ [Node {NODE_ID}] ALLOWED: {request.method} {request.url.path} (remaining: {metadata['remaining']})")
+            print(f"✅ [Node {NODE_ID}] ALLOWED: {request.method} {path} (remaining: {metadata['remaining']})")
     
     # Track active requests
     active_requests += 1
-    total_requests += 1
+    start_time = time.time()
     
     try:
         response = await call_next(request)
+        
+        # Track latency (header injection only)
+        latency_ms = (time.time() - start_time) * 1000
+        
         response.headers["X-Active-Requests"] = str(active_requests)
         response.headers["X-Node-ID"] = str(NODE_ID)
+        response.headers["X-Latency-Ms"] = f"{latency_ms:.2f}"
         return response
     finally:
         active_requests -= 1
@@ -212,17 +241,6 @@ def health():
         "active_requests": active_requests
     }
 
-@app.get("/stats")
-def stats():
-    """Detailed node statistics."""
-    return {
-        "node_id": NODE_ID,
-        "active_requests": active_requests,
-        "total_requests": total_requests,
-        "rate_limited_requests": rate_limited_requests,
-        "load_factor": LOAD_FACTOR,
-        "rate_limit_enabled": rate_limiter is not None
-    }
 
 @app.post("/data")
 def store_data(payload: DataPayload):
