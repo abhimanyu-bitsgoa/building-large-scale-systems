@@ -61,6 +61,13 @@ python labs/scalability/node.py --port 5003 --id 3 --load-factor 35
 ```
 
 
+### Step 2: Run client with round-robin strategy
+
+```bash
+# Terminal 4: Run client with round-robin strategy
+python labs/scalability/client.py --concurrent 20 --requests 100 --strategy round_robin
+```
+
 **Observe**: Requests are distributed equally, but the low-capacity node has higher latency.
 
 ---
