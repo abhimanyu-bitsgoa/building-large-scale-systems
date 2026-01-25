@@ -105,10 +105,14 @@ def draw_dashboard(state: DashboardState):
     print()
     
     # Summary
-    print(f"{Colors.BOLD}📊 SUMMARY{Colors.RESET}")
-    print(f"   Total Requests: {state.total_requests}")
-    print(f"   Rate Limited:   {Colors.RED}{state.total_rate_limited}{Colors.RESET}")
-    print(f"   Errors:         {state.total_errors}")
+    total_reqs = sum(s["requests"] for s in state.stats.values())
+    total_rl = sum(s["rate_limited"] for s in state.stats.values())
+    total_err = sum(s["errors"] for s in state.stats.values())
+    
+    print(f"{Colors.BOLD}📊 SUMMARY (Cluster-wide){Colors.RESET}")
+    print(f"   Total Requests: {total_reqs}")
+    print(f"   Rate Limited:   {Colors.RED}{total_rl}{Colors.RESET}")
+    print(f"   Errors:         {total_err}")
     print()
     
     # Node metrics
@@ -125,16 +129,18 @@ def draw_dashboard(state: DashboardState):
         
         print(f"\n{status_icon} {Colors.BOLD}{node}{Colors.RESET}")
         
-        # Requests bar (green)
+        # Requests bar (green) - Cumulative total since start
         req_bar = draw_bar(stats["requests"], max_requests, width=25, color=Colors.GREEN)
-        print(f"   Requests:     {req_bar} {stats['requests']}")
+        print(f"   Requests (Total): {req_bar} {stats['requests']}")
         
-        # Rate Limited bar (red)
+        # Rate Limited bar (red) - Cumulative total since start
         rl_bar = draw_bar(stats["rate_limited"], max(max_rate_limited, 1), width=25, color=Colors.RED)
-        print(f"   Rate Limited: {rl_bar} {Colors.RED}{stats['rate_limited']}{Colors.RESET}")
+        print(f"   Rate Limited:     {rl_bar} {Colors.RED}{stats['rate_limited']}{Colors.RESET}")
         
         # Stats line
-        print(f"   Latency: {stats['avg_latency']:.1f}ms | Active: {stats['active_requests']} | Errors: {stats['errors']}")
+        # Latency: Average response time in ms for all successful requests
+        # Active: Number of requests currently being processed at this instant
+        print(f"   Avg Latency: {stats['avg_latency']:.1f}ms | Active Now: {stats['active_requests']} | Errors: {stats['errors']}")
     
     print()
     print("-" * 70)

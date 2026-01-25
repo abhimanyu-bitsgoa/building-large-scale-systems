@@ -221,14 +221,12 @@ def print_stats(nodes: list):
         # Calculate percentiles
         avg_latency = sum(latencies) / len(latencies) if latencies else 0.0
         p95_latency = calculate_percentile(latencies, 95) if latencies else 0.0
-        median_latency = calculate_percentile(latencies, 50) if latencies else 0.0
         
         print(f"{node}:")
         print(f"  ✅ Success: {success}")
         print(f"  🚫 Rate Limited: {limited}")
         print(f"  ❌ Errors: {errors}")
         print(f"  ⏱️  Avg Latency: {avg_latency:.2f}ms")
-        print(f"  ⏱️  P50 (Median): {median_latency:.2f}ms")
         print(f"  ⏱️  P95 Latency: {p95_latency:.2f}ms")
         print()
     
@@ -239,16 +237,14 @@ def print_stats(nodes: list):
     
     if all_latencies:
         global_avg = sum(all_latencies) / len(all_latencies)
-        global_p50 = calculate_percentile(all_latencies, 50)
         global_p95 = calculate_percentile(all_latencies, 95)
     else:
-        global_avg = global_p50 = global_p95 = 0.0
+        global_avg = global_p95 = 0.0
     
     print(f"  ✅ Total Success: {total_success}")
     print(f"  🚫 Total Rate Limited: {rate_limited}")
     print(f"  ❌ Total Errors: {total_errors}")
     print(f"  ⏱️  Global Avg Latency: {global_avg:.2f}ms")
-    print(f"  ⏱️  Global P50 (Median): {global_p50:.2f}ms")
     print(f"  ⏱️  Global P95 Latency: {global_p95:.2f}ms")
     print()
 
