@@ -19,6 +19,20 @@ import time
 import requests
 import threading
 from typing import List, Optional
+import logging
+
+# ========================
+# Logging Configuration
+# ========================
+
+class EndpointFilter(logging.Filter):
+    """Filter to suppress access logs for internal endpoints."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not any(endpoint in msg for endpoint in ["GET /stats", "GET /health", "GET / "])
+
+# Apply filter to uvicorn access logger
+logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 
 # ========================
 # Global Configuration

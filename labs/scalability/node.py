@@ -20,6 +20,21 @@ import os
 import time
 from functools import wraps
 from collections import defaultdict
+import logging
+
+# ========================
+# Logging Configuration
+# ========================
+
+class EndpointFilter(logging.Filter):
+    """Filter to suppress access logs for internal endpoints."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Suppress if the log message contains any of the internal endpoints
+        msg = record.getMessage()
+        return not any(endpoint in msg for endpoint in ["GET /stats", "GET /health", "GET / "])
+
+# Apply filter to uvicorn access logger
+logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 
 # ========================
 # Global Configuration
