@@ -30,7 +30,7 @@ This lab demonstrates:
 
 ```bash
 # Terminal 1: Start node with load simulation
-python labs/scalability/node.py --port 5001 --id 1 --load-factor 25
+python labs/scalability/node.py --port 5001 --id 1 --load-factor 35
 ```
 
 ### Step 2: Hit it with concurrent requests
@@ -52,13 +52,13 @@ python labs/scalability/client.py --target http://localhost:5001 --concurrent 50
 
 ```bash
 # Terminal 1: Low capacity node (1 worker)
-python labs/scalability/node.py --port 5001 --id 1 --load-factor 25 --workers 1
+python labs/scalability/node.py --port 5001 --id 1 --load-factor 35 --workers 5
 
 # Terminal 2: Medium capacity node (2 workers)
-python labs/scalability/node.py --port 5002 --id 2 --load-factor 25 --workers 2
+python labs/scalability/node.py --port 5002 --id 2 --load-factor 35 --workers 5
 
 # Terminal 3: High capacity node (4 workers)
-python labs/scalability/node.py --port 5003 --id 3 --load-factor 25 --workers 4
+python labs/scalability/node.py --port 5003 --id 3 --load-factor 35
 ```
 
 ### Step 2: Start the dashboard
