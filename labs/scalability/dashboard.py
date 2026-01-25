@@ -155,6 +155,7 @@ def poll_node(node: str, state: DashboardState):
                 requests=data.get("total_requests", 0),
                 rate_limited=data.get("rate_limited_requests", 0),
                 active=data.get("active_requests", 0),
+                latency=data.get("avg_latency_ms", 0.0),
                 status="ok"
             )
         else:
