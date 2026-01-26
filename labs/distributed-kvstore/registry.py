@@ -14,6 +14,20 @@ import requests
 import argparse
 from typing import Dict
 from datetime import datetime
+import logging
+
+# ========================
+# Logging Configuration
+# ========================
+
+class EndpointFilter(logging.Filter):
+    """Filter to suppress access logs for heartbeats."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return "POST /heartbeat" not in msg
+
+# Apply filter to uvicorn access logger
+logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 
 # ========================
 # Configuration

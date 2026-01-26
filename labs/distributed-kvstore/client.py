@@ -19,6 +19,23 @@ DEFAULT_GATEWAY = "http://localhost:8000"
 # Client Functions
 # ========================
 
+def print_error(label: str, error_data):
+    """Print prettified error message."""
+    if isinstance(error_data, dict) and "detail" in error_data:
+        detail = error_data["detail"]
+        if isinstance(detail, dict):
+            print(f"❌ {label}: {detail.get('error', 'Unknown Error')}")
+            for key, val in detail.items():
+                if key != "error":
+                    # Title case the key for display
+                    display_key = key.replace("_", " ").title()
+                    print(f"   {display_key}: {val}")
+        else:
+            print(f"❌ {label}: {detail}")
+    else:
+        print(f"❌ {label}: {error_data}")
+
+
 def write_data(gateway_url: str, key: str, value: str, verbose: bool = True):
     """Write data through gateway."""
     try:
@@ -42,7 +59,7 @@ def write_data(gateway_url: str, key: str, value: str, verbose: bool = True):
         else:
             error = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text
             if verbose:
-                print(f"❌ Write failed: {error}")
+                print_error("Write failed", error)
             return False, error
     
     except requests.exceptions.RequestException as e:
@@ -72,7 +89,8 @@ def read_data(gateway_url: str, key: str, verbose: bool = True):
             return False, "Rate limited"
         else:
             if verbose:
-                print(f"❌ Read failed: {resp.status_code}")
+                error = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text
+                print_error("Read failed", error)
             return False, None
     
     except requests.exceptions.RequestException as e:

@@ -17,10 +17,36 @@ import signal
 import requests
 from typing import Dict, List, Optional
 import argparse
+from datetime import datetime
 
 # ========================
-# Configuration
+# Event Logger
 # ========================
+
+class EventLogger:
+    """Simple event logger with timestamps for cross-platform compatibility."""
+    
+    def __init__(self):
+        self.lock = threading.Lock()
+    
+    def log(self, icon: str, message: str, details: List[str] = None, indent: int = 0):
+        """Log an event with optional details."""
+        with self.lock:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            prefix = "    " * indent
+            print(f"[{timestamp}] {prefix}{icon} {message}")
+            if details:
+                for detail in details:
+                    print(f"           {prefix}   {detail}")
+            sys.stdout.flush()
+    
+    def log_separator(self):
+        """Print a visual separator."""
+        with self.lock:
+            print("-" * 70)
+            sys.stdout.flush()
+
+logger = EventLogger()
 
 BASE_PORT = 7000
 NODE_SCRIPT = os.path.join(os.path.dirname(__file__), "node.py")
@@ -32,16 +58,8 @@ WRITE_QUORUM = 2
 READ_QUORUM = 1
 
 # ========================
-# ANSI Colors
+# Configuration
 # ========================
-
-class Colors:
-    RESET = "\033[0m"
-    BOLD = "\033[1m"
-    RED = "\033[91m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    CYAN = "\033[96m"
 
 # ========================
 # Cluster State
@@ -68,6 +86,17 @@ class ClusterState:
     
     def get_alive_followers(self) -> List[dict]:
         return [f for f in self.followers.values() if f.get("status") == "alive"]
+    
+    def get_sync_followers(self) -> List[dict]:
+        """Get alive sync followers (first W smallest ports)."""
+        alive = self.get_alive_followers()
+        sorted_by_port = sorted(alive, key=lambda x: x["port"])
+        return sorted_by_port[:self.write_quorum]
+    
+    def get_async_followers(self) -> List[dict]:
+        """Get alive async followers (not in sync set)."""
+        sync_ids = {f["node_id"] for f in self.get_sync_followers()}
+        return [f for f in self.get_alive_followers() if f["node_id"] not in sync_ids]
     
     def can_write(self) -> bool:
         alive_followers = len(self.get_alive_followers())
@@ -192,67 +221,120 @@ def get_status():
 
 @app.post("/write")
 def write_data(request: WriteRequest):
-    """Write with quorum."""
+    """
+    Write data with quorum.
+    Leader writes, waits for sync follower acks.
+    Async followers replicate in background.
+    """
+    logger.log_separator()
+    logger.log("✍️", f"WRITE REQUEST: key=\"{request.key}\" value=\"{request.value}\"")
+    
     if not cluster.can_write():
-        alive = len(cluster.get_alive_nodes())
+        alive = len(cluster.get_alive_followers())
+        logger.log("❌", f"WRITE REJECTED: Quorum unavailable ({alive}/{cluster.write_quorum} followers)")
         raise HTTPException(
             status_code=503,
             detail={
                 "error": "Write quorum not available",
-                "alive_nodes": alive,
+                "alive_followers": alive,
                 "required": cluster.write_quorum
             }
         )
     
+    sync_followers = cluster.get_sync_followers()
+    async_followers = cluster.get_async_followers()
+    
+    sync_urls = [f["url"] for f in sync_followers]
+    async_urls = [f["url"] for f in async_followers]
+    
+    logger.log("→", f"Sending to leader ({cluster.leader['node_id']})")
+    logger.log("→", f"Sync followers: {[f['node_id'] for f in sync_followers]}")
+    if async_followers:
+        logger.log("→", f"Async followers: {[f['node_id'] for f in async_followers]}")
+    
     try:
         resp = requests.post(
             f"{cluster.leader['url']}/data",
-            json={"key": request.key, "value": request.value},
+            json={
+                "key": request.key, 
+                "value": request.value,
+                "sync_followers": sync_urls,
+                "async_followers": async_urls
+            },
             timeout=30
         )
         
         if resp.status_code == 200:
             result = resp.json()
             replication = result.get("replication", {})
-            acks = replication.get("success", 0) + 1
+            sync_acks = replication.get("sync_acks", 0)
+            sync_acked_by = replication.get("sync_acked_by", [])
             
-            if acks >= cluster.write_quorum:
+            logger.log("✅", f"Leader: written (v{result.get('version')})")
+            
+            for node_url in sync_acked_by:
+                node_id = next((f["node_id"] for f in sync_followers if f["url"] == node_url), "unknown")
+                logger.log("✅", f"{node_id}: sync ack received")
+            
+            if sync_acks >= cluster.write_quorum:
+                logger.log("✅", f"QUORUM MET: {sync_acks}/{cluster.write_quorum} sync acks")
+                
+                if async_followers:
+                   logger.log("🔄", f"Async replication queued for {len(async_followers)} followers")
+                
                 return {
                     "status": "success",
                     "key": request.key,
                     "value": request.value,
                     "version": result.get("version"),
-                    "acks": acks,
-                    "quorum": cluster.write_quorum
+                    "sync_acks": sync_acks,
+                    "quorum": cluster.write_quorum,
+                    "sync_replicated_to": sync_acked_by
                 }
             else:
-                raise HTTPException(status_code=503, detail={"error": "Write quorum not met", "acks": acks})
+                logger.log("❌", f"QUORUM FAILED: Only {sync_acks}/{cluster.write_quorum} acks")
+                raise HTTPException(status_code=503, detail={"error": "Write quorum not met", "sync_acks": sync_acks})
         else:
+            logger.log("❌", f"Leader error: {resp.status_code}")
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
     
     except requests.exceptions.RequestException as e:
+        logger.log("❌", f"Leader unreachable: {e}")
         raise HTTPException(status_code=503, detail=f"Leader unreachable: {e}")
 
 @app.get("/read/{key}")
 def read_data(key: str):
     """Read with quorum."""
+    logger.log_separator()
+    logger.log("📖", f"READ REQUEST: key=\"{key}\"")
+    
     if not cluster.can_read():
+        logger.log("❌", f"READ REJECTED: Quorum unavailable")
         raise HTTPException(status_code=503, detail="Read quorum not available")
     
     results = []
-    for node in cluster.get_alive_nodes()[:cluster.read_quorum]:
+    nodes_to_query = cluster.get_alive_nodes()[:cluster.read_quorum]
+    logger.log("→", f"Querying {len(nodes_to_query)} nodes for read quorum")
+    
+    for node in nodes_to_query:
         try:
             resp = requests.get(f"{node['url']}/data/{key}", timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
+                logger.log("←", f"{node['node_id']}: v{data.get('version', 0)} \"{data.get('value')}\"")
                 results.append({"node_id": node["node_id"], "value": data.get("value"), "version": data.get("version", 1)})
+            else:
+                 logger.log("←", f"{node['node_id']}: {resp.status_code}")
         except:
-            pass
+             logger.log("←", f"{node['node_id']}: Unreachable")
     
     if not results:
-        raise HTTPException(status_code=404, detail=f"Key '{key}' not found")
+        logger.log("❌", f"KEY NOT FOUND or quorum failed")
+        raise HTTPException(status_code=404, detail=f"Key '{key}' not found or quorum failed")
     
     latest = max(results, key=lambda x: x["version"])
+    logger.log("✅", f"RESULT: v{latest['version']} \"{latest['value']}\" (from {latest['node_id']})")
+    
     return {
         "key": key,
         "value": latest["value"],
@@ -296,7 +378,7 @@ def turnup_follower():
                 daemon=True
             ).start()
         
-        print(f"[Coordinator] 🚀 Spawned {node_id} on port {port}")
+        logger.log("🚀", f"Spawned {node_id} on port {port}")
         
         return {"status": "spawned", "node_id": node_id, "url": url}
 
@@ -311,8 +393,9 @@ def turndown_follower(node_id: str):
         if follower.get("process"):
             follower["process"].terminate()
         
+        
         follower["status"] = "dead"
-        print(f"[Coordinator] 💀 Stopped {node_id}")
+        logger.log("💀", f"Stopped {node_id}")
         
         return {
             "status": "stopped",
@@ -336,7 +419,7 @@ def trigger_catchup(request: NodeRequest):
     success = send_catchup_to_follower(node_url, cluster.leader["url"])
     
     if success:
-        print(f"[Coordinator] ✅ Catchup completed for {request.node_id}")
+        logger.log("✅", f"Catchup completed for {request.node_id}")
         return {"status": "caught_up", "node_id": request.node_id}
     else:
         raise HTTPException(status_code=500, detail="Catchup failed")
@@ -347,62 +430,16 @@ def handle_node_died(request: NodeRequest):
     with cluster.lock:
         if request.node_id in cluster.followers:
             cluster.followers[request.node_id]["status"] = "dead"
-            print(f"[Coordinator] 💀 Node {request.node_id} died")
+            logger.log("💀", f"Node {request.node_id} died")
     
     return {"status": "acknowledged"}
-
-# ========================
-# TUI Dashboard
-# ========================
-
-def clear_screen():
-    print("\033[H\033[J", end="")
-
-def draw_dashboard():
-    clear_screen()
-    
-    print(f"{Colors.BOLD}{Colors.CYAN}╔══════════════════════════════════════════════════════════════════╗{Colors.RESET}")
-    print(f"{Colors.BOLD}{Colors.CYAN}║        DISTRIBUTED KV STORE - CLUSTER DASHBOARD                  ║{Colors.RESET}")
-    print(f"{Colors.BOLD}{Colors.CYAN}╚══════════════════════════════════════════════════════════════════╝{Colors.RESET}")
-    print()
-    
-    can_write = cluster.can_write()
-    can_read = cluster.can_read()
-    write_status = f"{Colors.GREEN}✅ OK{Colors.RESET}" if can_write else f"{Colors.RED}❌ UNAVAILABLE{Colors.RESET}"
-    read_status = f"{Colors.GREEN}✅ OK{Colors.RESET}" if can_read else f"{Colors.RED}❌ UNAVAILABLE{Colors.RESET}"
-    
-    print(f"{Colors.BOLD}📊 QUORUM (W={cluster.write_quorum}, R={cluster.read_quorum}){Colors.RESET}")
-    print(f"   Write: {write_status}  |  Read: {read_status}")
-    print()
-    
-    print(f"{Colors.BOLD}👑 LEADER{Colors.RESET}")
-    if cluster.leader:
-        icon = "🟢" if cluster.leader["status"] == "alive" else "🔴"
-        print(f"   {icon} {cluster.leader['node_id']} @ {cluster.leader['url']}")
-    else:
-        print(f"   {Colors.RED}No leader{Colors.RESET}")
-    print()
-    
-    print(f"{Colors.BOLD}📋 FOLLOWERS ({len(cluster.followers)}){Colors.RESET}")
-    for f in cluster.followers.values():
-        icon = "🟢" if f["status"] == "alive" else "🔴"
-        print(f"   {icon} {f['node_id']} @ {f['url']}")
-    print()
-    
-    print("-" * 60)
-    print(f"{Colors.YELLOW}Press Ctrl+C to stop{Colors.RESET}")
-
-def dashboard_loop():
-    while True:
-        draw_dashboard()
-        time.sleep(1)
 
 # ========================
 # Main Entry Point
 # ========================
 
 def start_cluster(num_followers: int, write_quorum: int, read_quorum: int,
-                  registry_url: str, replication_delay: float, run_dashboard: bool):
+                  registry_url: str, replication_delay: float):
     global cluster, REGISTRY_URL
     
     REGISTRY_URL = registry_url
@@ -412,6 +449,20 @@ def start_cluster(num_followers: int, write_quorum: int, read_quorum: int,
     print(f"   Registry: {registry_url}")
     print(f"   Quorum: W={write_quorum}, R={read_quorum}")
     print()
+    
+    # Start coordinator API server FIRST (in background thread)
+    # This ensures /catchup endpoint is available when registry triggers it
+    print(f"🌐 Starting Coordinator API on http://localhost:{BASE_PORT}")
+    
+    import uvicorn
+    config = uvicorn.Config(app, host="0.0.0.0", port=BASE_PORT, log_level="warning")
+    server = uvicorn.Server(config)
+    
+    server_thread = threading.Thread(target=server.run, daemon=True)
+    server_thread.start()
+    
+    # Wait for server to be ready
+    time.sleep(1)
     
     # Start leader
     leader_port = BASE_PORT + 1
@@ -431,7 +482,7 @@ def start_cluster(num_followers: int, write_quorum: int, read_quorum: int,
         "status": "starting",
         "process": leader_process
     }
-    print(f"👑 Started leader on port {leader_port}")
+    logger.log("👑", f"Started leader on port {leader_port}")
     
     time.sleep(1)
     
@@ -458,7 +509,7 @@ def start_cluster(num_followers: int, write_quorum: int, read_quorum: int,
             "status": "starting",
             "process": process
         }
-        print(f"📋 Started {node_id} on port {port}")
+        logger.log("📋", f"Started {node_id} on port {port}")
     
     time.sleep(2)
     
@@ -472,11 +523,14 @@ def start_cluster(num_followers: int, write_quorum: int, read_quorum: int,
     # Start background threads
     threading.Thread(target=health_check_loop, daemon=True).start()
     
-    if run_dashboard:
-        threading.Thread(target=dashboard_loop, daemon=True).start()
+    print(f"\n✅ Cluster ready! Coordinator running on http://localhost:{BASE_PORT}")
     
-    print(f"\n🌐 Coordinator running on http://localhost:{BASE_PORT}")
-    uvicorn.run(app, host="0.0.0.0", port=BASE_PORT, log_level="warning")
+    # Keep main thread alive
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        raise
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Distributed KV Store - Coordinator")
@@ -485,7 +539,6 @@ if __name__ == "__main__":
     parser.add_argument("--read-quorum", "-R", type=int, default=1)
     parser.add_argument("--registry", type=str, default="http://localhost:9000")
     parser.add_argument("--replication-delay", type=float, default=1.0)
-    parser.add_argument("--no-dashboard", action="store_true")
     
     args = parser.parse_args()
     
@@ -495,8 +548,7 @@ if __name__ == "__main__":
             write_quorum=args.write_quorum,
             read_quorum=args.read_quorum,
             registry_url=args.registry,
-            replication_delay=args.replication_delay,
-            run_dashboard=not args.no_dashboard
+            replication_delay=args.replication_delay
         )
     except KeyboardInterrupt:
         print("\n👋 Shutting down...")

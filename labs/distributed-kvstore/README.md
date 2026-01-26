@@ -45,6 +45,26 @@ This lab demonstrates:
 
 ---
 
+## Augmentations from Replication Lab
+
+This lab builds directly upon the Replication Lab, enhancing components for a distributed environment:
+
+### Coordinator (`coordinator.py`)
+- **Event-Based Logging**: Uses `EventLogger` for structured, timestamped console output (matching Replication Lab style).
+- **Service Discovery Integration**: Integrates with `registry.py` to auto-discover and manage nodes dynamically.
+- **Cluster State Management**: Tracks `sync_followers` and `async_followers` based on health and quorum settings.
+- **Rich Write Logic**: Orchestrates writes by instructing the leader on which followers are sync vs async.
+
+### Client (`client.py`)
+- **Prettified Error Handling**: Enhanced error printing for easier debugging of distributed system failures (e.g. 503 Quorum failures).
+
+### Node (`node.py`)
+- **Parallel Replication**: Uses `ThreadPoolExecutor` for parallel sync replication (vs sequential).
+- **Service Discovery**: Adds heartbeats, registry integration, and graceful shutdown.
+- **Catchup Endpoint**: Supports full state transfer for new followers.
+
+---
+
 ## Demo 1: Starting the Full System
 
 ### Step 1: Start the registry
