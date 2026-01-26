@@ -15,8 +15,9 @@ import requests
 import threading
 import signal
 import sys
-from typing import Optional
+from typing import Optional, List
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ========================
 # Logging Configuration
@@ -43,6 +44,10 @@ REGISTRY_URL = os.environ.get("REGISTRY_URL", "http://localhost:9000")
 HEARTBEAT_INTERVAL = 2  # seconds
 REPLICATION_DELAY = float(os.environ.get("REPLICATION_DELAY", 1.0))
 
+# Sync vs Async replication delays (like replication lab)
+SYNC_DELAY = 0.5    # Fast for sync nodes
+ASYNC_DELAY = 5.0   # Slow for async nodes (visible propagation lag)
+
 # In-memory data store
 data_store = {}
 data_versions = {}
@@ -67,6 +72,8 @@ running = True
 class DataPayload(BaseModel):
     key: str
     value: str
+    sync_followers: Optional[List[str]] = None   # URLs for sync replication
+    async_followers: Optional[List[str]] = None  # URLs for async replication
 
 class ReplicatePayload(BaseModel):
     key: str
@@ -114,19 +121,25 @@ def heartbeat_loop():
 # Replication Functions
 # ========================
 
-def replicate_to_follower(follower_url: str, key: str, value: str, version: int) -> bool:
-    """Replicate a write to a follower."""
+def replicate_to_follower(follower_url: str, key: str, value: str, version: int, 
+                          delay: float = None) -> bool:
+    """
+    Replicate a write to a follower.
+    Uses specified delay or default REPLICATION_DELAY.
+    """
     global replications_sent
     
-    if REPLICATION_DELAY > 0:
-        print(f"[{NODE_ID}] ⏳ Replicating {key} to {follower_url}...")
-        time.sleep(REPLICATION_DELAY)
+    actual_delay = delay if delay is not None else REPLICATION_DELAY
+    
+    if actual_delay > 0:
+        print(f"[{NODE_ID}] ⏳ Replicating {key} to {follower_url} (delay: {actual_delay}s)...")
+        time.sleep(actual_delay)
     
     try:
         resp = requests.post(
             f"{follower_url}/replicate",
             json={"key": key, "value": value, "version": version, "source": NODE_ID},
-            timeout=5
+            timeout=10
         )
         if resp.status_code == 200:
             replications_sent += 1
@@ -137,21 +150,55 @@ def replicate_to_follower(follower_url: str, key: str, value: str, version: int)
         print(f"[{NODE_ID}] ❌ Replication failed: {e}")
         return False
 
-def replicate_to_all_followers(key: str, value: str, version: int) -> dict:
-    """Replicate to all followers."""
-    if not followers:
-        return {"success": 0, "failed": 0, "total": 0}
+def replicate_sync(sync_followers: List[str], key: str, value: str, version: int) -> dict:
+    """
+    Replicate to sync followers synchronously (wait for all acks).
+    Uses short SYNC_DELAY.
+    Returns dict with ack count and details.
+    """
+    if not sync_followers:
+        return {"sync_acks": 0, "sync_acked_by": []}
     
-    results = {"success": 0, "failed": 0, "total": len(followers), "acks": []}
+    results = {"sync_acks": 0, "sync_acked_by": []}
     
-    for follower_url in followers:
-        if replicate_to_follower(follower_url, key, value, version):
-            results["success"] += 1
-            results["acks"].append(follower_url)
-        else:
-            results["failed"] += 1
+    # Use thread pool for parallel sync replication (still waits for all)
+    with ThreadPoolExecutor(max_workers=len(sync_followers)) as executor:
+        futures = {}
+        for follower_url in sync_followers:
+            future = executor.submit(
+                replicate_to_follower, 
+                follower_url, key, value, version, SYNC_DELAY
+            )
+            futures[future] = follower_url
+        
+        for future in as_completed(futures):
+            follower_url = futures[future]
+            try:
+                success = future.result()
+                if success:
+                    results["sync_acks"] += 1
+                    results["sync_acked_by"].append(follower_url)
+            except Exception as e:
+                print(f"[{NODE_ID}] ❌ Sync replication error: {e}")
     
     return results
+
+def replicate_async(async_followers: List[str], key: str, value: str, version: int):
+    """
+    Replicate to async followers in background (don't wait).
+    Uses long ASYNC_DELAY.
+    """
+    if not async_followers:
+        return
+    
+    def do_async_replication():
+        for follower_url in async_followers:
+            replicate_to_follower(follower_url, key, value, version, ASYNC_DELAY)
+    
+    # Start background thread
+    thread = threading.Thread(target=do_async_replication, daemon=True)
+    thread.start()
+    print(f"[{NODE_ID}] 🔄 Queued async replication to {len(async_followers)} followers")
 
 # ========================
 # Middleware
@@ -225,14 +272,30 @@ def store_data(payload: DataPayload):
     
     print(f"[{NODE_ID}] 📝 Written {payload.key}={payload.value} (v{new_version})")
     
-    replication_result = replicate_to_all_followers(payload.key, payload.value, new_version)
+    # Get follower lists from payload (coordinator specifies sync/async)
+    sync_followers = payload.sync_followers or []
+    async_followers = payload.async_followers or []
+    
+    # If no explicit lists, use legacy behavior (all followers sync)
+    if not sync_followers and not async_followers and followers:
+        sync_followers = followers
+    
+    # Replicate to sync followers (wait for acks)
+    sync_result = replicate_sync(sync_followers, payload.key, payload.value, new_version)
+    
+    # Replicate to async followers (background, don't wait)
+    replicate_async(async_followers, payload.key, payload.value, new_version)
     
     return {
         "status": "stored",
         "node_id": NODE_ID,
         "key": payload.key,
         "version": new_version,
-        "replication": replication_result
+        "replication": {
+            "sync_acks": sync_result["sync_acks"],
+            "sync_acked_by": sync_result["sync_acked_by"],
+            "async_queued": len(async_followers)
+        }
     }
 
 @app.get("/data/{key}")
@@ -309,6 +372,14 @@ def register_follower(payload: dict):
         print(f"[{NODE_ID}] ✅ Registered follower: {follower_url}")
     
     return {"status": "registered", "followers": followers}
+
+@app.get("/followers")
+def list_followers():
+    """List registered followers (leader only)."""
+    if NODE_ROLE != "leader":
+        raise HTTPException(status_code=403, detail="Only leader has followers")
+    
+    return {"leader": NODE_ID, "followers": followers}
 
 @app.get("/snapshot")
 def get_snapshot():

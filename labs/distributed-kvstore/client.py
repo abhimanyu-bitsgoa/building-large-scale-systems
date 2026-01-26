@@ -7,6 +7,7 @@ Core architecture consistent with Lab 1 and Lab 2.
 
 import requests
 import argparse
+import time
 import sys
 
 # ========================
@@ -19,21 +20,43 @@ DEFAULT_GATEWAY = "http://localhost:8000"
 # Client Functions
 # ========================
 
+def print_error(label: str, error_data):
+    """Print prettified error message."""
+    if isinstance(error_data, dict) and "detail" in error_data:
+        detail = error_data["detail"]
+        if isinstance(detail, dict):
+            print(f"❌ {label}: {detail.get('error', 'Unknown Error')}")
+            for key, val in detail.items():
+                if key != "error":
+                    # Title case the key for display
+                    display_key = key.replace("_", " ").title()
+                    print(f"   {display_key}: {val}")
+        else:
+            print(f"❌ {label}: {detail}")
+    else:
+        print(f"❌ {label}: {error_data}")
+
+
 def write_data(gateway_url: str, key: str, value: str, verbose: bool = True):
     """Write data through gateway."""
     try:
+        start_time = time.time()
         resp = requests.post(
             f"{gateway_url}/write",
             json={"key": key, "value": value},
             timeout=30
         )
+        latency = (time.time() - start_time) * 1000
         
         if resp.status_code == 200:
             data = resp.json()
             if verbose:
                 print(f"✅ Write successful: {key}={value}")
                 print(f"   Version: {data.get('version')}")
-                print(f"   Acks: {data.get('acks')}/{data.get('quorum')}")
+                print(f"   Acks: {data.get('sync_acks')}/{data.get('quorum')}")
+                replicated_to = data.get('sync_replicated_to', [])
+                print(f"   Replicated to: {', '.join(replicated_to) if replicated_to else 'None'}")
+                print(f"   Latency: {latency:.2f}ms")
             return True, data
         elif resp.status_code == 429:
             if verbose:
@@ -42,7 +65,7 @@ def write_data(gateway_url: str, key: str, value: str, verbose: bool = True):
         else:
             error = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text
             if verbose:
-                print(f"❌ Write failed: {error}")
+                print_error("Write failed", error)
             return False, error
     
     except requests.exceptions.RequestException as e:
@@ -53,7 +76,9 @@ def write_data(gateway_url: str, key: str, value: str, verbose: bool = True):
 def read_data(gateway_url: str, key: str, verbose: bool = True):
     """Read data through gateway."""
     try:
+        start_time = time.time()
         resp = requests.get(f"{gateway_url}/read/{key}", timeout=10)
+        latency = (time.time() - start_time) * 1000
         
         if resp.status_code == 200:
             data = resp.json()
@@ -61,6 +86,8 @@ def read_data(gateway_url: str, key: str, verbose: bool = True):
                 print(f"✅ Read successful: {key}={data.get('value')}")
                 print(f"   Version: {data.get('version')}")
                 print(f"   Served by: {data.get('served_by')}")
+                print(f"   Quorum responses: {data.get('quorum_responses')}")
+                print(f"   Latency: {latency:.2f}ms")
             return True, data
         elif resp.status_code == 404:
             if verbose:
@@ -72,7 +99,8 @@ def read_data(gateway_url: str, key: str, verbose: bool = True):
             return False, "Rate limited"
         else:
             if verbose:
-                print(f"❌ Read failed: {resp.status_code}")
+                error = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text
+                print_error("Read failed", error)
             return False, None
     
     except requests.exceptions.RequestException as e:
