@@ -7,6 +7,7 @@ Core architecture consistent with Lab 1 and Lab 2.
 
 import requests
 import argparse
+import time
 import sys
 
 # ========================
@@ -39,18 +40,23 @@ def print_error(label: str, error_data):
 def write_data(gateway_url: str, key: str, value: str, verbose: bool = True):
     """Write data through gateway."""
     try:
+        start_time = time.time()
         resp = requests.post(
             f"{gateway_url}/write",
             json={"key": key, "value": value},
             timeout=30
         )
+        latency = (time.time() - start_time) * 1000
         
         if resp.status_code == 200:
             data = resp.json()
             if verbose:
                 print(f"✅ Write successful: {key}={value}")
                 print(f"   Version: {data.get('version')}")
-                print(f"   Acks: {data.get('acks')}/{data.get('quorum')}")
+                print(f"   Acks: {data.get('sync_acks')}/{data.get('quorum')}")
+                replicated_to = data.get('sync_replicated_to', [])
+                print(f"   Replicated to: {', '.join(replicated_to) if replicated_to else 'None'}")
+                print(f"   Latency: {latency:.2f}ms")
             return True, data
         elif resp.status_code == 429:
             if verbose:
@@ -70,7 +76,9 @@ def write_data(gateway_url: str, key: str, value: str, verbose: bool = True):
 def read_data(gateway_url: str, key: str, verbose: bool = True):
     """Read data through gateway."""
     try:
+        start_time = time.time()
         resp = requests.get(f"{gateway_url}/read/{key}", timeout=10)
+        latency = (time.time() - start_time) * 1000
         
         if resp.status_code == 200:
             data = resp.json()
@@ -78,6 +86,8 @@ def read_data(gateway_url: str, key: str, verbose: bool = True):
                 print(f"✅ Read successful: {key}={data.get('value')}")
                 print(f"   Version: {data.get('version')}")
                 print(f"   Served by: {data.get('served_by')}")
+                print(f"   Quorum responses: {data.get('quorum_responses')}")
+                print(f"   Latency: {latency:.2f}ms")
             return True, data
         elif resp.status_code == 404:
             if verbose:

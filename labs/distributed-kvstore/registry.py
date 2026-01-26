@@ -35,6 +35,8 @@ logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 
 HEARTBEAT_TIMEOUT = 5  # seconds before marking node as dead
 COORDINATOR_URL = "http://localhost:7000"
+AUTO_SPAWN = False  # If true, automatically respawn dead nodes
+AUTO_SPAWN_DELAY = 5  # seconds to wait before respawning
 
 # ========================
 # Registry State
@@ -86,6 +88,30 @@ def prune_nodes():
                         )
                     except:
                         pass
+                    
+                    # Auto-spawn if enabled (for followers only)
+                    if AUTO_SPAWN and node.get("role") == "follower":
+                        threading.Thread(
+                            target=auto_spawn_node,
+                            args=(node_id,),
+                            daemon=True
+                        ).start()
+
+def auto_spawn_node(dead_node_id: str):
+    """Wait and then request coordinator to spawn a replacement node."""
+    print(f"⏳ [Registry] Auto-spawn enabled. Waiting {AUTO_SPAWN_DELAY}s before spawning replacement for {dead_node_id}...")
+    time.sleep(AUTO_SPAWN_DELAY)
+    
+    try:
+        print(f"🔄 [Registry] Requesting coordinator to spawn replacement for {dead_node_id}")
+        resp = requests.post(f"{COORDINATOR_URL}/spawn", timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            print(f"✅ [Registry] Spawned {data.get('node_id')} as replacement")
+        else:
+            print(f"❌ [Registry] Failed to spawn replacement: {resp.status_code}")
+    except Exception as e:
+        print(f"❌ [Registry] Auto-spawn error: {e}")
 
 def trigger_catchup(node_id: str, node_url: str):
     """Trigger catchup for a new follower node."""
@@ -206,14 +232,24 @@ if __name__ == "__main__":
                         help="Registry port")
     parser.add_argument("--coordinator", type=str, default="http://localhost:7000",
                         help="Coordinator URL for catchup notifications")
+    parser.add_argument("--auto-spawn", action="store_true",
+                        help="Automatically respawn dead follower nodes after a delay")
+    parser.add_argument("--spawn-delay", type=int, default=5,
+                        help="Seconds to wait before auto-spawning (default: 5)")
     
     args = parser.parse_args()
     
     COORDINATOR_URL = args.coordinator
+    AUTO_SPAWN = args.auto_spawn
+    AUTO_SPAWN_DELAY = args.spawn_delay
     
     print(f"📋 Starting Registry on port {args.port}")
     print(f"   Coordinator: {args.coordinator}")
     print(f"   Heartbeat timeout: {HEARTBEAT_TIMEOUT}s")
+    if AUTO_SPAWN:
+        print(f"   Auto-spawn: ENABLED (delay: {AUTO_SPAWN_DELAY}s)")
+    else:
+        print(f"   Auto-spawn: disabled")
     print()
     
     uvicorn.run(app, host="0.0.0.0", port=args.port)
