@@ -20,6 +20,22 @@ DEFAULT_COORDINATOR = "http://localhost:6000"
 # Client Functions
 # ========================
 
+def print_error(label: str, error_data):
+    """Print prettified error message."""
+    if isinstance(error_data, dict) and "detail" in error_data:
+        detail = error_data["detail"]
+        if isinstance(detail, dict):
+            print(f"❌ {label}: {detail.get('error', 'Unknown Error')}")
+            for key, val in detail.items():
+                if key != "error":
+                    # Title case the key for display
+                    display_key = key.replace("_", " ").title()
+                    print(f"   {display_key}: {val}")
+        else:
+            print(f"❌ {label}: {detail}")
+    else:
+        print(f"❌ {label}: {error_data}")
+
 def write_data(coordinator_url: str, key: str, value: str, verbose: bool = True):
     """Write data through coordinator."""
     try:
@@ -36,14 +52,15 @@ def write_data(coordinator_url: str, key: str, value: str, verbose: bool = True)
             if verbose:
                 print(f"✅ Write successful: {key}={value}")
                 print(f"   Version: {data.get('version')}")
-                print(f"   Acks: {data.get('acks')}/{data.get('quorum')}")
-                print(f"   Replicated to: {data.get('replicated_to', [])}")
+                print(f"   Acks: {data.get('sync_acks')}/{data.get('quorum')}")
+                replicated_to = data.get('sync_replicated_to', [])
+                print(f"   Replicated to: {', '.join(replicated_to) if replicated_to else 'None'}")
                 print(f"   Latency: {latency:.2f}ms")
             return True, data
         else:
             error = resp.json() if resp.headers.get("content-type") == "application/json" else resp.text
             if verbose:
-                print(f"❌ Write failed: {error}")
+                print_error("Write failed", error)
             return False, error
     
     except requests.exceptions.RequestException as e:
@@ -74,7 +91,7 @@ def read_data(coordinator_url: str, key: str, verbose: bool = True):
         else:
             error = resp.json() if resp.headers.get("content-type") == "application/json" else resp.text
             if verbose:
-                print(f"❌ Read failed: {error}")
+                print_error("Read failed", error)
             return False, error
     
     except requests.exceptions.RequestException as e:

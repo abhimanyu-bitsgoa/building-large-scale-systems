@@ -1,21 +1,42 @@
 # Replication Lab
 
-Learn about single-leader replication with configurable quorum semantics.
+Learn about single-leader replication with configurable quorum semantics using event-based logging.
 
 ## Overview
 
 This lab demonstrates:
+
 - **Single-leader replication**: All writes go through the leader
-- **Write quorum (W)**: Number of acknowledgments needed before write succeeds
-- **Read quorum (R)**: Number of nodes to read from
-- **Replication lag**: Visible delay as data propagates to followers
+- **Write quorum (W)**: Number of **follower** acknowledgments needed before write succeeds
+- **Read quorum (R)**: Number of **followers** to read from
+- **Sync vs Async replication**: W followers get fast sync replication, others get slow async
+- **Replication lag**: Visible delay as data propagates (5s for async nodes)
 - **Fault tolerance**: What happens when nodes fail
+
+## Key Concept: Quorum Formula
+
+For N follower nodes:
+
+- **W** = followers that must ack synchronously (leader always writes first)
+- **R** = followers to read from for quorum
+- **Rule: W + R > N** guarantees no stale reads (sync and read sets overlap)
+
+### How It Works
+
+1. **Sync followers** = First W smallest port followers (0.5s delay)
+2. **Async followers** = Remaining followers (5s delay - visible lag!)
+3. **Read followers** = Largest R port followers
+
+This means:
+
+- If W=2 and R=2 with N=3 followers: W+R=4 > 3 ✅ (overlap guaranteed)
+- If W=1 and R=1 with N=3 followers: W+R=2 < 3 ❌ (stale reads possible)
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| `coordinator.py` | Cluster manager with HTTP API and TUI dashboard |
+| `coordinator.py` | Cluster manager with HTTP API and event-based logging |
 | `node.py` | Leader or follower node |
 | `client.py` | Interactive client for read/write operations |
 
@@ -23,180 +44,116 @@ This lab demonstrates:
 
 ## Demo 1: Starting the Cluster
 
-### Step 1: Start the coordinator with 2 followers
+### Step 1: Start the coordinator with 3 followers
 
 ```bash
-python labs/replication/coordinator.py --followers 2 --write-quorum 2 --read-quorum 1
+python labs/replication/coordinator.py --followers 3 --write-quorum 2 --read-quorum 2
 ```
 
 This starts:
+
 - **1 leader** on port 6001
-- **2 followers** on ports 6002, 6003
+- **3 followers** on ports 6002, 6003, 6004
 - **Coordinator API** on port 6000
 
-The TUI dashboard shows cluster status in real-time.
+The coordinator will log events in the console as nodes start and join the cluster.
 
 ---
 
-## Demo 2: Write with Replication
+## Demo 2: Write with Quorum (W+R > N)
 
-### Step 1: Open a new terminal and write data
+### Step 1: Start the interactive client
+
+In a new terminal:
 
 ```bash
-# Using curl
-curl -X POST http://localhost:6000/write \
-  -H "Content-Type: application/json" \
-  -d '{"key": "name", "value": "distributed-systems"}'
-
-# Or use the client
 python labs/replication/client.py
-# Then type: write name distributed-systems
 ```
 
-### Step 2: Observe the dashboard
+### Step 2: Write data
 
-Watch the coordinator terminal. You'll see:
-1. Write arrives at leader
-2. Leader stores locally
-3. Replication delay (configurable, default 1s)
-4. Followers receive data
-5. Ack returned to coordinator
+In the client:
+
+```bash
+>>> write name distributed-systems
+```
+
+### Step 3: Watch the coordinator logs
+
+You'll see the replication flow in the coordinator terminal:
+
+1. Write arrives at leader → immediately stored
+2. **Sync replication** (0.5s): follower-1, follower-2 get data (first 2 ports = W=2)
+3. Coordinator logs sync acks and quorum status
+4. **Async replication** (5s later): follower-3 receives the data automatically
+
+### Step 4: Read immediately
+
+In the client:
+
+```bash
+>>> read name
+```
+
+Even before async replication completes to `follower-3`, the read succeeds because R=2 queries `follower-2` and `follower-3`, and `follower-2` already has the data from the sync phase!
 
 ---
 
-## Demo 3: Read from Cluster
+## Demo 3: Stale Reads (W+R ≤ N)
+
+### Step 1: Restart with weak quorum
+
+Stop the coordinator (Ctrl+C) and restart:
 
 ```bash
-# Using curl
-curl http://localhost:6000/read/name
-
-# Or use the client (interactive mode)
-python labs/replication/client.py
-# Then type: read name
+python labs/replication/coordinator.py --followers 3 --write-quorum 1 --read-quorum 1
 ```
 
-The response shows:
-- Which node served the read
-- The data version
-- How many quorum responses received
+Now:
 
----
+- W=1: Only `follower-1` gets sync replication
+- R=1: Only `follower-3` is in read quorum
+- W+R=2 ≤ N=3: **No overlap!**
 
-## Demo 4: Killing a Node
+### Step 2: Write and immediately read
 
-### Step 1: Kill a follower
-
-```bash
-curl -X POST http://localhost:6000/kill/follower-1
-```
-
-### Step 2: Observe the dashboard
-
-The dashboard updates to show:
-- `follower-1` marked as 🔴 dead
-- Quorum status may change
-
-### Step 3: Try writing again
-
-```bash
-curl -X POST http://localhost:6000/write \
-  -H "Content-Type: application/json" \
-  -d '{"key": "test", "value": "123"}'
-```
-
-With W=2 and only 2 nodes remaining (leader + 1 follower), writes should still work.
-
----
-
-## Demo 5: Destroying Write Quorum
-
-### Step 1: Kill another follower
-
-```bash
-curl -X POST http://localhost:6000/kill/follower-2
-```
-
-### Step 2: Try to write
-
-```bash
-curl -X POST http://localhost:6000/write \
-  -H "Content-Type: application/json" \
-  -d '{"key": "test", "value": "456"}'
-```
-
-Expected: **503 Error** - Write quorum not available
-
-The system refuses writes when it can't guarantee durability!
-
----
-
-## Demo 6: Spawning a Replacement
-
-### Step 1: Add a new follower
-
-```bash
-curl -X POST http://localhost:6000/spawn
-```
-
-### Step 2: Check status
-
-```bash
-curl http://localhost:6000/status
-```
-
-The new follower appears and writes are enabled again!
-
----
-
-## Understanding Quorum
-
-For a cluster with N nodes:
-- **W (Write Quorum)**: Minimum acks needed for successful write
-- **R (Read Quorum)**: Minimum nodes to read from
-- **Rule**: W + R > N guarantees overlap (no stale reads)
-
-### Examples:
-
-| N | W | R | Behavior |
-|---|---|---|----------|
-| 3 | 2 | 2 | Strong consistency (W+R=4 > 3) |
-| 3 | 2 | 1 | Eventual consistency (W+R=3 = 3) |
-| 3 | 1 | 1 | Fast but risky (W+R=2 < 3) |
-
----
-
-## API Reference
-
-### Coordinator Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/write` | Write data with quorum |
-| GET | `/read/{key}` | Read data with quorum |
-| GET | `/status` | Cluster status |
-| POST | `/spawn` | Add new follower |
-| POST | `/kill/{node_id}` | Kill a follower |
-
-### Example Requests
+In the client:
 
 ```bash
 # Write
-curl -X POST http://localhost:6000/write \
-  -H "Content-Type: application/json" \
-  -d '{"key": "foo", "value": "bar"}'
+>>> write test stale-check
 
-# Read
-curl http://localhost:6000/read/foo
+# Read immediately (within 5s async delay)
+>>> read test
+```
 
-# Status
-curl http://localhost:6000/status
+**Expected**: The read will fail with "Key not found" because `follower-3` (the only node in the read quorum) hasn't received the async replication yet!
 
-# Spawn follower
-curl -X POST http://localhost:6000/spawn
+---
 
-# Kill follower
+## Demo 4: Killing and Respawning Nodes
+
+### Step 1: Kill a sync follower
+
+From another terminal (or using the coordinator's status to find the ID):
+
+```bash
+# Example ID
 curl -X POST http://localhost:6000/kill/follower-1
 ```
+
+Coordinator logs will show:
+
+- 💀 `KILLING: follower-1 [SYNC]`
+- ⚠️ `WRITE QUORUM LOST` logging if you don't have enough nodes for W
+
+### Step 2: Spawn replacement
+
+```bash
+curl -X POST http://localhost:6000/spawn
+```
+
+**Key behavior**: The dead follower is respawned on the same port to keep the cluster topology predictable.
 
 ---
 
@@ -204,34 +161,65 @@ curl -X POST http://localhost:6000/kill/follower-1
 
 ```bash
 python labs/replication/coordinator.py \
-  --followers 3 \           # Number of followers
-  --write-quorum 2 \        # W: Acks required for write
-  --read-quorum 2 \         # R: Nodes to read from
-  --replication-delay 2.0   # Delay in seconds (for visualization)
+  --followers 3          # Number of followers
+  --write-quorum 2       # W: Follower acks required for write
+  --read-quorum 2        # R: Followers to read from
 ```
+
+**Fixed delays** (for consistent demo):
+
+- Sync replication: 0.5 seconds
+- Async replication: 5 seconds
 
 ---
 
 ## Key Takeaways
 
-1. **Single leader simplifies writes**: No conflict resolution needed
-2. **Quorum ensures durability**: W acks means data survives W-1 failures
-3. **Trade-offs exist**: Higher W = more durable but slower and less available
-4. **Replication lag is real**: Followers may be behind leader
-5. **System rejects writes when quorum unavailable**: Prevents data loss
+1. **W + R > N = Strong consistency**: At least one node overlaps between write and read quorums
+2. **W + R ≤ N = Eventual consistency**: Possible stale reads!
+3. **Sync vs Async**: First W ports sync, rest async with visible lag
+4. **Leader always writes**: But W followers must ack for success
+5. **Spawn respawns dead first**: Same port reused for predictability
+
+---
+
+## Advanced: Direct API Access
+
+While the `client.py` is the primary way to interact, you can also use `curl` for manual testing.
+
+### Coordinator Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/write` | Write data (waits for W follower acks) |
+| GET | `/read/{key}` | Read data (queries R quorum nodes) |
+| GET | `/status` | Cluster status |
+| POST | `/spawn` | Add follower |
+| POST | `/kill/{node_id}` | Kill a follower |
+
+### Example Curl Commands
+
+```bash
+# Write
+curl -X POST http://localhost:6000/write -H "Content-Type: application/json" -d '{"key": "foo", "value": "bar"}'
+
+# Read
+curl http://localhost:6000/read/foo
+
+# Status
+curl http://localhost:6000/status
+```
 
 ---
 
 ## Troubleshooting
 
-**Coordinator not starting?**
-- Check if ports 6000-6003 are available
-- Make sure no other instances are running
+**Writes timing out?**
 
-**Writes failing?**
-- Check quorum status with `/status`
-- Ensure enough nodes are alive for write quorum
+- Check the coordinator logs to see which followers are alive
+- If fewer than W followers are alive, writes will be rejected
 
-**Replication seems stuck?**
-- Check node terminals for errors
-- Verify leader URL is correct for followers
+**Seeing stale reads?**
+
+- Check if W+R > N
+- If not, async nodes (the ones with larger ports) may not have received data yet
