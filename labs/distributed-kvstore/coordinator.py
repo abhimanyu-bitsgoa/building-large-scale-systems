@@ -57,6 +57,9 @@ HEARTBEAT_TIMEOUT = 5
 WRITE_QUORUM = 2
 READ_QUORUM = 1
 
+# Replication delays (consistent with node.py)
+ASYNC_REPLICATION_DELAY = 5.0
+
 # ========================
 # Configuration
 # ========================
@@ -344,6 +347,14 @@ def write_data(request: WriteRequest):
                 
                 if async_followers:
                    logger.log("🔄", f"Async replication queued for {len(async_followers)} followers")
+                   
+                   # Background thread to log when async replication is done
+                   def log_async_completion(follower_ids: List[str]):
+                       time.sleep(ASYNC_REPLICATION_DELAY + 0.5)
+                       logger.log("✅", f"ASYNC REPLICATION COMPLETE: Replicated to {follower_ids}")
+                       
+                   async_ids = [f["node_id"] for f in async_followers]
+                   threading.Thread(target=log_async_completion, args=(async_ids,), daemon=True).start()
                 
                 return {
                     "status": "success",
