@@ -403,15 +403,16 @@ def read_data(key: str):
             if resp.status_code == 200:
                 data = resp.json()
                 logger.log("←", f"{node['node_id']}: v{data.get('version', 0)} \"{data.get('value')}\" [FOLLOWER]")
-                results.append({"node_id": node["node_id"], "value": data.get("value"), "version": data.get("version", 1)})
+                results.append({"node_id": node["node_id"], "value": data.get("value"), "version": data.get("version", 0)})
             elif resp.status_code == 404:
                 logger.log("←", f"{node['node_id']}: NOT FOUND [FOLLOWER]")
+                results.append({"node_id": node["node_id"], "value": None, "version": 0})
             else:
                 logger.log("←", f"{node['node_id']}: {resp.status_code}")
         except:
             logger.log("←", f"{node['node_id']}: Unreachable")
     
-    # Fall back to leader if quorum not met from followers
+    # Fall back to leader only if quorum of RESPONSES not met from followers
     if len(results) < cluster.read_quorum and cluster.leader and cluster.leader.get("status") == "alive":
         logger.log("→", f"Follower quorum not met ({len(results)}/{cluster.read_quorum}), querying leader")
         try:
@@ -419,22 +420,31 @@ def read_data(key: str):
             if resp.status_code == 200:
                 data = resp.json()
                 logger.log("←", f"leader: v{data.get('version', 0)} \"{data.get('value')}\" [LEADER FALLBACK]")
-                results.append({"node_id": "leader", "value": data.get("value"), "version": data.get("version", 1)})
+                results.append({"node_id": "leader", "value": data.get("value"), "version": data.get("version", 0)})
             elif resp.status_code == 404:
                 logger.log("←", f"leader: NOT FOUND")
+                results.append({"node_id": "leader", "value": None, "version": 0})
         except:
             logger.log("←", f"leader: Unreachable")
     
-    if not results:
-        logger.log("❌", f"KEY NOT FOUND or quorum failed")
-        raise HTTPException(status_code=404, detail=f"Key '{key}' not found or quorum failed")
-    
-    # Check if we have quorum
+    # Check if we have R quorum responses
     if len(results) < cluster.read_quorum:
-        logger.log("❌", f"QUORUM FAILED: Only {len(results)}/{cluster.read_quorum} responded")
+        logger.log("❌", f"QUORUM FAILED: Only {len(results)}/{cluster.read_quorum} nodes responded")
         raise HTTPException(status_code=503, detail={"error": "Read quorum not met", "responses": len(results), "required": cluster.read_quorum})
     
-    latest = max(results, key=lambda x: x["version"])
+    # Check for version conflict (only for nodes that have the key)
+    found_results = [r for r in results if r["value"] is not None]
+    
+    if not found_results:
+        logger.log("❌", f"KEY NOT FOUND in quorum")
+        raise HTTPException(status_code=404, detail=f"Key '{key}' not found in quorum")
+
+    versions = set(r["version"] for r in found_results)
+    if len(versions) > 1:
+        logger.log("⚠️", f"VERSION CONFLICT: Detected multiple versions: {list(versions)}")
+        logger.log("→", "Selecting highest version for resolution")
+    
+    latest = max(found_results, key=lambda x: x["version"])
     logger.log("✅", f"RESULT: v{latest['version']} \"{latest['value']}\" (from {latest['node_id']})")
     
     return {
