@@ -93,18 +93,22 @@ def prune_nodes():
                     if AUTO_SPAWN and node.get("role") == "follower":
                         threading.Thread(
                             target=auto_spawn_node,
-                            args=(node_id,),
+                            args=(node_id, node.get("port")),
                             daemon=True
                         ).start()
 
-def auto_spawn_node(dead_node_id: str):
+def auto_spawn_node(dead_node_id: str, port: int):
     """Wait and then request coordinator to spawn a replacement node."""
     print(f"⏳ [Registry] Auto-spawn enabled. Waiting {AUTO_SPAWN_DELAY}s before spawning replacement for {dead_node_id}...")
     time.sleep(AUTO_SPAWN_DELAY)
     
     try:
         print(f"🔄 [Registry] Requesting coordinator to spawn replacement for {dead_node_id}")
-        resp = requests.post(f"{COORDINATOR_URL}/spawn", timeout=10)
+        resp = requests.post(
+            f"{COORDINATOR_URL}/spawn", 
+            json={"node_id": dead_node_id, "port": port},
+            timeout=10
+        )
         if resp.status_code == 200:
             data = resp.json()
             print(f"✅ [Registry] Spawned {data.get('node_id')} as replacement")
@@ -189,7 +193,17 @@ def deregister(payload: DeregisterPayload):
     """Deregister a node."""
     with lock:
         if payload.node_id in nodes:
+            node = nodes[payload.node_id]
             print(f"👋 [Registry] Node '{payload.node_id}' deregistered")
+            
+            # Auto-spawn if enabled (for followers only)
+            if AUTO_SPAWN and node.get("role") == "follower":
+                threading.Thread(
+                    target=auto_spawn_node,
+                    args=(payload.node_id, node.get("port")),
+                    daemon=True
+                ).start()
+                
             del nodes[payload.node_id]
     return {"status": "ok"}
 

@@ -96,6 +96,7 @@ class ClusterState:
         """Get alive sync followers (first W smallest ports)."""
         alive = self.get_alive_followers()
         sorted_by_port = sorted(alive, key=lambda x: x["port"])
+        # We need W followers to ack to meet quorum (as in replication lab)
         return sorted_by_port[:self.write_quorum]
     
     def get_async_followers(self) -> List[dict]:
@@ -112,7 +113,8 @@ class ClusterState:
     
     def can_write(self) -> bool:
         alive_followers = len(self.get_alive_followers())
-        return self.leader and self.leader.get("status") == "alive" and (alive_followers + 1) >= self.write_quorum
+        # Need leader alive + W followers (consistent with replication lab)
+        return self.leader and self.leader.get("status") == "alive" and alive_followers >= self.write_quorum
     
     def can_read(self) -> bool:
         return len(self.get_alive_nodes()) >= self.read_quorum
@@ -191,25 +193,40 @@ def health_check_loop():
         time.sleep(2)
 
 def send_catchup_to_follower(follower_url: str, leader_url: str) -> bool:
-    """Send leader's data to a new follower."""
-    try:
-        # Get snapshot from leader
-        resp = requests.get(f"{leader_url}/snapshot", timeout=5)
-        if resp.status_code != 200:
-            return False
-        
-        snapshot = resp.json()
-        
-        # Send to follower
-        resp = requests.post(
-            f"{follower_url}/catchup",
-            json={"data": snapshot["data"], "versions": snapshot["versions"]},
-            timeout=10
-        )
-        return resp.status_code == 200
-    except Exception as e:
-        print(f"[Coordinator] ❌ Catchup failed: {e}")
-        return False
+    """
+    Send leader's data to a new follower.
+    Retries a few times in case the follower's API isn't ready yet.
+    """
+    max_retries = 5
+    retry_delay = 1
+    
+    for attempt in range(max_retries):
+        try:
+            # Get snapshot from leader
+            resp = requests.get(f"{leader_url}/snapshot", timeout=5)
+            if resp.status_code != 200:
+                print(f"[Coordinator] ⚠️ Failed to get snapshot from leader: {resp.status_code}")
+                return False
+            
+            snapshot = resp.json()
+            
+            # Send to follower
+            resp = requests.post(
+                f"{follower_url}/catchup",
+                json={"data": snapshot["data"], "versions": snapshot["versions"]},
+                timeout=10
+            )
+            if resp.status_code == 200:
+                return True
+            
+            print(f"[Coordinator] ⚠️ Catchup attempt {attempt+1} failed ({resp.status_code})")
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+                continue
+            print(f"[Coordinator] ❌ Catchup failed after {max_retries} attempts: {e}")
+            
+    return False
 
 # ========================
 # API Models
@@ -222,6 +239,10 @@ class WriteRequest(BaseModel):
 class NodeRequest(BaseModel):
     node_id: str
     url: Optional[str] = None
+
+class SpawnRequest(BaseModel):
+    node_id: Optional[str] = None
+    port: Optional[int] = None
 
 # ========================
 # API Endpoints
@@ -317,8 +338,9 @@ def write_data(request: WriteRequest):
                 node_id = next((f["node_id"] for f in sync_followers if f["url"] == node_url), "unknown")
                 logger.log("✅", f"{node_id}: sync ack received")
             
+            # Check if we met write quorum (sync_acks >= W)
             if sync_acks >= cluster.write_quorum:
-                logger.log("✅", f"QUORUM MET: {sync_acks}/{cluster.write_quorum} sync acks")
+                logger.log("✅", f"QUORUM MET: {sync_acks}/{cluster.write_quorum} sync acks (leader + {sync_acks} followers)")
                 
                 if async_followers:
                    logger.log("🔄", f"Async replication queued for {len(async_followers)} followers")
@@ -413,12 +435,18 @@ def read_data(key: str):
     }
 
 @app.post("/spawn")
-def spawn_follower():
+def spawn_follower(request: Optional[SpawnRequest] = None):
     """Start a new follower node."""
     with cluster.lock:
-        cluster.node_counter += 1
-        node_id = f"follower-{cluster.node_counter}"
-        port = BASE_PORT + cluster.node_counter + 1
+        if request and request.node_id and request.port:
+            node_id = request.node_id
+            port = request.port
+            logger.log("🔄", f"Reviving {node_id} on port {port}")
+        else:
+            cluster.node_counter += 1
+            node_id = f"follower-{cluster.node_counter}"
+            port = BASE_PORT + cluster.node_counter + 1
+        
         url = f"http://localhost:{port}"
         
         process = spawn_node(
@@ -448,7 +476,8 @@ def spawn_follower():
                 daemon=True
             ).start()
         
-        logger.log("🚀", f"Spawned {node_id} on port {port}")
+        if not (request and request.node_id):
+            logger.log("🚀", f"Spawned {node_id} on port {port}")
         
         return {"status": "spawned", "node_id": node_id, "url": url}
 
