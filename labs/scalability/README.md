@@ -5,6 +5,7 @@ Learn about load balancing and rate limiting through hands-on experimentation.
 ## Overview
 
 This lab demonstrates:
+
 - **Vertical scaling limits**: How a single node gets overwhelmed
 - **Horizontal scaling**: Distributing load across multiple nodes
 - **Load balancing strategies**: Round-robin vs adaptive routing
@@ -12,12 +13,12 @@ This lab demonstrates:
 
 ## Files
 
-| File | Description |
-|------|-------------|
-| `node.py` | Server node with rate limiting support |
-| `client.py` | Client with load balancing integration |
+| File                 | Description                                       |
+| -------------------- | ------------------------------------------------- |
+| `node.py`          | Server node with rate limiting support            |
+| `client.py`        | Client with load balancing integration            |
 | `load_balancer.py` | Load balancing strategies (round-robin, adaptive) |
-| `rate_limiter.py` | Rate limiting with fixed window algorithm |
+| `rate_limiter.py`  | Rate limiting with fixed window algorithm         |
 
 ---
 
@@ -32,18 +33,32 @@ This lab demonstrates:
 python labs/scalability/node.py --port 5001 --id 1 --load-factor 35
 ```
 
-### Step 2: Hit it with concurrent requests
+### Step 2: Hit with the expected load
 
 ```bash
-# Terminal 2: Run client with high concurrency
-python labs/scalability/client.py --target http://localhost:5001 --concurrent 50 --requests 100 --verbose
+# Terminal 2: Run client with serial request load
+python labs/scalability/client.py --target http://localhost:5001  --requests 30 --verbose
+```
+
+### Step 3: Hit it with more than expected concurrent requests
+
+```bash
+# Terminal 3: Run client with high concurrency
+python labs/scalability/client.py --target http://localhost:5001 --concurrent 10 --requests 30 --verbose
 ```
 
 **Observe**: Watch the latency increase dramatically as the single node struggles.
 
----
+### Step 4: Simulate vertical scaling
 
-## Demo 2: Horizontal Scaling with Round-Robin
+```bash
+# Terminal 1: Start node with load simulation
+python labs/scalability/node.py --port 5001 --id 1 --load-factor 35 --workers 5
+```
+
+**Observe**: Watch the latency go down as the node can handle more requests.
+
+## Demo 2: Horizontal Scaling with Load balancer
 
 **Goal**: Distribute load across multiple nodes.
 
@@ -54,14 +69,13 @@ python labs/scalability/client.py --target http://localhost:5001 --concurrent 50
 python labs/scalability/node.py --port 5001 --id 1 --load-factor 35 --workers 5
 
 # Terminal 2: Medium capacity node (2 workers)
-python labs/scalability/node.py --port 5002 --id 2 --load-factor 35 --workers 5
+python labs/scalability/node.py --port 5002 --id 2 --load-factor 35
 
 # Terminal 3: High capacity node (4 workers)
 python labs/scalability/node.py --port 5003 --id 3 --load-factor 35
 ```
 
-
-### Step 2: Run client with round-robin strategy
+### Step 2: Run client with a load balancer
 
 ```bash
 # Terminal 4: Run client with round-robin strategy
@@ -70,24 +84,18 @@ python labs/scalability/client.py --concurrent 20 --requests 100 --strategy roun
 
 **Observe**: Requests are distributed equally, but the low-capacity node has higher latency.
 
----
+### Step 3: Try client with different strategies
 
-## Demo 3: Adaptive Load Balancing
-
-**Goal**: Use adaptive routing to favor faster nodes.
+You can try running it with **adaptive** or **weighted** & notice the distribution & latency change
 
 ```bash
-# Same nodes running from Demo 2
-# Terminal 5: Now use adaptive strategy
-python labs/scalability/client.py --concurrent 20 --requests 100 --strategy adaptive --verbose
+# Terminal 4: Run client with round-robin strategy
+python labs/scalability/client.py --concurrent 20 --requests 100 --strategy adaptive
 ```
-
-**Observe**: 
-- Overall latency is lower compared to round-robin
 
 ---
 
-## Demo 4: Rate Limiting
+## Demo 3: Rate Limiting
 
 **Goal**: See rate limiting in action with HTTP 429 responses.
 
@@ -98,19 +106,20 @@ python labs/scalability/client.py --concurrent 20 --requests 100 --strategy adap
 python labs/scalability/node.py --port 5001 --id 1 --rate-limit fixed_window --rate-limit-max 5 --rate-limit-window 10
 ```
 
-
-### Step 3: Flood the node with requests
+### Step 2: Flood the node with requests
 
 ```bash
-# Terminal 3: High concurrency without delay
+# Terminal 2: High concurrency without delay
 python labs/scalability/client.py --target http://localhost:5001 --concurrent 10 --requests 50 --verbose
 ```
 
 **Observe**:
+
 - First 5 requests succeed (✅)
 - Subsequent requests get rate limited (🚫 429)
+- You can try allowing 10 requests in 10 seconds & see how your performance metrics change.
 
-### Step 4: Respectful client with rate delay
+### Step 3: Respectful client with rate delay
 
 ```bash
 # Terminal 3: Slower client respects rate limit
@@ -134,25 +143,8 @@ python labs/scalability/client.py --target http://localhost:5001 --concurrent 1 
 ## TODO Sections (For Students)
 
 Look for `TODO: [STUDENT EXERCISE]` comments in:
+
 - `node.py` - Core rate limiting logic
 - `rate_limiter.py` - Fixed window algorithm implementation
 
 These sections contain the key algorithms that students can study and modify.
-
----
-
-## Troubleshooting
-
-**Nodes not responding?**
-```bash
-# Check if nodes are running
-curl http://localhost:5001/health
-```
-
-**Rate limiting not working?**
-- Make sure you started the node with `--rate-limit fixed_window`
-- Check the node terminal for ALLOWED/RATE LIMITED logs
-
-**Rate limiting not working?**
-- Make sure you started the node with `--rate-limit fixed_window`
-- Check the node terminal for ALLOWED/RATE LIMITED logs

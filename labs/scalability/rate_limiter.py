@@ -155,6 +155,20 @@ class RateLimiter:
         """
         return self.strategy.is_allowed(client_id)
     
+    def get_stats(self) -> dict:
+        """
+        Get current rate limiter statistics.
+        
+        Returns:
+            Dict with strategy name, limits, and per-client bucket info.
+        """
+        return {
+            "strategy": self.strategy_name,
+            "max_requests": self.max_requests,
+            "window_seconds": self.window_seconds,
+            "clients": dict(self.strategy.buckets) if hasattr(self.strategy, 'buckets') else {}
+        }
+    
 
 # ========================
 # Decorator for Rate Limited Endpoints

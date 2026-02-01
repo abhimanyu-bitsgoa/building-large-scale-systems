@@ -1,37 +1,44 @@
 # Building Large Scale Systems: The Workshop 🏗️
 
-Welcome to **The Workshop**! In this workshop, you will learn how to build a resilient distributed system from scratch.
+Welcome to **Building Large Scale Systems**! Learn how to build resilient distributed systems from scratch through hands-on labs.
 
-## 🚀 Instant Start
+## 🚀 Quick Start (Docker)
 
-### 1. Open in VS Code with Docker
-This repository is configured with a `.devcontainer` (via Dockerfile).
-- **VS Code**: Click "Reopen in Container".
-- **Manual**:
-  ```bash
-  docker-compose up -d
-  docker-compose exec workshop bash
-  ```
+### Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+
+### 1. Clone and Start
+
+```bash
+git clone <repository-url>
+cd building-large-scale-systems
+
+# Build and start the container
+docker-compose up -d
+
+# Enter the workshop environment
+docker-compose exec workshop bash
+```
 
 ### 2. Verify Setup
-Inside the container/terminal, run:
+
+Inside the container, test a simple node:
+
 ```bash
-python3 workshop_materials/03_sharding/visualize_rebalancing.py
+python labs/scalability/node.py --port 5001 --id 1
 ```
-If you see a bar chart, you are ready to go!
+
+If you see `🚀 Node 1 starting on port 5001`, you're ready!
+
+---
 
 ## 📂 Workshop Structure
 
-- **`workshop_materials/`**: Your workspace.
-    - `01_nodes/`: Hour 1 (Nodes & RPC)
-    - `02_networking/`: Hour 2 (Load Balancing & Rate Limiting)
-    - `03_sharding/`: Hours 3 & 4 (Sharding & Consistent Hashing) - *Combined as they share the Router logic.*
-    - `05_availability/`: Hour 5 (Quorums)
-    - `06_capstone/`: Hour 6 (The Final Challenge)
-    - `chaos/`: Tools for destruction
-- **`solutions/`**: Reference implementations (Don't peek unless stuck! 😉)
+| Lab                                                               | Topic                          | What You'll Learn                                                                   |
+| ----------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------- |
+| [**Scalability**](labs/scalability/README.md)                  | Load Balancing & Rate Limiting | Horizontal scaling, load distribution strategies, protecting services from overload |
+| [**Replication**](labs/replication/README.md)                  | Leader-Follower Replication    | Write quorums, read quorums, sync vs async replication, consistency tradeoffs       |
+| [**Distributed KV Store**](labs/distributed-kvstore/README.md) | Full System Integration        | Service discovery, heartbeats, automatic failover, combining everything together    |
 
-## 🧪 Visualizations
-Each module has a `visualize_*.py` script. Run these to understand the "Why" before you write the code.
-
-Happy Coding!
+Each lab has its own `README.md` with step-by-step demos. Start with **Scalability** and work your way up!

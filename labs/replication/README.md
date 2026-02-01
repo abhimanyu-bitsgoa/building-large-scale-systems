@@ -34,11 +34,11 @@ This means:
 
 ## Files
 
-| File | Description |
-|------|-------------|
+| File               | Description                                           |
+| ------------------ | ----------------------------------------------------- |
 | `coordinator.py` | Cluster manager with HTTP API and event-based logging |
-| `node.py` | Leader or follower node |
-| `client.py` | Interactive client for read/write operations |
+| `node.py`        | Leader or follower node                               |
+| `client.py`      | Interactive client for read/write operations          |
 
 ---
 
@@ -175,7 +175,7 @@ python labs/replication/coordinator.py \
 
 ## Key Takeaways
 
-1. **W + R > N = Strong consistency**: At least one node overlaps between write and read quorums
+1. **W + R > N = Strong consistency (not always!)**: At least one node overlaps between write and read quorums
 2. **W + R ≤ N = Eventual consistency**: Possible stale reads!
 3. **Sync vs Async**: First W ports sync, rest async with visible lag
 4. **Leader always writes**: But W followers must ack for success
@@ -189,13 +189,13 @@ While the `client.py` is the primary way to interact, you can also use `curl` fo
 
 ### Coordinator Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/write` | Write data (waits for W follower acks) |
-| GET | `/read/{key}` | Read data (queries R quorum nodes) |
-| GET | `/status` | Cluster status |
-| POST | `/spawn` | Add follower |
-| POST | `/kill/{node_id}` | Kill a follower |
+| Method | Endpoint            | Description                            |
+| ------ | ------------------- | -------------------------------------- |
+| POST   | `/write`          | Write data (waits for W follower acks) |
+| GET    | `/read/{key}`     | Read data (queries R quorum nodes)     |
+| GET    | `/status`         | Cluster status                         |
+| POST   | `/spawn`          | Add follower                           |
+| POST   | `/kill/{node_id}` | Kill a follower                        |
 
 ### Example Curl Commands
 
@@ -209,17 +209,3 @@ curl http://localhost:6000/read/foo
 # Status
 curl http://localhost:6000/status
 ```
-
----
-
-## Troubleshooting
-
-**Writes timing out?**
-
-- Check the coordinator logs to see which followers are alive
-- If fewer than W followers are alive, writes will be rejected
-
-**Seeing stale reads?**
-
-- Check if W+R > N
-- If not, async nodes (the ones with larger ports) may not have received data yet

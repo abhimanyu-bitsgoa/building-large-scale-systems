@@ -18,9 +18,10 @@ from pydantic import BaseModel
 import argparse
 import os
 import time
-from functools import wraps
-from collections import defaultdict
 import logging
+
+# Import the rate limiter module (strategy pattern implementation)
+from rate_limiter import RateLimiter
 
 # ========================
 # Logging Configuration
@@ -55,71 +56,8 @@ INTERNAL_ENDPOINTS = {"/", "/health", "/docs", "/openapi.json"}
 # Metrics tracking
 active_requests = 0
 
-# ========================
-# Rate Limiter (Fixed Window)
-# ========================
-
-class FixedWindowRateLimiter:
-    """
-    Fixed Window Rate Limiting Algorithm.
-    
-    Tracks requests within fixed time windows. When a new window starts,
-    the counter resets.
-    
-    Note: This rate limiter can be extended with more strategies 
-    (e.g., sliding window, token bucket) for different use cases.
-    """
-    
-    def __init__(self, max_requests: int = 10, window_seconds: int = 60):
-        self.max_requests = max_requests
-        self.window_seconds = window_seconds
-        self.requests_per_ip = defaultdict(lambda: {"count": 0, "window_start": 0})
-    
-    def is_allowed(self, client_ip: str) -> tuple[bool, dict]:
-        """
-        Check if request is allowed under rate limit.
-        
-        Returns: (is_allowed, metadata_dict)
-        """
-        now = time.time()
-        bucket = self.requests_per_ip[client_ip]
-        
-        # ========================================
-        # TODO: [STUDENT EXERCISE] 
-        # This is the core rate limiting logic.
-        # Students will implement this section.
-        # ========================================
-        
-        # Check if we're in a new window
-        if now - bucket["window_start"] >= self.window_seconds:
-            # New window - reset counter
-            bucket["window_start"] = now
-            bucket["count"] = 0
-        
-        # Check if under limit
-        remaining = self.max_requests - bucket["count"]
-        
-        if bucket["count"] < self.max_requests:
-            # Allow request
-            bucket["count"] += 1
-            return True, {
-                "remaining": remaining - 1,
-                "limit": self.max_requests,
-                "reset": int(bucket["window_start"] + self.window_seconds - now)
-            }
-        else:
-            # Rate limit exceeded
-            return False, {
-                "remaining": 0,
-                "limit": self.max_requests,
-                "reset": int(bucket["window_start"] + self.window_seconds - now)
-            }
-        
-        # ========================================
-        # END TODO
-        # ========================================
-
-# Global rate limiter instance
+# Global rate limiter instance (uses RateLimiter from rate_limiter.py)
+# See rate_limiter.py for the FixedWindowStrategy implementation with TODO markers
 rate_limiter = None
 
 # ========================
@@ -161,8 +99,9 @@ async def request_middleware(request: Request, call_next):
         return await call_next(request)
     
     # Rate limiting check (if enabled, only for non-internal endpoints)
+    # Uses the RateLimiter from rate_limiter.py module
     if rate_limiter is not None:
-        allowed, metadata = rate_limiter.is_allowed(client_ip)
+        allowed, metadata = rate_limiter.check(client_ip)
         
         if not allowed:
             print(f"❌ [Node {NODE_ID}] RATE LIMITED: {request.method} {path} from {client_ip}")
@@ -294,12 +233,13 @@ if __name__ == "__main__":
     os.environ["NODE_ID"] = str(args.id)
     os.environ["LOAD_FACTOR"] = str(args.load_factor)
     
-    # Initialize rate limiter if enabled
+    # Initialize rate limiter if enabled (uses module from rate_limiter.py)
     if args.rate_limit:
         os.environ["RATE_LIMIT_ENABLED"] = "true"
         os.environ["RATE_LIMIT_MAX"] = str(args.rate_limit_max)
         os.environ["RATE_LIMIT_WINDOW"] = str(args.rate_limit_window)
-        rate_limiter = FixedWindowRateLimiter(
+        rate_limiter = RateLimiter(
+            strategy="fixed_window",
             max_requests=args.rate_limit_max,
             window_seconds=args.rate_limit_window
         )
