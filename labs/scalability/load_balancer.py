@@ -129,6 +129,62 @@ class AdaptiveStrategy(LoadBalancerStrategy):
         
         return scored_nodes[0][0]
 
+class PowerOfTwoStrategy(LoadBalancerStrategy):
+    """
+    Power of Two Choices Load Balancing Strategy.
+    
+    Randomly samples 2 nodes and picks the one with the lower score.
+    This prevents the "herd effect" where all clients pile onto
+    the same "best" node, while still being adaptive to load.
+    
+    Used by Netflix, HAProxy, and other high-scale systems.
+    """
+    
+    def get_node(self, nodes: List[str]) -> str:
+        if not nodes:
+            raise ValueError("No nodes available")
+        
+        if len(nodes) == 1:
+            return nodes[0]
+        
+        # Sample 2 random nodes
+        if len(nodes) == 2:
+            candidates = nodes
+        else:
+            candidates = random.sample(nodes, 2)
+        
+        # Pick the one with lower score (fewer active requests + lower latency)
+        return min(candidates, key=lambda n: node_stats.get_score(n))
+
+
+class WeightedStrategy(LoadBalancerStrategy):
+    """
+    Weighted Probability Load Balancing Strategy.
+    
+    Routes traffic proportionally based on node performance.
+    Faster nodes with fewer active requests receive more traffic,
+    but not ALL traffic (avoiding the herd effect).
+    
+    Weight = inverse of score, so lower scores = higher probability.
+    """
+    
+    def get_node(self, nodes: List[str]) -> str:
+        if not nodes:
+            raise ValueError("No nodes available")
+        
+        if len(nodes) == 1:
+            return nodes[0]
+        
+        # Calculate scores (lower is better)
+        scores = [max(node_stats.get_score(n), 1) for n in nodes]  # avoid div by 0
+        
+        # Convert to weights (inverse: lower score = higher weight)
+        weights = [1000 / score for score in scores]
+        
+        # Use weighted random choice
+        return random.choices(nodes, weights=weights, k=1)[0]
+
+
 class RandomStrategy(LoadBalancerStrategy):
     """
     Random Load Balancing Strategy.
@@ -160,6 +216,8 @@ class LoadBalancer:
     STRATEGIES = {
         "round_robin": RoundRobinStrategy,
         "adaptive": AdaptiveStrategy,
+        "power_of_two": PowerOfTwoStrategy,
+        "weighted": WeightedStrategy,
         "random": RandomStrategy
     }
     
