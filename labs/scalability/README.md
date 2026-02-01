@@ -57,9 +57,8 @@ python labs/scalability/node.py --port 5001 --id 1 --load-factor 35 --workers 5
 ```
 
 **Observe**: Watch the latency go down as the node can handle more requests.
-------------------------------------------------------------------------
 
-## Demo 2: Horizontal Scaling with Round-Robin
+## Demo 2: Horizontal Scaling with Load balancer
 
 **Goal**: Distribute load across multiple nodes.
 
@@ -76,7 +75,7 @@ python labs/scalability/node.py --port 5002 --id 2 --load-factor 35 --workers 5
 python labs/scalability/node.py --port 5003 --id 3 --load-factor 35
 ```
 
-### Step 2: Run client with round-robin strategy
+### Step 2: Run client with a load balancer
 
 ```bash
 # Terminal 4: Run client with round-robin strategy
@@ -85,25 +84,18 @@ python labs/scalability/client.py --concurrent 20 --requests 100 --strategy roun
 
 **Observe**: Requests are distributed equally, but the low-capacity node has higher latency.
 
----
+### Step 3: Try client with different strategies
 
-## Demo 3: Adaptive Load Balancing
-
-**Goal**: Use adaptive routing to favor faster nodes.
+You can try running it with **adaptive** or **weighted** & notice the distribution & latency change
 
 ```bash
-# Same nodes running from Demo 2
-# Terminal 5: Now use adaptive strategy
-python labs/scalability/client.py --concurrent 20 --requests 100 --strategy adaptive --verbose
+# Terminal 4: Run client with round-robin strategy
+python labs/scalability/client.py --concurrent 20 --requests 100 --strategy adaptive
 ```
-
-**Observe**:
-
-- Overall latency is lower compared to round-robin
 
 ---
 
-## Demo 4: Rate Limiting
+## Demo 3: Rate Limiting
 
 **Goal**: See rate limiting in action with HTTP 429 responses.
 
@@ -114,10 +106,10 @@ python labs/scalability/client.py --concurrent 20 --requests 100 --strategy adap
 python labs/scalability/node.py --port 5001 --id 1 --rate-limit fixed_window --rate-limit-max 5 --rate-limit-window 10
 ```
 
-### Step 3: Flood the node with requests
+### Step 2: Flood the node with requests
 
 ```bash
-# Terminal 3: High concurrency without delay
+# Terminal 2: High concurrency without delay
 python labs/scalability/client.py --target http://localhost:5001 --concurrent 10 --requests 50 --verbose
 ```
 
@@ -125,8 +117,9 @@ python labs/scalability/client.py --target http://localhost:5001 --concurrent 10
 
 - First 5 requests succeed (✅)
 - Subsequent requests get rate limited (🚫 429)
+- You can try allowing 10 requests in 10 seconds & see how your performance metrics change.
 
-### Step 4: Respectful client with rate delay
+### Step 3: Respectful client with rate delay
 
 ```bash
 # Terminal 3: Slower client respects rate limit
