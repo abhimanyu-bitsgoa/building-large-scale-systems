@@ -69,7 +69,7 @@ python labs/scalability/node.py --port 5001 --id 1 --load-factor 35 --workers 5
 python labs/scalability/node.py --port 5001 --id 1 --load-factor 35 --workers 5
 
 # Terminal 2: Medium capacity node (2 workers)
-python labs/scalability/node.py --port 5002 --id 2 --load-factor 35 --workers 5
+python labs/scalability/node.py --port 5002 --id 2 --load-factor 35
 
 # Terminal 3: High capacity node (4 workers)
 python labs/scalability/node.py --port 5003 --id 3 --load-factor 35
