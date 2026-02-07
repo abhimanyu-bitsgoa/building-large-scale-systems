@@ -220,33 +220,37 @@ class TestRunner:
         print("               RUNNING ASSESSMENT TESTS")
         print("=" * 60 + "\n")
         
-        # Quorum Write Tests
-        self.categories.append(self._run_quorum_write_tests())
-        
-        # Quorum Read Tests
-        self.categories.append(self._run_quorum_read_tests())
-        
-        # Rate Limiting Tests
+        # Rate Limiting Tests - RUN FIRST on fresh window
         if self.config.gateway.rate_limit_enabled:
             self.categories.append(self._run_rate_limit_tests())
+            # Wait for rate limit window to reset before other tests
+            window = self.config.gateway.rate_limit_window
+            print(f"\n⏳ Waiting {window}s for rate limit window to reset...")
+            time.sleep(window + 1)
         
-        # Failure Recovery Tests
+        # Quorum Write Tests - uses coordinator directly
+        self.categories.append(self._run_quorum_write_tests())
+        
+        # Quorum Read Tests - uses coordinator directly
+        self.categories.append(self._run_quorum_read_tests())
+        
+        # Failure Recovery Tests - uses coordinator directly
         self.categories.append(self._run_failure_tests())
         
-        # Catchup Tests
+        # Catchup Tests - uses coordinator directly
         self.categories.append(self._run_catchup_tests())
         
         return self.categories
     
     def _run_quorum_write_tests(self) -> TestCategory:
-        """Test quorum write behavior."""
+        """Test quorum write behavior using coordinator directly."""
         print("📝 Running Quorum Write Tests...")
         category = TestCategory(name="Quorum Write Tests")
         
-        # Test 1: Write succeeds with quorum
+        # Test 1: Write succeeds with quorum (via coordinator)
         try:
             resp = requests.post(
-                f"{GATEWAY_URL}/write",
+                f"{COORDINATOR_URL}/write",
                 json={"key": "test_write_1", "value": "hello"},
                 timeout=10
             )
@@ -267,7 +271,7 @@ class TestRunner:
         # Test 2: Verify sync acks match W
         try:
             resp = requests.post(
-                f"{GATEWAY_URL}/write",
+                f"{COORDINATOR_URL}/write",
                 json={"key": "test_write_2", "value": "world"},
                 timeout=10
             )
@@ -294,21 +298,56 @@ class TestRunner:
                 message=f"Error: {e}"
             ))
         
+        # Test 3: Write version increments correctly
+        try:
+            resp1 = requests.post(
+                f"{COORDINATOR_URL}/write",
+                json={"key": "version_test", "value": "v1"},
+                timeout=10
+            )
+            resp2 = requests.post(
+                f"{COORDINATOR_URL}/write",
+                json={"key": "version_test", "value": "v2"},
+                timeout=10
+            )
+            if resp1.status_code == 200 and resp2.status_code == 200:
+                v1 = resp1.json().get("version", 0)
+                v2 = resp2.json().get("version", 0)
+                passed = v2 > v1
+                category.results.append(TestResult(
+                    name="Version increments on write",
+                    passed=passed,
+                    message=f"v1={v1}, v2={v2}",
+                    details={"version_1": v1, "version_2": v2}
+                ))
+            else:
+                category.results.append(TestResult(
+                    name="Version increments on write",
+                    passed=False,
+                    message="Write failed"
+                ))
+        except Exception as e:
+            category.results.append(TestResult(
+                name="Version increments on write",
+                passed=False,
+                message=f"Error: {e}"
+            ))
+        
         self._print_category_results(category)
         return category
     
     def _run_quorum_read_tests(self) -> TestCategory:
-        """Test quorum read behavior."""
+        """Test quorum read behavior using coordinator directly."""
         print("\n📖 Running Quorum Read Tests...")
         category = TestCategory(name="Quorum Read Tests")
         
-        # Ensure we have data to read
-        requests.post(f"{GATEWAY_URL}/write", json={"key": "read_test", "value": "data"}, timeout=10)
+        # Ensure we have data to read (via coordinator)
+        requests.post(f"{COORDINATOR_URL}/write", json={"key": "read_test", "value": "data"}, timeout=10)
         time.sleep(1)  # Allow replication
         
-        # Test 1: Read returns data
+        # Test 1: Read returns data (via coordinator)
         try:
-            resp = requests.get(f"{GATEWAY_URL}/read/read_test", timeout=10)
+            resp = requests.get(f"{COORDINATOR_URL}/read/read_test", timeout=10)
             passed = resp.status_code == 200 and resp.json().get("value") == "data"
             category.results.append(TestResult(
                 name="Read returns correct data",
@@ -325,7 +364,7 @@ class TestRunner:
         
         # Test 2: Read from followers (check served_by)
         try:
-            resp = requests.get(f"{GATEWAY_URL}/read/read_test", timeout=10)
+            resp = requests.get(f"{COORDINATOR_URL}/read/read_test", timeout=10)
             if resp.status_code == 200:
                 data = resp.json()
                 served_by = data.get("served_by", "")
@@ -351,7 +390,7 @@ class TestRunner:
         
         # Test 3: Quorum responses
         try:
-            resp = requests.get(f"{GATEWAY_URL}/read/read_test", timeout=10)
+            resp = requests.get(f"{COORDINATOR_URL}/read/read_test", timeout=10)
             if resp.status_code == 200:
                 data = resp.json()
                 quorum_responses = data.get("quorum_responses", 0)
@@ -371,6 +410,23 @@ class TestRunner:
         except Exception as e:
             category.results.append(TestResult(
                 name=f"Read quorum met (R={self.config.cluster.read_quorum})",
+                passed=False,
+                message=f"Error: {e}"
+            ))
+        
+        # Test 4: Read non-existent key returns 404
+        try:
+            resp = requests.get(f"{COORDINATOR_URL}/read/nonexistent_key_xyz", timeout=10)
+            passed = resp.status_code == 404
+            category.results.append(TestResult(
+                name="Read non-existent key returns 404",
+                passed=passed,
+                message=f"Status: {resp.status_code}",
+                details={}
+            ))
+        except Exception as e:
+            category.results.append(TestResult(
+                name="Read non-existent key returns 404",
                 passed=False,
                 message=f"Error: {e}"
             ))
@@ -436,7 +492,7 @@ class TestRunner:
         return category
     
     def _run_failure_tests(self) -> TestCategory:
-        """Test failure recovery behavior."""
+        """Test failure recovery behavior using coordinator directly."""
         print("\n💥 Running Failure Recovery Tests...")
         category = TestCategory(name="Failure Recovery Tests")
         
@@ -449,9 +505,9 @@ class TestRunner:
                 requests.post(f"{COORDINATOR_URL}/kill/follower-1", timeout=5)
                 time.sleep(2)  # Wait for health check
                 
-                # Try to write
+                # Try to write via coordinator (bypasses gateway rate limit)
                 resp = requests.post(
-                    f"{GATEWAY_URL}/write",
+                    f"{COORDINATOR_URL}/write",
                     json={"key": "failure_test_1", "value": "resilient"},
                     timeout=10
                 )
@@ -469,7 +525,24 @@ class TestRunner:
                     message=f"Error: {e}"
                 ))
         
-        # Test 2: Quorum lost detection
+        # Test 2: Read still works after failure
+        try:
+            resp = requests.get(f"{COORDINATOR_URL}/read/failure_test_1", timeout=10)
+            passed = resp.status_code == 200
+            category.results.append(TestResult(
+                name="Read works after follower killed",
+                passed=passed,
+                message=f"Status: {resp.status_code}",
+                details=resp.json() if passed else {}
+            ))
+        except Exception as e:
+            category.results.append(TestResult(
+                name="Read works after follower killed",
+                passed=False,
+                message=f"Error: {e}"
+            ))
+        
+        # Test 3: Quorum lost detection
         try:
             # Kill enough followers to break quorum
             alive_followers = c.followers - 1  # Already killed 1
@@ -479,9 +552,9 @@ class TestRunner:
                 requests.post(f"{COORDINATOR_URL}/kill/follower-{i}", timeout=5)
             time.sleep(2)
             
-            # Try to write - should fail
+            # Try to write - should fail with 503
             resp = requests.post(
-                f"{GATEWAY_URL}/write",
+                f"{COORDINATOR_URL}/write",
                 json={"key": "failure_test_2", "value": "should_fail"},
                 timeout=10
             )
@@ -511,16 +584,16 @@ class TestRunner:
         return category
     
     def _run_catchup_tests(self) -> TestCategory:
-        """Test catchup behavior."""
+        """Test catchup behavior using coordinator directly."""
         print("\n🔄 Running Catchup Tests...")
         category = TestCategory(name="Catchup Tests")
         
         # Test 1: Write data, spawn new follower, verify it has data
         try:
-            # Write some data
+            # Write some data via coordinator
             unique_key = f"catchup_test_{int(time.time())}"
             requests.post(
-                f"{GATEWAY_URL}/write",
+                f"{COORDINATOR_URL}/write",
                 json={"key": unique_key, "value": "catchup_value"},
                 timeout=10
             )
@@ -530,8 +603,8 @@ class TestRunner:
             spawn_resp = requests.post(f"{COORDINATOR_URL}/spawn", timeout=5)
             time.sleep(3)  # Wait for catchup
             
-            # Read the data (should come from the new follower or existing ones)
-            read_resp = requests.get(f"{GATEWAY_URL}/read/{unique_key}", timeout=10)
+            # Read the data via coordinator
+            read_resp = requests.get(f"{COORDINATOR_URL}/read/{unique_key}", timeout=10)
             
             passed = read_resp.status_code == 200 and read_resp.json().get("value") == "catchup_value"
             category.results.append(TestResult(
@@ -577,6 +650,34 @@ class TestRunner:
         except Exception as e:
             category.results.append(TestResult(
                 name="Snapshot endpoint returns full state",
+                passed=False,
+                message=f"Error: {e}"
+            ))
+        
+        # Test 3: Cluster status endpoint works
+        try:
+            resp = requests.get(f"{COORDINATOR_URL}/status", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                has_leader = data.get("leader") is not None
+                has_followers = len(data.get("followers", [])) > 0
+                has_quorum_info = "quorum" in data
+                passed = has_leader and has_followers and has_quorum_info
+                category.results.append(TestResult(
+                    name="Cluster status endpoint works",
+                    passed=passed,
+                    message=f"Leader: {has_leader}, Followers: {has_followers}",
+                    details=data
+                ))
+            else:
+                category.results.append(TestResult(
+                    name="Cluster status endpoint works",
+                    passed=False,
+                    message=f"Status: {resp.status_code}"
+                ))
+        except Exception as e:
+            category.results.append(TestResult(
+                name="Cluster status endpoint works",
                 passed=False,
                 message=f"Error: {e}"
             ))
