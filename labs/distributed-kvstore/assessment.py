@@ -1,14 +1,12 @@
 """
-Distributed KV Store Lab - Assessment Script
+Multi-Region Distributed KV Store Assessment
 
-Automated testing and grading for student configurations.
-Tests quorum behavior, rate limiting, failure recovery, and catchup.
+Tests student configurations for cost, latency, availability, and consistency.
+Simulates multi-region deployment with realistic latency.
 
 Usage:
-    python assessment.py --config student_config.json
-    
-    # Or with manual cluster (if already running):
-    python assessment.py --config student_config.json --no-start-cluster
+    python assessment.py --config student_config.yaml
+    python assessment.py --config student_config.yaml --ideal  # Run ideal baseline
 """
 
 import json
@@ -18,7 +16,8 @@ import argparse
 import subprocess
 import sys
 import os
-import signal
+import random
+import statistics
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
@@ -32,14 +31,40 @@ except ImportError:
 
 
 # ========================
-# Configuration
+# Constants
 # ========================
 
-GATEWAY_URL = "http://localhost:8000"
 COORDINATOR_URL = "http://localhost:7000"
 REGISTRY_URL = "http://localhost:9000"
 
-STARTUP_WAIT = 5  # seconds to wait for cluster to start
+# Latency matrix (ms) - one-way latency between regions
+# Format: LATENCY[from_region][to_region]
+LATENCY_MS = {
+    "us": {"us": 3, "eu": 120, "asia": 200},
+    "eu": {"us": 120, "eu": 3, "asia": 95},
+    "asia": {"us": 200, "eu": 95, "asia": 3},
+}
+
+# Node pricing (credits per test run)
+NODE_COST = {
+    "asia": 10,
+    "us": 12,
+    "eu": 15,
+}
+
+# Service discovery cost (substantial to force deliberation)
+SERVICE_DISCOVERY_COST = {
+    "asia": 15,
+    "us": 18,
+    "eu": 22,
+}
+
+# Default scoring weights (tunable by instructor)
+DEFAULT_WEIGHTS = {
+    "cost": 33,
+    "latency": 33,
+    "availability": 34,
+}
 
 
 # ========================
@@ -47,23 +72,23 @@ STARTUP_WAIT = 5  # seconds to wait for cluster to start
 # ========================
 
 @dataclass
-class ClusterConfig:
-    followers: int = 3
+class StudentConfig:
+    # Regions
+    regions: Dict[str, bool] = field(default_factory=lambda: {"us": True, "eu": True, "asia": True})
+    
+    # Quorum
     write_quorum: int = 2
     read_quorum: int = 1
-
-
-@dataclass
-class GatewayConfig:
-    rate_limit_enabled: bool = True
-    rate_limit_max: int = 10
-    rate_limit_window: int = 60
-
-
-@dataclass
-class StudentConfig:
-    cluster: ClusterConfig = field(default_factory=ClusterConfig)
-    gateway: GatewayConfig = field(default_factory=GatewayConfig)
+    
+    # Features
+    service_discovery: bool = True
+    stale_reads_allowed: bool = False
+    
+    # Workload
+    rw_ratio: int = 80  # percentage reads
+    total_requests: int = 99  # divisible by 3 for equal distribution
+    
+    # Justification
     justification: str = ""
     
     @classmethod
@@ -72,16 +97,57 @@ class StudentConfig:
         with open(path, 'r') as f:
             if path.endswith('.yaml') or path.endswith('.yml'):
                 if not YAML_AVAILABLE:
-                    raise ImportError("PyYAML not installed. Use JSON format or: pip install pyyaml")
+                    raise ImportError("PyYAML not installed. Use JSON or: pip install pyyaml")
                 data = yaml.safe_load(f)
             else:
                 data = json.load(f)
         
-        cluster = ClusterConfig(**data.get("cluster", {}))
-        gateway = GatewayConfig(**data.get("gateway", {}))
-        justification = data.get("justification", "")
+        config = cls()
         
-        return cls(cluster=cluster, gateway=gateway, justification=justification)
+        if "regions" in data:
+            config.regions = data["regions"]
+        if "quorum" in data:
+            config.write_quorum = data["quorum"].get("write_quorum", 2)
+            config.read_quorum = data["quorum"].get("read_quorum", 1)
+        if "service_discovery" in data:
+            config.service_discovery = data["service_discovery"]
+        if "stale_reads_allowed" in data:
+            config.stale_reads_allowed = data["stale_reads_allowed"]
+        if "rw_ratio" in data:
+            config.rw_ratio = data["rw_ratio"]
+        if "total_requests" in data:
+            config.total_requests = data["total_requests"]
+        if "justification" in data:
+            config.justification = data["justification"]
+        
+        return config
+    
+    def get_enabled_regions(self) -> List[str]:
+        return [r for r, enabled in self.regions.items() if enabled]
+    
+    def calculate_cost(self) -> int:
+        """Calculate total cost in credits."""
+        total = 0
+        for region, enabled in self.regions.items():
+            if enabled:
+                total += NODE_COST[region]
+                if self.service_discovery:
+                    total += SERVICE_DISCOVERY_COST[region]
+        return total
+
+
+# ========================
+# Latency Simulator
+# ========================
+
+def simulate_latency(from_region: str, to_region: str) -> float:
+    """Simulate network latency between regions. Returns actual delay applied."""
+    latency_ms = LATENCY_MS.get(from_region, {}).get(to_region, 100)
+    # Add jitter (±10%)
+    jitter = random.uniform(-0.1, 0.1) * latency_ms
+    actual_latency = (latency_ms + jitter) / 1000  # Convert to seconds
+    time.sleep(actual_latency)
+    return latency_ms + jitter
 
 
 # ========================
@@ -89,25 +155,31 @@ class StudentConfig:
 # ========================
 
 @dataclass
-class TestResult:
-    name: str
-    passed: bool
-    message: str = ""
-    details: Dict = field(default_factory=dict)
-
-
-@dataclass
-class TestCategory:
-    name: str
-    results: List[TestResult] = field(default_factory=list)
+class TestMetrics:
+    total_requests: int = 0
+    successful_requests: int = 0
+    failed_requests: int = 0
+    latencies: List[float] = field(default_factory=list)
+    stale_reads: int = 0
+    downtime_ms: float = 0
     
     @property
-    def passed_count(self) -> int:
-        return sum(1 for r in self.results if r.passed)
+    def p95_latency(self) -> float:
+        if not self.latencies:
+            return 0
+        sorted_lat = sorted(self.latencies)
+        idx = int(len(sorted_lat) * 0.95)
+        return sorted_lat[min(idx, len(sorted_lat) - 1)]
     
     @property
-    def total_count(self) -> int:
-        return len(self.results)
+    def avg_latency(self) -> float:
+        return statistics.mean(self.latencies) if self.latencies else 0
+    
+    @property
+    def availability(self) -> float:
+        if self.total_requests == 0:
+            return 100.0
+        return (self.successful_requests / self.total_requests) * 100
 
 
 # ========================
@@ -115,23 +187,34 @@ class TestCategory:
 # ========================
 
 class ClusterManager:
-    """Manages starting and stopping the distributed KV store cluster."""
+    """Manages the distributed KV store cluster."""
     
     def __init__(self, config: StudentConfig):
         self.config = config
         self.processes: List[subprocess.Popen] = []
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.node_regions: Dict[str, str] = {}  # node_id -> region
     
     def start(self) -> bool:
-        """Start registry, coordinator, and gateway."""
+        """Start registry, coordinator with nodes."""
         print("🚀 Starting cluster...")
         
-        # Start registry
+        enabled_regions = self.config.get_enabled_regions()
+        if not enabled_regions:
+            print("❌ No regions enabled!")
+            return False
+        
+        follower_count = len(enabled_regions)
+        
+        # Start registry with auto-spawn based on config
         registry_cmd = [
             sys.executable,
             os.path.join(self.base_dir, "registry.py"),
             "--port", "9000"
         ]
+        if self.config.service_discovery:
+            registry_cmd.append("--auto-spawn")
+        
         self.processes.append(subprocess.Popen(
             registry_cmd,
             stdout=subprocess.DEVNULL,
@@ -143,9 +226,9 @@ class ClusterManager:
         coord_cmd = [
             sys.executable,
             os.path.join(self.base_dir, "coordinator.py"),
-            "--followers", str(self.config.cluster.followers),
-            "--write-quorum", str(self.config.cluster.write_quorum),
-            "--read-quorum", str(self.config.cluster.read_quorum),
+            "--followers", str(follower_count),
+            "--write-quorum", str(self.config.write_quorum),
+            "--read-quorum", str(self.config.read_quorum),
             "--registry", REGISTRY_URL
         ]
         self.processes.append(subprocess.Popen(
@@ -153,34 +236,19 @@ class ClusterManager:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         ))
-        time.sleep(2)
         
-        # Start gateway
-        gateway_cmd = [
-            sys.executable,
-            os.path.join(self.base_dir, "gateway.py"),
-            "--port", "8000",
-            "--coordinator", COORDINATOR_URL
-        ]
-        if self.config.gateway.rate_limit_enabled:
-            gateway_cmd.extend([
-                "--rate-limit",
-                "--rate-limit-max", str(self.config.gateway.rate_limit_max),
-                "--rate-limit-window", str(self.config.gateway.rate_limit_window)
-            ])
+        print(f"   Regions: {', '.join(enabled_regions)}")
+        print(f"   W={self.config.write_quorum}, R={self.config.read_quorum}")
+        print(f"   Service Discovery: {'enabled' if self.config.service_discovery else 'disabled'}")
+        print(f"   Waiting for cluster to initialize...")
+        time.sleep(5)
         
-        self.processes.append(subprocess.Popen(
-            gateway_cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        ))
-        
-        print(f"   Waiting {STARTUP_WAIT}s for cluster to initialize...")
-        time.sleep(STARTUP_WAIT)
+        # Map nodes to regions
+        self._assign_regions_to_nodes(enabled_regions)
         
         # Verify cluster is up
         try:
-            resp = requests.get(f"{GATEWAY_URL}/health", timeout=5)
+            resp = requests.get(f"{COORDINATOR_URL}/status", timeout=5)
             if resp.status_code == 200:
                 print("✅ Cluster started successfully")
                 return True
@@ -189,6 +257,28 @@ class ClusterManager:
         
         print("❌ Cluster failed to start")
         return False
+    
+    def _assign_regions_to_nodes(self, regions: List[str]):
+        """Assign regions to spawned nodes for latency simulation."""
+        try:
+            resp = requests.get(f"{COORDINATOR_URL}/status", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                followers = data.get("followers", [])
+                for i, follower in enumerate(followers):
+                    node_id = follower.get("id", f"follower-{i+1}")
+                    region = regions[i % len(regions)]
+                    self.node_regions[node_id] = region
+        except:
+            pass
+    
+    def get_nearest_region(self, client_region: str) -> str:
+        """Get the nearest node region for a client."""
+        enabled_regions = self.config.get_enabled_regions()
+        if client_region in enabled_regions:
+            return client_region
+        # Find nearest by latency
+        return min(enabled_regions, key=lambda r: LATENCY_MS[client_region][r])
     
     def stop(self):
         """Stop all cluster processes."""
@@ -208,642 +298,309 @@ class ClusterManager:
 # ========================
 
 class TestRunner:
-    """Runs all test categories and collects results."""
+    """Runs assessment tests with latency simulation."""
     
-    def __init__(self, config: StudentConfig):
+    def __init__(self, config: StudentConfig, cluster: ClusterManager):
         self.config = config
-        self.categories: List[TestCategory] = []
+        self.cluster = cluster
+        self.metrics = TestMetrics()
+        self.version_cache: Dict[str, int] = {}  # Track written versions
     
-    def run_all(self) -> List[TestCategory]:
-        """Run all test categories."""
+    def run_all(self) -> TestMetrics:
+        """Run all tests and collect metrics."""
         print("\n" + "=" * 60)
         print("               RUNNING ASSESSMENT TESTS")
         print("=" * 60 + "\n")
         
-        # Rate Limiting Tests - RUN FIRST on fresh window
-        if self.config.gateway.rate_limit_enabled:
-            self.categories.append(self._run_rate_limit_tests())
-            # Wait for rate limit window to reset before other tests
-            window = self.config.gateway.rate_limit_window
-            print(f"\n⏳ Waiting {window}s for rate limit window to reset...")
-            time.sleep(window + 1)
+        # Calculate request distribution
+        total = self.config.total_requests
+        reads = int(total * self.config.rw_ratio / 100)
+        writes = total - reads
         
-        # Quorum Write Tests - uses coordinator directly
-        self.categories.append(self._run_quorum_write_tests())
+        # Distribute across regions equally
+        users_per_region = total // 3
         
-        # Quorum Read Tests - uses coordinator directly
-        self.categories.append(self._run_quorum_read_tests())
+        print(f"📊 Workload: {reads} reads, {writes} writes")
+        print(f"👥 Users: {users_per_region} per region (US, EU, Asia)")
+        print()
         
-        # Failure Recovery Tests - uses coordinator directly
-        self.categories.append(self._run_failure_tests())
+        # Run tests
+        self._run_latency_test(users_per_region)
         
-        # Catchup Tests - uses coordinator directly
-        self.categories.append(self._run_catchup_tests())
+        # Check stale reads
+        self._check_stale_reads()
         
-        return self.categories
+        return self.metrics
     
-    def _run_quorum_write_tests(self) -> TestCategory:
-        """Test quorum write behavior using coordinator directly."""
-        print("📝 Running Quorum Write Tests...")
-        category = TestCategory(name="Quorum Write Tests")
+    def _run_latency_test(self, users_per_region: int):
+        """Run multi-region latency test."""
+        print("🌍 Running Multi-Region Latency Test...")
         
-        # Test 1: Write succeeds with quorum (via coordinator)
+        regions = ["us", "eu", "asia"]
+        reads = int(self.config.rw_ratio / 100 * users_per_region)
+        writes = users_per_region - reads
+        
+        for region in regions:
+            print(f"   📍 {region.upper()} users: {reads} reads, {writes} writes")
+            
+            # Writes
+            for i in range(writes):
+                self._do_write(f"key_{region}_{i}", f"value_{region}_{i}", region)
+            
+            # Reads
+            for i in range(reads):
+                key = f"key_{region}_{i % max(1, writes)}"  # Read existing keys
+                self._do_read(key, region)
+        
+        print(f"\n   ✅ Completed: {self.metrics.successful_requests}/{self.metrics.total_requests}")
+        print(f"   📈 P95 Latency: {self.metrics.p95_latency:.1f}ms")
+        print(f"   📊 Avg Latency: {self.metrics.avg_latency:.1f}ms")
+    
+    def _do_write(self, key: str, value: str, client_region: str):
+        """Perform a write with latency simulation."""
+        self.metrics.total_requests += 1
+        
+        # Simulate latency to leader (writes always go to leader)
+        # For simplicity, assume leader is in the first enabled region
+        leader_region = self.config.get_enabled_regions()[0]
+        start_time = time.time()
+        
+        # Outbound latency
+        simulate_latency(client_region, leader_region)
+        
         try:
             resp = requests.post(
                 f"{COORDINATOR_URL}/write",
-                json={"key": "test_write_1", "value": "hello"},
-                timeout=10
+                json={"key": key, "value": value},
+                timeout=30
             )
-            passed = resp.status_code == 200
-            category.results.append(TestResult(
-                name="Write succeeds with quorum",
-                passed=passed,
-                message=f"Status: {resp.status_code}",
-                details=resp.json() if passed else {}
-            ))
-        except Exception as e:
-            category.results.append(TestResult(
-                name="Write succeeds with quorum",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        # Test 2: Verify sync acks match W
-        try:
-            resp = requests.post(
-                f"{COORDINATOR_URL}/write",
-                json={"key": "test_write_2", "value": "world"},
-                timeout=10
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                sync_acks = data.get("sync_acks", 0)
-                passed = sync_acks >= self.config.cluster.write_quorum
-                category.results.append(TestResult(
-                    name=f"Sync acks meet quorum (W={self.config.cluster.write_quorum})",
-                    passed=passed,
-                    message=f"Got {sync_acks} acks",
-                    details=data
-                ))
-            else:
-                category.results.append(TestResult(
-                    name=f"Sync acks meet quorum (W={self.config.cluster.write_quorum})",
-                    passed=False,
-                    message=f"Write failed: {resp.status_code}"
-                ))
-        except Exception as e:
-            category.results.append(TestResult(
-                name=f"Sync acks meet quorum (W={self.config.cluster.write_quorum})",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        # Test 3: Write version increments correctly
-        try:
-            resp1 = requests.post(
-                f"{COORDINATOR_URL}/write",
-                json={"key": "version_test", "value": "v1"},
-                timeout=10
-            )
-            resp2 = requests.post(
-                f"{COORDINATOR_URL}/write",
-                json={"key": "version_test", "value": "v2"},
-                timeout=10
-            )
-            if resp1.status_code == 200 and resp2.status_code == 200:
-                v1 = resp1.json().get("version", 0)
-                v2 = resp2.json().get("version", 0)
-                passed = v2 > v1
-                category.results.append(TestResult(
-                    name="Version increments on write",
-                    passed=passed,
-                    message=f"v1={v1}, v2={v2}",
-                    details={"version_1": v1, "version_2": v2}
-                ))
-            else:
-                category.results.append(TestResult(
-                    name="Version increments on write",
-                    passed=False,
-                    message="Write failed"
-                ))
-        except Exception as e:
-            category.results.append(TestResult(
-                name="Version increments on write",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        self._print_category_results(category)
-        return category
-    
-    def _run_quorum_read_tests(self) -> TestCategory:
-        """Test quorum read behavior using coordinator directly."""
-        print("\n📖 Running Quorum Read Tests...")
-        category = TestCategory(name="Quorum Read Tests")
-        
-        # Ensure we have data to read (via coordinator)
-        requests.post(f"{COORDINATOR_URL}/write", json={"key": "read_test", "value": "data"}, timeout=10)
-        time.sleep(1)  # Allow replication
-        
-        # Test 1: Read returns data (via coordinator)
-        try:
-            resp = requests.get(f"{COORDINATOR_URL}/read/read_test", timeout=10)
-            passed = resp.status_code == 200 and resp.json().get("value") == "data"
-            category.results.append(TestResult(
-                name="Read returns correct data",
-                passed=passed,
-                message=f"Status: {resp.status_code}",
-                details=resp.json() if resp.status_code == 200 else {}
-            ))
-        except Exception as e:
-            category.results.append(TestResult(
-                name="Read returns correct data",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        # Test 2: Read from followers (check served_by)
-        try:
-            resp = requests.get(f"{COORDINATOR_URL}/read/read_test", timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                served_by = data.get("served_by", "")
-                passed = "follower" in served_by.lower() or served_by != "leader"
-                category.results.append(TestResult(
-                    name="Read routes to followers first",
-                    passed=passed,
-                    message=f"Served by: {served_by}",
-                    details=data
-                ))
-            else:
-                category.results.append(TestResult(
-                    name="Read routes to followers first",
-                    passed=False,
-                    message=f"Read failed: {resp.status_code}"
-                ))
-        except Exception as e:
-            category.results.append(TestResult(
-                name="Read routes to followers first",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        # Test 3: Quorum responses
-        try:
-            resp = requests.get(f"{COORDINATOR_URL}/read/read_test", timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                quorum_responses = data.get("quorum_responses", 0)
-                passed = quorum_responses >= self.config.cluster.read_quorum
-                category.results.append(TestResult(
-                    name=f"Read quorum met (R={self.config.cluster.read_quorum})",
-                    passed=passed,
-                    message=f"Got {quorum_responses} responses",
-                    details=data
-                ))
-            else:
-                category.results.append(TestResult(
-                    name=f"Read quorum met (R={self.config.cluster.read_quorum})",
-                    passed=False,
-                    message=f"Read failed: {resp.status_code}"
-                ))
-        except Exception as e:
-            category.results.append(TestResult(
-                name=f"Read quorum met (R={self.config.cluster.read_quorum})",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        # Test 4: Read non-existent key returns 404
-        try:
-            resp = requests.get(f"{COORDINATOR_URL}/read/nonexistent_key_xyz", timeout=10)
-            passed = resp.status_code == 404
-            category.results.append(TestResult(
-                name="Read non-existent key returns 404",
-                passed=passed,
-                message=f"Status: {resp.status_code}",
-                details={}
-            ))
-        except Exception as e:
-            category.results.append(TestResult(
-                name="Read non-existent key returns 404",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        self._print_category_results(category)
-        return category
-    
-    def _run_rate_limit_tests(self) -> TestCategory:
-        """Test rate limiting behavior."""
-        print("\n🛡️ Running Rate Limit Tests...")
-        category = TestCategory(name="Rate Limit Tests")
-        
-        max_req = self.config.gateway.rate_limit_max
-        
-        # Test 1: Basic limit enforcement
-        allowed_count = 0
-        rejected_at = None
-        
-        try:
-            for i in range(max_req + 5):
-                resp = requests.get(f"{GATEWAY_URL}/read/rate_test_{i}", timeout=5)
-                if resp.status_code == 200 or resp.status_code == 404:
-                    allowed_count += 1
-                elif resp.status_code == 429:
-                    rejected_at = i + 1
-                    break
             
-            passed = rejected_at is not None and abs(allowed_count - max_req) <= 1
-            category.results.append(TestResult(
-                name=f"Rate limit enforced at {max_req} requests",
-                passed=passed,
-                message=f"Allowed: {allowed_count}, Rejected at request #{rejected_at}" if rejected_at else f"Never rejected (allowed {allowed_count})",
-                details={"allowed": allowed_count, "limit": max_req}
-            ))
-        except Exception as e:
-            category.results.append(TestResult(
-                name=f"Rate limit enforced at {max_req} requests",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        # Test 2: Rate limit headers present
-        try:
-            # Make a request that gets rate limited
-            for _ in range(max_req + 2):
-                resp = requests.get(f"{GATEWAY_URL}/read/header_test", timeout=5)
+            # Return latency
+            simulate_latency(leader_region, client_region)
             
-            has_headers = "X-RateLimit-Limit" in resp.headers or "Retry-After" in resp.headers
-            category.results.append(TestResult(
-                name="Rate limit headers present",
-                passed=has_headers,
-                message="Headers found" if has_headers else "Headers missing",
-                details=dict(resp.headers)
-            ))
+            elapsed = (time.time() - start_time) * 1000  # ms
+            
+            if resp.status_code == 200:
+                self.metrics.successful_requests += 1
+                self.metrics.latencies.append(elapsed)
+                # Track version for stale read detection
+                data = resp.json()
+                self.version_cache[key] = data.get("version", 1)
+            else:
+                self.metrics.failed_requests += 1
         except Exception as e:
-            category.results.append(TestResult(
-                name="Rate limit headers present",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        self._print_category_results(category)
-        return category
+            self.metrics.failed_requests += 1
     
-    def _run_failure_tests(self) -> TestCategory:
-        """Test failure recovery behavior using coordinator directly."""
-        print("\n💥 Running Failure Recovery Tests...")
-        category = TestCategory(name="Failure Recovery Tests")
+    def _do_read(self, key: str, client_region: str):
+        """Perform a read with latency simulation."""
+        self.metrics.total_requests += 1
         
-        c = self.config.cluster
+        # Reads go to nearest replica
+        nearest_region = self.cluster.get_nearest_region(client_region)
+        start_time = time.time()
         
-        # Test 1: Write after killing one follower (if quorum allows)
-        if c.followers > c.write_quorum:
-            try:
-                # Kill one follower
-                requests.post(f"{COORDINATOR_URL}/kill/follower-1", timeout=5)
-                time.sleep(2)  # Wait for health check
+        # Outbound latency
+        simulate_latency(client_region, nearest_region)
+        
+        try:
+            resp = requests.get(f"{COORDINATOR_URL}/read/{key}", timeout=10)
+            
+            # Return latency
+            simulate_latency(nearest_region, client_region)
+            
+            elapsed = (time.time() - start_time) * 1000  # ms
+            
+            if resp.status_code == 200:
+                self.metrics.successful_requests += 1
+                self.metrics.latencies.append(elapsed)
                 
-                # Try to write via coordinator (bypasses gateway rate limit)
-                resp = requests.post(
-                    f"{COORDINATOR_URL}/write",
-                    json={"key": "failure_test_1", "value": "resilient"},
-                    timeout=10
-                )
-                passed = resp.status_code == 200
-                category.results.append(TestResult(
-                    name="Write succeeds after 1 follower killed",
-                    passed=passed,
-                    message=f"Status: {resp.status_code}",
-                    details=resp.json() if passed else {}
-                ))
-            except Exception as e:
-                category.results.append(TestResult(
-                    name="Write succeeds after 1 follower killed",
-                    passed=False,
-                    message=f"Error: {e}"
-                ))
-        
-        # Test 2: Read still works after failure
-        try:
-            resp = requests.get(f"{COORDINATOR_URL}/read/failure_test_1", timeout=10)
-            passed = resp.status_code == 200
-            category.results.append(TestResult(
-                name="Read works after follower killed",
-                passed=passed,
-                message=f"Status: {resp.status_code}",
-                details=resp.json() if passed else {}
-            ))
-        except Exception as e:
-            category.results.append(TestResult(
-                name="Read works after follower killed",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        # Test 3: Quorum lost detection
-        try:
-            # Kill enough followers to break quorum
-            alive_followers = c.followers - 1  # Already killed 1
-            to_kill = alive_followers - c.write_quorum + 1
-            
-            for i in range(2, 2 + to_kill):
-                requests.post(f"{COORDINATOR_URL}/kill/follower-{i}", timeout=5)
-            time.sleep(2)
-            
-            # Try to write - should fail with 503
-            resp = requests.post(
-                f"{COORDINATOR_URL}/write",
-                json={"key": "failure_test_2", "value": "should_fail"},
-                timeout=10
-            )
-            passed = resp.status_code == 503
-            category.results.append(TestResult(
-                name="Quorum lost correctly detected",
-                passed=passed,
-                message=f"Status: {resp.status_code} (expected 503)",
-                details={}
-            ))
-        except Exception as e:
-            category.results.append(TestResult(
-                name="Quorum lost correctly detected",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        # Respawn followers for remaining tests
-        for i in range(1, c.followers + 1):
-            try:
-                requests.post(f"{COORDINATOR_URL}/spawn", timeout=5)
-            except:
-                pass
-        time.sleep(3)
-        
-        self._print_category_results(category)
-        return category
-    
-    def _run_catchup_tests(self) -> TestCategory:
-        """Test catchup behavior using coordinator directly."""
-        print("\n🔄 Running Catchup Tests...")
-        category = TestCategory(name="Catchup Tests")
-        
-        # Test 1: Write data, spawn new follower, verify it has data
-        try:
-            # Write some data via coordinator
-            unique_key = f"catchup_test_{int(time.time())}"
-            requests.post(
-                f"{COORDINATOR_URL}/write",
-                json={"key": unique_key, "value": "catchup_value"},
-                timeout=10
-            )
-            time.sleep(1)
-            
-            # Spawn a new follower
-            spawn_resp = requests.post(f"{COORDINATOR_URL}/spawn", timeout=5)
-            time.sleep(3)  # Wait for catchup
-            
-            # Read the data via coordinator
-            read_resp = requests.get(f"{COORDINATOR_URL}/read/{unique_key}", timeout=10)
-            
-            passed = read_resp.status_code == 200 and read_resp.json().get("value") == "catchup_value"
-            category.results.append(TestResult(
-                name="New follower receives data via catchup",
-                passed=passed,
-                message=f"Read status: {read_resp.status_code}",
-                details=read_resp.json() if read_resp.status_code == 200 else {}
-            ))
-        except Exception as e:
-            category.results.append(TestResult(
-                name="New follower receives data via catchup",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        # Test 2: Snapshot endpoint works
-        try:
-            # Get status to find leader URL
-            status_resp = requests.get(f"{COORDINATOR_URL}/status", timeout=5)
-            if status_resp.status_code == 200:
-                leader_url = status_resp.json().get("leader", {}).get("url")
-                if leader_url:
-                    snapshot_resp = requests.get(f"{leader_url}/snapshot", timeout=5)
-                    passed = snapshot_resp.status_code == 200 and "data" in snapshot_resp.json()
-                    category.results.append(TestResult(
-                        name="Snapshot endpoint returns full state",
-                        passed=passed,
-                        message=f"Status: {snapshot_resp.status_code}",
-                        details={"keys_in_snapshot": len(snapshot_resp.json().get("data", {}))}
-                    ))
-                else:
-                    category.results.append(TestResult(
-                        name="Snapshot endpoint returns full state",
-                        passed=False,
-                        message="Could not find leader URL"
-                    ))
-            else:
-                category.results.append(TestResult(
-                    name="Snapshot endpoint returns full state",
-                    passed=False,
-                    message=f"Status check failed: {status_resp.status_code}"
-                ))
-        except Exception as e:
-            category.results.append(TestResult(
-                name="Snapshot endpoint returns full state",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        # Test 3: Cluster status endpoint works
-        try:
-            resp = requests.get(f"{COORDINATOR_URL}/status", timeout=5)
-            if resp.status_code == 200:
+                # Check for stale read
                 data = resp.json()
-                has_leader = data.get("leader") is not None
-                has_followers = len(data.get("followers", [])) > 0
-                has_quorum_info = "quorum" in data
-                passed = has_leader and has_followers and has_quorum_info
-                category.results.append(TestResult(
-                    name="Cluster status endpoint works",
-                    passed=passed,
-                    message=f"Leader: {has_leader}, Followers: {has_followers}",
-                    details=data
-                ))
+                read_version = data.get("version", 0)
+                expected_version = self.version_cache.get(key, 0)
+                if read_version < expected_version:
+                    self.metrics.stale_reads += 1
+            elif resp.status_code == 404:
+                # Key doesn't exist yet, still counts as successful
+                self.metrics.successful_requests += 1
+                self.metrics.latencies.append(elapsed)
             else:
-                category.results.append(TestResult(
-                    name="Cluster status endpoint works",
-                    passed=False,
-                    message=f"Status: {resp.status_code}"
-                ))
+                self.metrics.failed_requests += 1
         except Exception as e:
-            category.results.append(TestResult(
-                name="Cluster status endpoint works",
-                passed=False,
-                message=f"Error: {e}"
-            ))
-        
-        self._print_category_results(category)
-        return category
+            self.metrics.failed_requests += 1
     
-    def _print_category_results(self, category: TestCategory):
-        """Print results for a category."""
-        for result in category.results:
-            icon = "✅" if result.passed else "❌"
-            print(f"   {icon} {result.name}: {result.message}")
+    def _check_stale_reads(self):
+        """Report stale reads status."""
+        print(f"\n🔄 Stale Read Check...")
+        if self.metrics.stale_reads > 0:
+            if self.config.stale_reads_allowed:
+                print(f"   ⚠️ {self.metrics.stale_reads} stale reads (allowed in config)")
+            else:
+                print(f"   ❌ {self.metrics.stale_reads} stale reads (NOT allowed - FAIL)")
+        else:
+            print(f"   ✅ No stale reads detected")
 
 
 # ========================
-# Grader
+# Scorer
 # ========================
 
-class Grader:
-    """Calculate scores and generate report."""
+class Scorer:
+    """Calculate scores based on metrics."""
     
-    def __init__(self, config: StudentConfig, categories: List[TestCategory]):
+    def __init__(
+        self, 
+        config: StudentConfig, 
+        metrics: TestMetrics,
+        ideal_cost: int = None,
+        ideal_p95: float = None,
+        ideal_availability: float = None,
+        weights: Dict[str, int] = None
+    ):
         self.config = config
-        self.categories = categories
+        self.metrics = metrics
+        self.ideal_cost = ideal_cost or 100
+        self.ideal_p95 = ideal_p95 or 200
+        self.ideal_availability = ideal_availability or 100
+        self.weights = weights or DEFAULT_WEIGHTS
     
-    def get_score(self) -> Tuple[int, int]:
-        """Get (passed, total) counts."""
-        passed = sum(c.passed_count for c in self.categories)
-        total = sum(c.total_count for c in self.categories)
-        return passed, total
-    
-    def get_grade(self) -> str:
-        """Get letter grade."""
-        passed, total = self.get_score()
-        if total == 0:
-            return "N/A"
+    def calculate_score(self) -> Dict[str, float]:
+        """Calculate component and total scores."""
+        student_cost = self.config.calculate_cost()
         
-        pct = passed / total
-        if pct >= 0.9:
-            return "A"
-        elif pct >= 0.8:
-            return "B"
-        elif pct >= 0.7:
-            return "C"
-        elif pct >= 0.6:
-            return "D"
-        else:
-            return "F"
-    
-    def generate_feedback(self) -> List[str]:
-        """Generate feedback based on config and results."""
-        feedback = []
-        c = self.config.cluster
+        # Cost score (lower is better)
+        cost_ratio = self.ideal_cost / max(student_cost, 1)
+        cost_score = min(100, cost_ratio * 100)
         
-        # Check quorum configuration
-        if c.followers >= c.write_quorum + 1:
-            feedback.append(f"✓ Good fault tolerance: can lose {c.followers - c.write_quorum} follower(s)")
-        else:
-            feedback.append(f"⚠ Tight quorum: no room for follower failures")
+        # Latency score (lower is better)
+        latency_ratio = self.ideal_p95 / max(self.metrics.p95_latency, 1)
+        latency_score = min(100, latency_ratio * 100)
         
-        if c.read_quorum == 1:
-            feedback.append("✓ R=1 provides fast reads (eventual consistency)")
-        elif c.read_quorum > 1:
-            feedback.append(f"✓ R={c.read_quorum} provides stronger read consistency")
+        # Availability score
+        avail_ratio = self.metrics.availability / self.ideal_availability
+        availability_score = min(100, avail_ratio * 100)
         
-        if self.config.gateway.rate_limit_enabled:
-            feedback.append("✓ Rate limiting protects cluster from overload")
-        else:
-            feedback.append("⚠ Rate limiting disabled - cluster vulnerable to overload")
+        # Stale read penalty
+        stale_penalty = 0
+        if not self.config.stale_reads_allowed and self.metrics.stale_reads > 0:
+            stale_penalty = self.metrics.stale_reads * 20
         
-        return feedback
-    
-    def print_report(self):
-        """Print the full grading report."""
-        passed, total = self.get_score()
-        grade = self.get_grade()
-        c = self.config.cluster
-        g = self.config.gateway
+        # Weighted total
+        total = (
+            (self.weights["cost"] / 100) * cost_score +
+            (self.weights["latency"] / 100) * latency_score +
+            (self.weights["availability"] / 100) * availability_score
+            - stale_penalty
+        )
         
-        print("\n")
-        print("╔" + "═" * 68 + "╗")
-        print("║" + "DISTRIBUTED KV STORE - ASSESSMENT RESULTS".center(68) + "║")
-        print("╠" + "═" * 68 + "╣")
-        
-        config_line = f"Config: W={c.write_quorum}, R={c.read_quorum}, Followers={c.followers}"
-        if g.rate_limit_enabled:
-            config_line += f", Rate Limit={g.rate_limit_max}/{g.rate_limit_window}s"
-        print("║  " + config_line.ljust(66) + "║")
-        
-        print("╠" + "═" * 68 + "╣")
-        
-        for category in self.categories:
-            print("║" + " " * 68 + "║")
-            print("║  " + category.name.upper().ljust(66) + "║")
-            
-            for result in category.results:
-                icon = "✅" if result.passed else "❌"
-                line = f"{icon} {result.name}"
-                if len(line) > 64:
-                    line = line[:61] + "..."
-                print("║  ├─ " + line.ljust(62) + "║")
-        
-        print("║" + " " * 68 + "║")
-        print("╠" + "═" * 68 + "╣")
-        print("║  " + f"SCORE: {passed}/{total} tests passed".ljust(66) + "║")
-        print("║  " + f"GRADE: {grade}".ljust(66) + "║")
-        print("║" + " " * 68 + "║")
-        print("║  " + "FEEDBACK:".ljust(66) + "║")
-        
-        for fb in self.generate_feedback():
-            if len(fb) > 64:
-                fb = fb[:61] + "..."
-            print("║  " + f"• {fb}".ljust(66) + "║")
-        
-        print("╚" + "═" * 68 + "╝")
+        return {
+            "cost_score": cost_score,
+            "latency_score": latency_score,
+            "availability_score": availability_score,
+            "stale_penalty": stale_penalty,
+            "total": max(0, total),
+        }
 
 
 # ========================
-# Main Entry Point
+# Report Generator
+# ========================
+
+def print_report(config: StudentConfig, metrics: TestMetrics, scores: Dict[str, float]):
+    """Print the final grading report."""
+    cost = config.calculate_cost()
+    
+    print("\n")
+    print("╔" + "═" * 68 + "╗")
+    print("║" + "MULTI-REGION ASSESSMENT RESULTS".center(68) + "║")
+    print("╠" + "═" * 68 + "╣")
+    
+    # Configuration
+    regions = ", ".join(r.upper() for r in config.get_enabled_regions())
+    print("║  " + f"Regions: {regions}".ljust(66) + "║")
+    print("║  " + f"Quorum: W={config.write_quorum}, R={config.read_quorum}".ljust(66) + "║")
+    print("║  " + f"Service Discovery: {'Yes' if config.service_discovery else 'No'}".ljust(66) + "║")
+    print("║  " + f"Total Cost: {cost} credits".ljust(66) + "║")
+    
+    print("╠" + "═" * 68 + "╣")
+    
+    # Metrics
+    print("║  " + "METRICS".ljust(66) + "║")
+    print("║  " + f"├─ Requests: {metrics.successful_requests}/{metrics.total_requests} successful".ljust(66) + "║")
+    print("║  " + f"├─ P95 Latency: {metrics.p95_latency:.1f}ms".ljust(66) + "║")
+    print("║  " + f"├─ Avg Latency: {metrics.avg_latency:.1f}ms".ljust(66) + "║")
+    print("║  " + f"├─ Availability: {metrics.availability:.1f}%".ljust(66) + "║")
+    print("║  " + f"└─ Stale Reads: {metrics.stale_reads}".ljust(66) + "║")
+    
+    print("╠" + "═" * 68 + "╣")
+    
+    # Scores
+    print("║  " + "SCORES".ljust(66) + "║")
+    print("║  " + f"├─ Cost Score: {scores['cost_score']:.1f}/100".ljust(66) + "║")
+    print("║  " + f"├─ Latency Score: {scores['latency_score']:.1f}/100".ljust(66) + "║")
+    print("║  " + f"├─ Availability Score: {scores['availability_score']:.1f}/100".ljust(66) + "║")
+    if scores["stale_penalty"] > 0:
+        print("║  " + f"├─ Stale Read Penalty: -{scores['stale_penalty']:.0f}".ljust(66) + "║")
+    print("║  " + f"└─ TOTAL SCORE: {scores['total']:.1f}/100".ljust(66) + "║")
+    
+    print("╚" + "═" * 68 + "╝")
+
+
+# ========================
+# Main
 # ========================
 
 def main():
-    parser = argparse.ArgumentParser(description="Distributed KV Store - Assessment Script")
-    parser.add_argument("--config", type=str, required=True, help="Path to student config YAML")
-    parser.add_argument("--no-start-cluster", action="store_true", 
-                        help="Don't start cluster (assumes it's already running)")
+    parser = argparse.ArgumentParser(description="Multi-Region Distributed KV Store Assessment")
+    parser.add_argument("--config", type=str, required=True, help="Path to student config file")
+    parser.add_argument("--ideal", action="store_true", help="Run ideal baseline config")
+    parser.add_argument("--cost-weight", type=int, default=33, help="Cost weight (0-100)")
+    parser.add_argument("--latency-weight", type=int, default=33, help="Latency weight (0-100)")
+    parser.add_argument("--availability-weight", type=int, default=34, help="Availability weight (0-100)")
     
     args = parser.parse_args()
     
-    # Load student config
-    print("\n📋 Loading student configuration...")
+    # Load config
+    print("\n📋 Loading configuration...")
     try:
         config = StudentConfig.from_file(args.config)
-        print(f"   Cluster: {config.cluster.followers} followers, W={config.cluster.write_quorum}, R={config.cluster.read_quorum}")
-        print(f"   Gateway: Rate limit {'enabled' if config.gateway.rate_limit_enabled else 'disabled'}")
-        if config.gateway.rate_limit_enabled:
-            print(f"            {config.gateway.rate_limit_max} requests per {config.gateway.rate_limit_window}s")
+        print(f"   Regions: {config.get_enabled_regions()}")
+        print(f"   Quorum: W={config.write_quorum}, R={config.read_quorum}")
+        print(f"   R/W Ratio: {config.rw_ratio}% reads")
+        print(f"   Cost: {config.calculate_cost()} credits")
     except Exception as e:
         print(f"❌ Failed to load config: {e}")
         sys.exit(1)
     
-    cluster_manager = None
+    cluster = None
     
     try:
-        # Start cluster if needed
-        if not args.no_start_cluster:
-            cluster_manager = ClusterManager(config)
-            if not cluster_manager.start():
-                print("❌ Failed to start cluster. Exiting.")
-                sys.exit(1)
-        else:
-            print("\n⏭️ Skipping cluster startup (--no-start-cluster)")
+        # Start cluster
+        cluster = ClusterManager(config)
+        if not cluster.start():
+            sys.exit(1)
         
         # Run tests
-        runner = TestRunner(config)
-        categories = runner.run_all()
+        runner = TestRunner(config, cluster)
+        metrics = runner.run_all()
         
-        # Generate report
-        grader = Grader(config, categories)
-        grader.print_report()
+        # Calculate scores
+        weights = {
+            "cost": args.cost_weight,
+            "latency": args.latency_weight,
+            "availability": args.availability_weight,
+        }
+        scorer = Scorer(config, metrics, weights=weights)
+        scores = scorer.calculate_score()
+        
+        # Print report
+        print_report(config, metrics, scores)
         
     except KeyboardInterrupt:
         print("\n\n⚠️ Assessment interrupted")
     finally:
-        if cluster_manager:
-            cluster_manager.stop()
+        if cluster:
+            cluster.stop()
 
 
 if __name__ == "__main__":
