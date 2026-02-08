@@ -326,30 +326,83 @@ def run_verify_burst_test(key_prefix: str, count: int) -> TestResult:
         message=f"{successes}/{count} verified"
     )
 
-def run_flood_test(count: int) -> TestResult:
-    """Flood requests to test rate limiting."""
-    rate_limited = 0
-    for i in range(count):
-        try:
-            resp = requests.get(f"{GATEWAY_URL}/read/flood_test_{i}", timeout=2)
-            if resp.status_code == 429:
-                rate_limited += 1
-        except:
-            pass
+def run_stale_read_test(key: str) -> TestResult:
+    """
+    Test for stale reads due to async replication lag.
     
-    if rate_limited > 0:
-        return TestResult(
-            test_id="flood",
-            description=f"Flood test ({count} requests)",
-            passed=True,
-            message=f"Rate limited {rate_limited} requests"
+    1. Write a value and get version
+    2. Immediately read
+    3. Compare versions - if read version < write version, it's stale
+    """
+    value = f"stale_test_value_{int(time.time())}"
+    
+    # Write via coordinator and capture the version
+    try:
+        resp = requests.post(
+            f"{COORDINATOR_URL}/write",
+            json={"key": key, "value": value},
+            timeout=10
         )
-    else:
+        if resp.status_code != 200:
+            return TestResult(
+                test_id="stale_read",
+                description="Stale read detection",
+                passed=False,
+                message=f"Write failed: {resp.status_code}"
+            )
+        
+        write_result = resp.json()
+        written_version = write_result.get("version", 0)
+    except Exception as e:
         return TestResult(
-            test_id="flood",
-            description=f"Flood test ({count} requests)",
+            test_id="stale_read",
+            description="Stale read detection",
             passed=False,
-            message="No requests were rate limited"
+            message=f"Write error: {e}"
+        )
+    
+    # Immediately read - check if version matches
+    try:
+        resp = requests.get(f"{COORDINATOR_URL}/read/{key}", timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            read_version = data.get("version", 0)
+            served_by = data.get("served_by", "unknown")
+            
+            if read_version < written_version:
+                return TestResult(
+                    test_id="stale_read",
+                    description="Stale read detection",
+                    passed=False,
+                    message=f"Stale! Wrote v{written_version}, got v{read_version} (from {served_by})"
+                )
+            else:
+                return TestResult(
+                    test_id="stale_read",
+                    description="Stale read detection",
+                    passed=True,
+                    message=f"Fresh read: v{read_version} (from {served_by})"
+                )
+        elif resp.status_code == 404:
+            return TestResult(
+                test_id="stale_read",
+                description="Stale read detection",
+                passed=False,
+                message=f"Stale! Key not found yet (wrote v{written_version})"
+            )
+        else:
+            return TestResult(
+                test_id="stale_read",
+                description="Stale read detection",
+                passed=False,
+                message=f"Read failed: {resp.status_code}"
+            )
+    except Exception as e:
+        return TestResult(
+            test_id="stale_read",
+            description="Stale read detection",
+            passed=False,
+            message=f"Read error: {e}"
         )
 
 # ========================
@@ -377,8 +430,8 @@ def run_scenario(scenario: dict) -> ScenarioResult:
             result = run_burst_test(test["operation"], test["count"], test["key_prefix"])
         elif test_type == "verify_burst":
             result = run_verify_burst_test(test["key_prefix"], test["count"])
-        elif test_type == "flood":
-            result = run_flood_test(test["count"])
+        elif test_type == "stale_read":
+            result = run_stale_read_test(test.get("key", "stale_test"))
         else:
             result = TestResult(
                 test_id=test.get("id", "unknown"),
@@ -427,9 +480,6 @@ def print_results(scenario_results: List[ScenarioResult],
                   instructor_config: dict):
     """Print final assessment results."""
     
-    cost_model = instructor_config.get("cost_model", {})
-    total_cost, cost_efficiency = calculate_cost(student_config, cost_model)
-    
     total_score = 0
     max_score = 0
     
@@ -443,15 +493,6 @@ def print_results(scenario_results: List[ScenarioResult],
         pct = (result.passed / result.total * 100) if result.total > 0 else 0
         print(f"║  {result.name:<30} {result.passed}/{result.total} ({pct:.0f}%) │ {result.score:.1f}/{result.weight} pts ║")
     
-    # Add cost efficiency
-    scoring = instructor_config.get("scoring", {})
-    cost_weight = scoring.get("cost_efficiency_weight", 15)
-    cost_score = (cost_efficiency / 100) * cost_weight
-    total_score += cost_score
-    max_score += cost_weight
-    
-    print("╠══════════════════════════════════════════════════════════════════════╣")
-    print(f"║  💰 Cost: ${total_cost}/hour (Efficiency: {cost_efficiency:.0f}%) │ {cost_score:.1f}/{cost_weight} pts ║")
     print("╠══════════════════════════════════════════════════════════════════════╣")
     
     percentage = (total_score / max_score * 100) if max_score > 0 else 0

@@ -4,31 +4,27 @@
             "id": "scenario_1",
             "name": "Fault Tolerance",
             "description": "System must continue operating after 1 node failure",
-            "weight": 40,
+            "weight": 50,
             "tests": [
                 {
                     "id": "basic_write",
-                    "description": "Write a key-value pair successfully",
                     "type": "write",
                     "key": "test_key",
                     "value": "test_value"
                 },
                 {
                     "id": "kill_one_follower",
-                    "description": "Kill one follower node",
                     "type": "kill_node",
                     "target": "follower-1"
                 },
                 {
                     "id": "write_after_failure",
-                    "description": "Write should still succeed after 1 node dies",
                     "type": "write",
                     "key": "after_failure",
                     "value": "still_works"
                 },
                 {
                     "id": "read_after_failure",
-                    "description": "Read should return correct value",
                     "type": "read",
                     "key": "after_failure",
                     "expected_value": "still_works"
@@ -37,56 +33,16 @@
         },
         {
             "id": "scenario_2",
-            "name": "Consistency Under Stress",
-            "description": "Reads return correct values under load",
-            "weight": 30,
+            "name": "Stale Read Detection",
+            "description": "Check if read returns the version just written (tests async lag)",
+            "weight": 50,
             "tests": [
                 {
-                    "id": "burst_writes",
-                    "description": "Write multiple keys rapidly",
-                    "type": "burst",
-                    "operation": "write",
-                    "count": 10,
-                    "key_prefix": "burst"
-                },
-                {
-                    "id": "verify_burst",
-                    "description": "All burst writes should be readable",
-                    "type": "verify_burst",
-                    "key_prefix": "burst",
-                    "count": 10
-                }
-            ]
-        },
-        {
-            "id": "scenario_3",
-            "name": "Rate Limiting Protection",
-            "description": "Gateway properly rate limits excessive requests",
-            "weight": 15,
-            "tests": [
-                {
-                    "id": "exceed_rate_limit",
-                    "description": "Send more requests than rate limit allows",
-                    "type": "flood",
-                    "count": 20,
-                    "expect_rate_limited": true
+                    "id": "stale_read_test",
+                    "type": "stale_read",
+                    "key": "stale_test"
                 }
             ]
         }
-    ],
-    "cost_model": {
-        "per_follower_cost": 10,
-        "description": "Each follower costs $10/hour. More replicas = higher availability but higher cost."
-    },
-    "scoring": {
-        "availability_weight": 40,
-        "consistency_weight": 30,
-        "rate_limiting_weight": 15,
-        "cost_efficiency_weight": 15
-    },
-    "thresholds": {
-        "max_latency_ms": 500,
-        "min_followers_for_high_availability": 3,
-        "ideal_cost_per_hour": 30
-    }
+    ]
 }
