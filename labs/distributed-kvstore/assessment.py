@@ -1,567 +1,568 @@
+#!/usr/bin/env python3
 """
-Multi-Region Distributed KV Store Assessment
+Distributed KV Store Lab - Assessment Script
 
-Tests student configurations for cost, latency, availability, and consistency.
-Simulates multi-region deployment with realistic latency.
-
-Usage:
-    python assessment.py --config student_config.yaml
-    python assessment.py --config student_config.yaml --ideal  # Run ideal baseline
+Evaluates student configurations against test scenarios.
+Runs the cluster with student config and scores based on:
+- Fault tolerance (can survive node failures)
+- Consistency (reads return correct values)
+- Rate limiting (gateway protection works)
+- Cost efficiency (not over-provisioning)
 """
 
+import argparse
 import json
+import subprocess
 import time
 import requests
-import argparse
-import subprocess
 import sys
 import os
-import random
-import statistics
-from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple
-from datetime import datetime
-
-# Optional YAML support
-try:
-    import yaml
-    YAML_AVAILABLE = True
-except ImportError:
-    YAML_AVAILABLE = False
-
+import signal
+from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
 
 # ========================
-# Constants
+# Configuration
 # ========================
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+COORDINATOR_SCRIPT = os.path.join(SCRIPT_DIR, "coordinator.py")
+GATEWAY_SCRIPT = os.path.join(SCRIPT_DIR, "gateway.py")
+REGISTRY_SCRIPT = os.path.join(SCRIPT_DIR, "registry.py")
 
 COORDINATOR_URL = "http://localhost:7000"
+GATEWAY_URL = "http://localhost:8000"
 REGISTRY_URL = "http://localhost:9000"
 
-# Latency matrix (ms) - one-way latency between regions
-# Format: LATENCY[from_region][to_region]
-LATENCY_MS = {
-    "us": {"us": 3, "eu": 120, "asia": 200},
-    "eu": {"us": 120, "eu": 3, "asia": 95},
-    "asia": {"us": 200, "eu": 95, "asia": 3},
-}
-
-# Node pricing (dollars per node per region)
-NODE_COST = {
-    "asia": 10,
-    "us": 12,
-    "eu": 15,
-}
-
-
 # ========================
-# Student Config Schema
+# Result Tracking
 # ========================
 
 @dataclass
-class StudentConfig:
-    # Leader deployment
-    leader_region: str = "us"
-    
-    # Followers per region
-    followers: Dict[str, int] = field(default_factory=lambda: {"us": 0, "eu": 1, "asia": 1})
-    
-    # Quorum
-    write_quorum: int = 2
-    read_quorum: int = 2
-    
-    # Workload (set by instructor)
-    rw_ratio: int = 80  # percentage reads
-    total_requests: int = 100
-    stale_reads_allowed: bool = False
-    
-    # Justification
-    justification: str = ""
-    
-    @classmethod
-    def from_file(cls, path: str) -> "StudentConfig":
-        """Load config from JSON or YAML file."""
-        with open(path, 'r') as f:
-            if path.endswith('.yaml') or path.endswith('.yml'):
-                if not YAML_AVAILABLE:
-                    raise ImportError("PyYAML not installed. Use JSON or: pip install pyyaml")
-                data = yaml.safe_load(f)
-            else:
-                data = json.load(f)
-        
-        config = cls()
-        
-        if "leader_region" in data:
-            config.leader_region = data["leader_region"]
-        if "followers" in data:
-            config.followers = data["followers"]
-        if "quorum" in data:
-            config.write_quorum = data["quorum"].get("write_quorum", 2)
-            config.read_quorum = data["quorum"].get("read_quorum", 2)
-        if "justification" in data:
-            config.justification = data["justification"]
-        
-        return config
-    
-    def get_all_regions(self) -> List[str]:
-        """Get all regions with nodes (leader + followers)."""
-        regions = set()
-        regions.add(self.leader_region)
-        for region, count in self.followers.items():
-            if count > 0:
-                regions.add(region)
-        return list(regions)
-    
-    def get_total_followers(self) -> int:
-        """Get total follower count."""
-        return sum(self.followers.values())
-    
-    def calculate_cost(self) -> int:
-        """Calculate total cost in dollars."""
-        total = 0
-        # Leader cost
-        total += NODE_COST[self.leader_region]
-        # Follower costs
-        for region, count in self.followers.items():
-            total += NODE_COST[region] * count
-        return total
-
-
-# ========================
-# Latency Simulator
-# ========================
-
-def simulate_latency(from_region: str, to_region: str) -> float:
-    """Simulate network latency between regions. Returns actual delay applied."""
-    latency_ms = LATENCY_MS.get(from_region, {}).get(to_region, 100)
-    # Add jitter (±10%)
-    jitter = random.uniform(-0.1, 0.1) * latency_ms
-    actual_latency = (latency_ms + jitter) / 1000  # Convert to seconds
-    time.sleep(actual_latency)
-    return latency_ms + jitter
-
-
-# ========================
-# Test Results
-# ========================
+class TestResult:
+    test_id: str
+    description: str
+    passed: bool
+    message: str
+    latency_ms: Optional[float] = None
 
 @dataclass
-class TestMetrics:
-    total_requests: int = 0
-    successful_requests: int = 0
-    failed_requests: int = 0
-    latencies: List[float] = field(default_factory=list)
-    stale_reads: int = 0
-    downtime_ms: float = 0
+class ScenarioResult:
+    scenario_id: str
+    name: str
+    weight: int
+    tests: List[TestResult]
     
     @property
-    def p95_latency(self) -> float:
-        if not self.latencies:
+    def passed(self) -> int:
+        return sum(1 for t in self.tests if t.passed)
+    
+    @property
+    def total(self) -> int:
+        return len(self.tests)
+    
+    @property
+    def score(self) -> float:
+        if self.total == 0:
             return 0
-        sorted_lat = sorted(self.latencies)
-        idx = int(len(sorted_lat) * 0.95)
-        return sorted_lat[min(idx, len(sorted_lat) - 1)]
-    
-    @property
-    def avg_latency(self) -> float:
-        return statistics.mean(self.latencies) if self.latencies else 0
-    
-    @property
-    def availability(self) -> float:
-        if self.total_requests == 0:
-            return 100.0
-        return (self.successful_requests / self.total_requests) * 100
-
+        return (self.passed / self.total) * self.weight
 
 # ========================
-# Cluster Manager
+# Cluster Management
 # ========================
 
-class ClusterManager:
-    """Manages the distributed KV store cluster."""
+processes: List[subprocess.Popen] = []
+
+def start_cluster(student_config: dict) -> bool:
+    """Start the cluster with student configuration."""
+    global processes
     
-    def __init__(self, config: StudentConfig):
-        self.config = config
-        self.processes: List[subprocess.Popen] = []
-        self.base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.node_regions: Dict[str, str] = {}  # node_id -> region
+    deployment = student_config.get("deployment", {})
+    gateway_config = student_config.get("gateway", {})
     
-    def start(self) -> bool:
-        """Start registry, coordinator with nodes."""
-        print("🚀 Starting cluster...")
-        
-        follower_count = self.config.get_total_followers()
-        if follower_count == 0:
-            print("❌ No followers configured!")
-            return False
-        
-        # Start registry with auto-spawn (always enabled)
-        registry_cmd = [
-            sys.executable,
-            os.path.join(self.base_dir, "registry.py"),
-            "--port", "9000",
-            "--auto-spawn"
-        ]
-        
-        self.processes.append(subprocess.Popen(
-            registry_cmd,
+    followers = deployment.get("followers", 3)
+    write_quorum = deployment.get("write_quorum", 2)
+    read_quorum = deployment.get("read_quorum", 2)
+    
+    rate_limit = gateway_config.get("rate_limit_enabled", True)
+    rate_limit_max = gateway_config.get("rate_limit_max", 10)
+    rate_limit_window = gateway_config.get("rate_limit_window", 60)
+    
+    print("🚀 Starting cluster with student configuration...")
+    print(f"   Followers: {followers}")
+    print(f"   Write Quorum: {write_quorum}")
+    print(f"   Read Quorum: {read_quorum}")
+    print(f"   Rate Limit: {rate_limit_max}/{rate_limit_window}s" if rate_limit else "   Rate Limit: disabled")
+    print()
+    
+    try:
+        # Start registry
+        print("   Starting registry...")
+        registry_proc = subprocess.Popen(
+            ["python", REGISTRY_SCRIPT, "--port", "9000"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
-        ))
+        )
+        processes.append(registry_proc)
         time.sleep(1)
         
         # Start coordinator
-        coord_cmd = [
-            sys.executable,
-            os.path.join(self.base_dir, "coordinator.py"),
-            "--followers", str(follower_count),
-            "--write-quorum", str(self.config.write_quorum),
-            "--read-quorum", str(self.config.read_quorum),
-            "--registry", REGISTRY_URL
-        ]
-        self.processes.append(subprocess.Popen(
-            coord_cmd,
+        print("   Starting coordinator...")
+        coordinator_proc = subprocess.Popen(
+            ["python", COORDINATOR_SCRIPT,
+             "--followers", str(followers),
+             "--write-quorum", str(write_quorum),
+             "--read-quorum", str(read_quorum),
+             "--registry", REGISTRY_URL],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
-        ))
+        )
+        processes.append(coordinator_proc)
+        time.sleep(3)  # Wait for nodes to spawn
         
-        regions_str = f"Leader: {self.config.leader_region.upper()}, Followers: {self.config.followers}"
-        print(f"   {regions_str}")
-        print(f"   W={self.config.write_quorum}, R={self.config.read_quorum}")
-        print(f"   Service Discovery: enabled")
-        print(f"   Waiting for cluster to initialize...")
-        time.sleep(5)
+        # Start gateway
+        print("   Starting gateway...")
+        gateway_args = ["python", GATEWAY_SCRIPT,
+                       "--port", "8000",
+                       "--coordinator", COORDINATOR_URL]
+        if rate_limit:
+            gateway_args.extend(["--rate-limit",
+                                "--rate-limit-max", str(rate_limit_max),
+                                "--rate-limit-window", str(rate_limit_window)])
         
-        # Map nodes to regions
-        self._assign_regions_to_nodes()
+        gateway_proc = subprocess.Popen(
+            gateway_args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        processes.append(gateway_proc)
+        time.sleep(2)
         
         # Verify cluster is up
         try:
-            resp = requests.get(f"{COORDINATOR_URL}/status", timeout=5)
+            resp = requests.get(f"{GATEWAY_URL}/cluster-status", timeout=5)
             if resp.status_code == 200:
-                print("✅ Cluster started successfully")
+                print("   ✅ Cluster started successfully!")
+                print()
                 return True
         except:
             pass
         
-        print("❌ Cluster failed to start")
+        print("   ❌ Cluster failed to start")
         return False
-    
-    def _assign_regions_to_nodes(self):
-        """Assign regions to spawned nodes for latency simulation."""
-        # Build region list based on followers config
-        regions = []
-        for region, count in self.config.followers.items():
-            regions.extend([region] * count)
         
+    except Exception as e:
+        print(f"   ❌ Error starting cluster: {e}")
+        return False
+
+def stop_cluster():
+    """Stop all cluster processes."""
+    global processes
+    print("\n🛑 Stopping cluster...")
+    for proc in processes:
         try:
-            resp = requests.get(f"{COORDINATOR_URL}/status", timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                followers = data.get("followers", [])
-                for i, follower in enumerate(followers):
-                    node_id = follower.get("id", f"follower-{i+1}")
-                    region = regions[i] if i < len(regions) else "us"
-                    self.node_regions[node_id] = region
+            proc.terminate()
+            proc.wait(timeout=5)
+        except:
+            proc.kill()
+    processes = []
+
+# ========================
+# Test Runners
+# ========================
+
+def run_write_test(key: str, value: str, use_coordinator: bool = False) -> TestResult:
+    """Run a write test. Can use coordinator directly to bypass rate limiting."""
+    try:
+        start = time.time()
+        url = COORDINATOR_URL if use_coordinator else GATEWAY_URL
+        resp = requests.post(
+            f"{url}/write",
+            json={"key": key, "value": value},
+            timeout=10
+        )
+        latency = (time.time() - start) * 1000
+        
+        if resp.status_code == 200:
+            return TestResult(
+                test_id="write",
+                description=f"Write {key}={value}",
+                passed=True,
+                message="Write successful",
+                latency_ms=latency
+            )
+        elif resp.status_code == 429:
+            return TestResult(
+                test_id="write",
+                description=f"Write {key}={value}",
+                passed=False,
+                message="Rate limited"
+            )
+        else:
+            return TestResult(
+                test_id="write",
+                description=f"Write {key}={value}",
+                passed=False,
+                message=f"Failed with status {resp.status_code}"
+            )
+    except Exception as e:
+        return TestResult(
+            test_id="write",
+            description=f"Write {key}={value}",
+            passed=False,
+            message=str(e)
+        )
+
+def run_read_test(key: str, expected_value: Optional[str] = None, use_coordinator: bool = False) -> TestResult:
+    """Run a read test. Can use coordinator directly to bypass rate limiting."""
+    try:
+        start = time.time()
+        url = COORDINATOR_URL if use_coordinator else GATEWAY_URL
+        resp = requests.get(f"{url}/read/{key}", timeout=10)
+        latency = (time.time() - start) * 1000
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            actual_value = data.get("value")
+            
+            if expected_value is not None and actual_value != expected_value:
+                return TestResult(
+                    test_id="read",
+                    description=f"Read {key}",
+                    passed=False,
+                    message=f"Expected '{expected_value}', got '{actual_value}'",
+                    latency_ms=latency
+                )
+            
+            return TestResult(
+                test_id="read",
+                description=f"Read {key}",
+                passed=True,
+                message=f"Got value: {actual_value}",
+                latency_ms=latency
+            )
+        elif resp.status_code == 404:
+            return TestResult(
+                test_id="read",
+                description=f"Read {key}",
+                passed=False,
+                message="Key not found"
+            )
+        else:
+            return TestResult(
+                test_id="read",
+                description=f"Read {key}",
+                passed=False,
+                message=f"Failed with status {resp.status_code}"
+            )
+    except Exception as e:
+        return TestResult(
+            test_id="read",
+            description=f"Read {key}",
+            passed=False,
+            message=str(e)
+        )
+
+def run_kill_node_test(node_id: str) -> TestResult:
+    """Kill a node."""
+    try:
+        resp = requests.post(f"{COORDINATOR_URL}/kill/{node_id}", timeout=5)
+        time.sleep(1)  # Wait for death to register
+        
+        if resp.status_code == 200:
+            return TestResult(
+                test_id="kill",
+                description=f"Kill {node_id}",
+                passed=True,
+                message=f"Node {node_id} killed"
+            )
+        else:
+            return TestResult(
+                test_id="kill",
+                description=f"Kill {node_id}",
+                passed=True,  # Still consider it passed if node was already dead
+                message=f"Node response: {resp.status_code}"
+            )
+    except Exception as e:
+        return TestResult(
+            test_id="kill",
+            description=f"Kill {node_id}",
+            passed=False,
+            message=str(e)
+        )
+
+def run_burst_test(operation: str, count: int, key_prefix: str) -> TestResult:
+    """Run burst of operations directly to coordinator (bypasses rate limiting)."""
+    successes = 0
+    for i in range(count):
+        if operation == "write":
+            # Use coordinator directly to avoid rate limiting interference
+            result = run_write_test(f"{key_prefix}_{i}", f"value_{i}", use_coordinator=True)
+        else:
+            result = run_read_test(f"{key_prefix}_{i}", use_coordinator=True)
+        if result.passed:
+            successes += 1
+    
+    return TestResult(
+        test_id="burst",
+        description=f"Burst {operation} ({count} ops)",
+        passed=successes == count,
+        message=f"{successes}/{count} succeeded"
+    )
+
+def run_verify_burst_test(key_prefix: str, count: int) -> TestResult:
+    """Verify all burst writes are readable (uses coordinator to bypass rate limiting)."""
+    successes = 0
+    for i in range(count):
+        # Use coordinator directly to avoid rate limiting interference
+        result = run_read_test(f"{key_prefix}_{i}", f"value_{i}", use_coordinator=True)
+        if result.passed:
+            successes += 1
+    
+    return TestResult(
+        test_id="verify_burst",
+        description=f"Verify burst reads",
+        passed=successes == count,
+        message=f"{successes}/{count} verified"
+    )
+
+def run_flood_test(count: int) -> TestResult:
+    """Flood requests to test rate limiting."""
+    rate_limited = 0
+    for i in range(count):
+        try:
+            resp = requests.get(f"{GATEWAY_URL}/read/flood_test_{i}", timeout=2)
+            if resp.status_code == 429:
+                rate_limited += 1
         except:
             pass
     
-    def get_nearest_region(self, client_region: str) -> str:
-        """Get the nearest node region for a client."""
-        all_regions = self.config.get_all_regions()
-        if client_region in all_regions:
-            return client_region
-        # Find nearest by latency
-        return min(all_regions, key=lambda r: LATENCY_MS[client_region][r])
-    
-    def stop(self):
-        """Stop all cluster processes."""
-        print("\n🛑 Stopping cluster...")
-        for p in self.processes:
-            try:
-                p.terminate()
-                p.wait(timeout=5)
-            except:
-                p.kill()
-        self.processes.clear()
-        print("   Cluster stopped")
-
+    if rate_limited > 0:
+        return TestResult(
+            test_id="flood",
+            description=f"Flood test ({count} requests)",
+            passed=True,
+            message=f"Rate limited {rate_limited} requests"
+        )
+    else:
+        return TestResult(
+            test_id="flood",
+            description=f"Flood test ({count} requests)",
+            passed=False,
+            message="No requests were rate limited"
+        )
 
 # ========================
-# Test Runner
+# Scenario Runner
 # ========================
 
-class TestRunner:
-    """Runs assessment tests with latency simulation."""
+def run_scenario(scenario: dict) -> ScenarioResult:
+    """Run all tests in a scenario."""
+    results = []
     
-    def __init__(self, config: StudentConfig, cluster: ClusterManager):
-        self.config = config
-        self.cluster = cluster
-        self.metrics = TestMetrics()
-        self.version_cache: Dict[str, int] = {}  # Track written versions
+    print(f"📋 Scenario: {scenario['name']}")
+    print(f"   {scenario['description']}")
+    print()
     
-    def run_all(self) -> TestMetrics:
-        """Run all tests and collect metrics."""
-        print("\n" + "=" * 60)
-        print("               RUNNING ASSESSMENT TESTS")
-        print("=" * 60 + "\n")
+    for test in scenario.get("tests", []):
+        test_type = test.get("type")
         
-        # Calculate request distribution
-        total = self.config.total_requests
-        reads = int(total * self.config.rw_ratio / 100)
-        writes = total - reads
-        
-        # Distribute across regions equally
-        users_per_region = total // 3
-        
-        print(f"📊 Workload: {reads} reads, {writes} writes")
-        print(f"👥 Users: {users_per_region} per region (US, EU, Asia)")
-        print()
-        
-        # Run tests
-        self._run_latency_test(users_per_region)
-        
-        # Check stale reads
-        self._check_stale_reads()
-        
-        return self.metrics
-    
-    def _run_latency_test(self, users_per_region: int):
-        """Run multi-region latency test."""
-        print("🌍 Running Multi-Region Latency Test...")
-        
-        regions = ["us", "eu", "asia"]
-        reads = int(self.config.rw_ratio / 100 * users_per_region)
-        writes = users_per_region - reads
-        
-        for region in regions:
-            print(f"   📍 {region.upper()} users: {reads} reads, {writes} writes")
-            
-            # Writes
-            for i in range(writes):
-                self._do_write(f"key_{region}_{i}", f"value_{region}_{i}", region)
-            
-            # Reads
-            for i in range(reads):
-                key = f"key_{region}_{i % max(1, writes)}"  # Read existing keys
-                self._do_read(key, region)
-        
-        print(f"\n   ✅ Completed: {self.metrics.successful_requests}/{self.metrics.total_requests}")
-        print(f"   📈 P95 Latency: {self.metrics.p95_latency:.1f}ms")
-        print(f"   📊 Avg Latency: {self.metrics.avg_latency:.1f}ms")
-    
-    def _do_write(self, key: str, value: str, client_region: str):
-        """Perform a write with latency simulation."""
-        self.metrics.total_requests += 1
-        
-        # Writes always go to leader
-        leader_region = self.config.leader_region
-        start_time = time.time()
-        
-        # Outbound latency
-        simulate_latency(client_region, leader_region)
-        
-        try:
-            resp = requests.post(
-                f"{COORDINATOR_URL}/write",
-                json={"key": key, "value": value},
-                timeout=30
-            )
-            
-            # Return latency
-            simulate_latency(leader_region, client_region)
-            
-            elapsed = (time.time() - start_time) * 1000  # ms
-            
-            if resp.status_code == 200:
-                self.metrics.successful_requests += 1
-                self.metrics.latencies.append(elapsed)
-                # Track version for stale read detection
-                data = resp.json()
-                self.version_cache[key] = data.get("version", 1)
-            else:
-                self.metrics.failed_requests += 1
-        except Exception as e:
-            self.metrics.failed_requests += 1
-    
-    def _do_read(self, key: str, client_region: str):
-        """Perform a read with latency simulation."""
-        self.metrics.total_requests += 1
-        
-        # Reads go to nearest replica
-        nearest_region = self.cluster.get_nearest_region(client_region)
-        start_time = time.time()
-        
-        # Outbound latency
-        simulate_latency(client_region, nearest_region)
-        
-        try:
-            resp = requests.get(f"{COORDINATOR_URL}/read/{key}", timeout=10)
-            
-            # Return latency
-            simulate_latency(nearest_region, client_region)
-            
-            elapsed = (time.time() - start_time) * 1000  # ms
-            
-            if resp.status_code == 200:
-                self.metrics.successful_requests += 1
-                self.metrics.latencies.append(elapsed)
-                
-                # Check for stale read
-                data = resp.json()
-                read_version = data.get("version", 0)
-                expected_version = self.version_cache.get(key, 0)
-                if read_version < expected_version:
-                    self.metrics.stale_reads += 1
-            elif resp.status_code == 404:
-                # Key doesn't exist yet, still counts as successful
-                self.metrics.successful_requests += 1
-                self.metrics.latencies.append(elapsed)
-            else:
-                self.metrics.failed_requests += 1
-        except Exception as e:
-            self.metrics.failed_requests += 1
-    
-    def _check_stale_reads(self):
-        """Report stale reads status."""
-        print(f"\n🔄 Stale Read Check...")
-        if self.metrics.stale_reads > 0:
-            if self.config.stale_reads_allowed:
-                print(f"   ⚠️ {self.metrics.stale_reads} stale reads (allowed in config)")
-            else:
-                print(f"   ❌ {self.metrics.stale_reads} stale reads (NOT allowed - FAIL)")
+        if test_type == "write":
+            result = run_write_test(test["key"], test["value"])
+        elif test_type == "read":
+            result = run_read_test(test["key"], test.get("expected_value"))
+        elif test_type == "kill_node":
+            result = run_kill_node_test(test["target"])
+        elif test_type == "burst":
+            result = run_burst_test(test["operation"], test["count"], test["key_prefix"])
+        elif test_type == "verify_burst":
+            result = run_verify_burst_test(test["key_prefix"], test["count"])
+        elif test_type == "flood":
+            result = run_flood_test(test["count"])
         else:
-            print(f"   ✅ No stale reads detected")
-
+            result = TestResult(
+                test_id=test.get("id", "unknown"),
+                description=test.get("description", "Unknown test"),
+                passed=False,
+                message=f"Unknown test type: {test_type}"
+            )
+        
+        icon = "✅" if result.passed else "❌"
+        print(f"   {icon} {result.description}: {result.message}")
+        results.append(result)
+    
+    print()
+    return ScenarioResult(
+        scenario_id=scenario["id"],
+        name=scenario["name"],
+        weight=scenario.get("weight", 0),
+        tests=results
+    )
 
 # ========================
-# Report Generator
+# Scoring
 # ========================
 
-def print_report(config: StudentConfig, metrics: TestMetrics):
-    """Print the final results report."""
-    cost = config.calculate_cost()
+def calculate_cost(student_config: dict, cost_model: dict) -> Tuple[float, float]:
+    """Calculate cost and efficiency score."""
+    followers = student_config.get("deployment", {}).get("followers", 3)
+    per_follower = cost_model.get("per_follower_cost", 10)
     
-    print("\n")
-    print("╔" + "═" * 68 + "╗")
-    print("║" + "MULTI-REGION ASSESSMENT RESULTS".center(68) + "║")
-    print("╠" + "═" * 68 + "╣")
+    # 1 leader + N followers
+    total_cost = (1 + followers) * per_follower
     
-    # Configuration
-    print("║  " + "CONFIGURATION".ljust(66) + "║")
-    print("║  " + f"├─ Leader: {config.leader_region.upper()}".ljust(66) + "║")
-    followers_str = ", ".join(f"{r.upper()}={c}" for r, c in config.followers.items() if c > 0)
-    print("║  " + f"├─ Followers: {followers_str}".ljust(66) + "║")
-    print("║  " + f"├─ Quorum: W={config.write_quorum}, R={config.read_quorum}".ljust(66) + "║")
-    print("║  " + f"└─ Total Cost: ${cost}".ljust(66) + "║")
+    # Ideal cost threshold from instructor config
+    ideal_cost = 40  # $40/hour (1 leader + 3 followers at $10 each)
     
-    print("╠" + "═" * 68 + "╣")
+    if total_cost <= ideal_cost:
+        efficiency = 100
+    else:
+        # Penalize over-provisioning
+        efficiency = max(0, 100 - ((total_cost - ideal_cost) / ideal_cost * 100))
     
-    # Metrics
-    print("║  " + "RESULTS".ljust(66) + "║")
-    print("║  " + f"├─ Requests: {metrics.successful_requests}/{metrics.total_requests} successful".ljust(66) + "║")
-    print("║  " + f"├─ Availability: {metrics.availability:.1f}%".ljust(66) + "║")
-    print("║  " + f"├─ P95 Latency: {metrics.p95_latency:.1f}ms".ljust(66) + "║")
-    print("║  " + f"├─ Avg Latency: {metrics.avg_latency:.1f}ms".ljust(66) + "║")
-    stale_status = "✅ None" if metrics.stale_reads == 0 else f"❌ {metrics.stale_reads}"
-    print("║  " + f"└─ Stale Reads: {stale_status}".ljust(66) + "║")
-    
-    print("╚" + "═" * 68 + "╝")
+    return total_cost, efficiency
 
-
-# ========================
-# Instructor Config
-# ========================
-
-@dataclass
-class InstructorConfig:
-    # Constraints - same for all students
-    total_requests: int = 100
-    rw_ratio: int = 80  # % reads
-    stale_reads_allowed: bool = False
+def print_results(scenario_results: List[ScenarioResult], 
+                  student_config: dict, 
+                  instructor_config: dict):
+    """Print final assessment results."""
     
-    @classmethod
-    def from_file(cls, path: str) -> "InstructorConfig":
-        """Load instructor config from JSON."""
-        try:
-            with open(path, 'r') as f:
-                data = json.load(f)
-            config = cls()
-            # Load constraints
-            constraints = data.get("constraints", {})
-            config.total_requests = constraints.get("total_requests", 100)
-            config.rw_ratio = constraints.get("rw_ratio", 80)
-            config.stale_reads_allowed = constraints.get("stale_reads_allowed", False)
-            return config
-        except FileNotFoundError:
-            return cls()  # Use defaults
-
+    cost_model = instructor_config.get("cost_model", {})
+    total_cost, cost_efficiency = calculate_cost(student_config, cost_model)
+    
+    total_score = 0
+    max_score = 0
+    
+    print("╔══════════════════════════════════════════════════════════════════════╗")
+    print("║             DISTRIBUTED KV STORE - ASSESSMENT RESULTS                ║")
+    print("╠══════════════════════════════════════════════════════════════════════╣")
+    
+    for result in scenario_results:
+        max_score += result.weight
+        total_score += result.score
+        pct = (result.passed / result.total * 100) if result.total > 0 else 0
+        print(f"║  {result.name:<30} {result.passed}/{result.total} ({pct:.0f}%) │ {result.score:.1f}/{result.weight} pts ║")
+    
+    # Add cost efficiency
+    scoring = instructor_config.get("scoring", {})
+    cost_weight = scoring.get("cost_efficiency_weight", 15)
+    cost_score = (cost_efficiency / 100) * cost_weight
+    total_score += cost_score
+    max_score += cost_weight
+    
+    print("╠══════════════════════════════════════════════════════════════════════╣")
+    print(f"║  💰 Cost: ${total_cost}/hour (Efficiency: {cost_efficiency:.0f}%) │ {cost_score:.1f}/{cost_weight} pts ║")
+    print("╠══════════════════════════════════════════════════════════════════════╣")
+    
+    percentage = (total_score / max_score * 100) if max_score > 0 else 0
+    
+    if percentage >= 90:
+        grade = "A"
+    elif percentage >= 80:
+        grade = "B"
+    elif percentage >= 70:
+        grade = "C"
+    elif percentage >= 60:
+        grade = "D"
+    else:
+        grade = "F"
+    
+    print(f"║  TOTAL SCORE: {total_score:.1f}/{max_score} ({percentage:.1f}%)                              ║")
+    print(f"║  GRADE: {grade}                                                          ║")
+    print("╚══════════════════════════════════════════════════════════════════════╝")
+    
+    # Print student justification
+    justification = student_config.get("justification", "")
+    if justification and "TODO" not in justification:
+        print()
+        print("📝 Student Justification:")
+        print(f"   {justification}")
 
 # ========================
 # Main
 # ========================
 
-def run_assessment(config: StudentConfig, instructor: InstructorConfig, label: str = "Student") -> Tuple[TestMetrics, int]:
-    """Run assessment for a config. Returns (metrics, cost)."""
-    cluster = None
-    try:
-        cluster = ClusterManager(config)
-        if not cluster.start():
-            return None, 0
-        
-        runner = TestRunner(config, cluster)
-        metrics = runner.run_all()
-        cost = config.calculate_cost()
-        
-        return metrics, cost
-    finally:
-        if cluster:
-            cluster.stop()
-
-
 def main():
-    parser = argparse.ArgumentParser(description="Multi-Region Distributed KV Store Assessment")
-    parser.add_argument("--config", type=str, required=True, help="Path to student config file")
-    parser.add_argument("--instructor-config", type=str, default="instructor_config.json", 
-                        help="Path to instructor config (constraints)")
+    parser = argparse.ArgumentParser(description="Distributed KV Store Assessment")
+    parser.add_argument("--config", type=str, default="student_config.json",
+                       help="Path to student configuration file")
+    parser.add_argument("--instructor-config", type=str, default="instructor_config.json",
+                       help="Path to instructor configuration file")
+    parser.add_argument("--no-start-cluster", action="store_true",
+                       help="Skip cluster startup (assume already running)")
+    parser.add_argument("--no-stop-cluster", action="store_true",
+                       help="Don't stop cluster after assessment")
     
     args = parser.parse_args()
-    base_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # Load instructor config
-    instructor_path = os.path.join(base_dir, args.instructor_config)
-    instructor = InstructorConfig.from_file(instructor_path)
-    print(f"\n📋 Instructor Config:")
-    print(f"   Constraints: {instructor.total_requests} requests, {instructor.rw_ratio}% reads, stale_reads_allowed={instructor.stale_reads_allowed}")
+    # Handle config paths relative to script directory
+    if not os.path.isabs(args.config):
+        args.config = os.path.join(SCRIPT_DIR, args.config)
+    if not os.path.isabs(args.instructor_config):
+        args.instructor_config = os.path.join(SCRIPT_DIR, args.instructor_config)
     
-    # Load student config
-    print("\n📋 Loading student configuration...")
+    # Load configs
     try:
-        student_config = StudentConfig.from_file(args.config)
-        # Apply instructor constraints
-        student_config.total_requests = instructor.total_requests
-        student_config.rw_ratio = instructor.rw_ratio
-        student_config.stale_reads_allowed = instructor.stale_reads_allowed
-        print(f"   Leader: {student_config.leader_region.upper()}")
-        print(f"   Followers: {student_config.followers}")
-        print(f"   Quorum: W={student_config.write_quorum}, R={student_config.read_quorum}")
-        print(f"   Cost: ${student_config.calculate_cost()}")
-    except Exception as e:
-        print(f"❌ Failed to load student config: {e}")
+        with open(args.config) as f:
+            student_config = json.load(f)
+    except FileNotFoundError:
+        print(f"❌ Student config not found: {args.config}")
+        print("   Copy student_config.json and modify with your settings")
         sys.exit(1)
     
-    # Run assessment
-    print("\n" + "=" * 60)
-    print("               RUNNING ASSESSMENT")
-    print("=" * 60)
-    
-    student_metrics, student_cost = run_assessment(student_config, instructor, "Student")
-    if student_metrics is None:
-        print("❌ Assessment failed")
+    try:
+        with open(args.instructor_config) as f:
+            instructor_config = json.load(f)
+    except FileNotFoundError:
+        print(f"❌ Instructor config not found: {args.instructor_config}")
         sys.exit(1)
     
-    # Print final report (raw metrics)
-    print_report(student_config, student_metrics)
-
+    # Validate student config
+    deployment = student_config.get("deployment", {})
+    followers = deployment.get("followers", 0)
+    write_quorum = deployment.get("write_quorum", 0)
+    read_quorum = deployment.get("read_quorum", 0)
+    
+    if write_quorum > followers:
+        print(f"❌ Invalid config: write_quorum ({write_quorum}) > followers ({followers})")
+        print("   Write quorum cannot exceed number of followers")
+        sys.exit(1)
+    
+    if read_quorum > followers:
+        print(f"❌ Invalid config: read_quorum ({read_quorum}) > followers ({followers})")
+        sys.exit(1)
+    
+    print()
+    print("╔══════════════════════════════════════════════════════════════════════╗")
+    print("║             DISTRIBUTED KV STORE - ASSESSMENT                        ║")
+    print("╚══════════════════════════════════════════════════════════════════════╝")
+    print()
+    
+    # Start cluster
+    if not args.no_start_cluster:
+        if not start_cluster(student_config):
+            stop_cluster()
+            sys.exit(1)
+    
+    # Handle Ctrl+C
+    def signal_handler(sig, frame):
+        stop_cluster()
+        sys.exit(0)
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    try:
+        # Run scenarios
+        scenario_results = []
+        for scenario in instructor_config.get("scenarios", []):
+            result = run_scenario(scenario)
+            scenario_results.append(result)
+        
+        # Print results
+        print_results(scenario_results, student_config, instructor_config)
+        
+    finally:
+        if not args.no_stop_cluster:
+            stop_cluster()
 
 if __name__ == "__main__":
     main()
