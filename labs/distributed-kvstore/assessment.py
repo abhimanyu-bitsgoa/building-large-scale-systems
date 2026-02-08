@@ -45,25 +45,11 @@ LATENCY_MS = {
     "asia": {"us": 200, "eu": 95, "asia": 3},
 }
 
-# Node pricing (credits per test run)
+# Node pricing (dollars per node per region)
 NODE_COST = {
     "asia": 10,
     "us": 12,
     "eu": 15,
-}
-
-# Service discovery cost (substantial to force deliberation)
-SERVICE_DISCOVERY_COST = {
-    "asia": 15,
-    "us": 18,
-    "eu": 22,
-}
-
-# Default scoring weights (tunable by instructor)
-DEFAULT_WEIGHTS = {
-    "cost": 33,
-    "latency": 33,
-    "availability": 34,
 }
 
 
@@ -73,20 +59,20 @@ DEFAULT_WEIGHTS = {
 
 @dataclass
 class StudentConfig:
-    # Regions
-    regions: Dict[str, bool] = field(default_factory=lambda: {"us": True, "eu": True, "asia": True})
+    # Leader deployment
+    leader_region: str = "us"
+    
+    # Followers per region
+    followers: Dict[str, int] = field(default_factory=lambda: {"us": 0, "eu": 1, "asia": 1})
     
     # Quorum
     write_quorum: int = 2
-    read_quorum: int = 1
+    read_quorum: int = 2
     
-    # Features
-    service_discovery: bool = True
-    stale_reads_allowed: bool = False
-    
-    # Workload
+    # Workload (set by instructor)
     rw_ratio: int = 80  # percentage reads
-    total_requests: int = 99  # divisible by 3 for equal distribution
+    total_requests: int = 100
+    stale_reads_allowed: bool = False
     
     # Justification
     justification: str = ""
@@ -104,35 +90,39 @@ class StudentConfig:
         
         config = cls()
         
-        if "regions" in data:
-            config.regions = data["regions"]
+        if "leader_region" in data:
+            config.leader_region = data["leader_region"]
+        if "followers" in data:
+            config.followers = data["followers"]
         if "quorum" in data:
             config.write_quorum = data["quorum"].get("write_quorum", 2)
-            config.read_quorum = data["quorum"].get("read_quorum", 1)
-        if "service_discovery" in data:
-            config.service_discovery = data["service_discovery"]
-        if "stale_reads_allowed" in data:
-            config.stale_reads_allowed = data["stale_reads_allowed"]
-        if "rw_ratio" in data:
-            config.rw_ratio = data["rw_ratio"]
-        if "total_requests" in data:
-            config.total_requests = data["total_requests"]
+            config.read_quorum = data["quorum"].get("read_quorum", 2)
         if "justification" in data:
             config.justification = data["justification"]
         
         return config
     
-    def get_enabled_regions(self) -> List[str]:
-        return [r for r, enabled in self.regions.items() if enabled]
+    def get_all_regions(self) -> List[str]:
+        """Get all regions with nodes (leader + followers)."""
+        regions = set()
+        regions.add(self.leader_region)
+        for region, count in self.followers.items():
+            if count > 0:
+                regions.add(region)
+        return list(regions)
+    
+    def get_total_followers(self) -> int:
+        """Get total follower count."""
+        return sum(self.followers.values())
     
     def calculate_cost(self) -> int:
-        """Calculate total cost in credits."""
+        """Calculate total cost in dollars."""
         total = 0
-        for region, enabled in self.regions.items():
-            if enabled:
-                total += NODE_COST[region]
-                if self.service_discovery:
-                    total += SERVICE_DISCOVERY_COST[region]
+        # Leader cost
+        total += NODE_COST[self.leader_region]
+        # Follower costs
+        for region, count in self.followers.items():
+            total += NODE_COST[region] * count
         return total
 
 
@@ -199,21 +189,18 @@ class ClusterManager:
         """Start registry, coordinator with nodes."""
         print("🚀 Starting cluster...")
         
-        enabled_regions = self.config.get_enabled_regions()
-        if not enabled_regions:
-            print("❌ No regions enabled!")
+        follower_count = self.config.get_total_followers()
+        if follower_count == 0:
+            print("❌ No followers configured!")
             return False
         
-        follower_count = len(enabled_regions)
-        
-        # Start registry with auto-spawn based on config
+        # Start registry with auto-spawn (always enabled)
         registry_cmd = [
             sys.executable,
             os.path.join(self.base_dir, "registry.py"),
-            "--port", "9000"
+            "--port", "9000",
+            "--auto-spawn"
         ]
-        if self.config.service_discovery:
-            registry_cmd.append("--auto-spawn")
         
         self.processes.append(subprocess.Popen(
             registry_cmd,
@@ -237,14 +224,15 @@ class ClusterManager:
             stderr=subprocess.DEVNULL
         ))
         
-        print(f"   Regions: {', '.join(enabled_regions)}")
+        regions_str = f"Leader: {self.config.leader_region.upper()}, Followers: {self.config.followers}"
+        print(f"   {regions_str}")
         print(f"   W={self.config.write_quorum}, R={self.config.read_quorum}")
-        print(f"   Service Discovery: {'enabled' if self.config.service_discovery else 'disabled'}")
+        print(f"   Service Discovery: enabled")
         print(f"   Waiting for cluster to initialize...")
         time.sleep(5)
         
         # Map nodes to regions
-        self._assign_regions_to_nodes(enabled_regions)
+        self._assign_regions_to_nodes()
         
         # Verify cluster is up
         try:
@@ -258,8 +246,13 @@ class ClusterManager:
         print("❌ Cluster failed to start")
         return False
     
-    def _assign_regions_to_nodes(self, regions: List[str]):
+    def _assign_regions_to_nodes(self):
         """Assign regions to spawned nodes for latency simulation."""
+        # Build region list based on followers config
+        regions = []
+        for region, count in self.config.followers.items():
+            regions.extend([region] * count)
+        
         try:
             resp = requests.get(f"{COORDINATOR_URL}/status", timeout=5)
             if resp.status_code == 200:
@@ -267,18 +260,18 @@ class ClusterManager:
                 followers = data.get("followers", [])
                 for i, follower in enumerate(followers):
                     node_id = follower.get("id", f"follower-{i+1}")
-                    region = regions[i % len(regions)]
+                    region = regions[i] if i < len(regions) else "us"
                     self.node_regions[node_id] = region
         except:
             pass
     
     def get_nearest_region(self, client_region: str) -> str:
         """Get the nearest node region for a client."""
-        enabled_regions = self.config.get_enabled_regions()
-        if client_region in enabled_regions:
+        all_regions = self.config.get_all_regions()
+        if client_region in all_regions:
             return client_region
         # Find nearest by latency
-        return min(enabled_regions, key=lambda r: LATENCY_MS[client_region][r])
+        return min(all_regions, key=lambda r: LATENCY_MS[client_region][r])
     
     def stop(self):
         """Stop all cluster processes."""
@@ -360,9 +353,8 @@ class TestRunner:
         """Perform a write with latency simulation."""
         self.metrics.total_requests += 1
         
-        # Simulate latency to leader (writes always go to leader)
-        # For simplicity, assume leader is in the first enabled region
-        leader_region = self.config.get_enabled_regions()[0]
+        # Writes always go to leader
+        leader_region = self.config.leader_region
         start_time = time.time()
         
         # Outbound latency
@@ -442,72 +434,11 @@ class TestRunner:
 
 
 # ========================
-# Scorer
-# ========================
-
-class Scorer:
-    """Calculate scores based on metrics."""
-    
-    def __init__(
-        self, 
-        config: StudentConfig, 
-        metrics: TestMetrics,
-        ideal_cost: int = None,
-        ideal_p95: float = None,
-        ideal_availability: float = None,
-        weights: Dict[str, int] = None
-    ):
-        self.config = config
-        self.metrics = metrics
-        self.ideal_cost = ideal_cost or 100
-        self.ideal_p95 = ideal_p95 or 200
-        self.ideal_availability = ideal_availability or 100
-        self.weights = weights or DEFAULT_WEIGHTS
-    
-    def calculate_score(self) -> Dict[str, float]:
-        """Calculate component and total scores."""
-        student_cost = self.config.calculate_cost()
-        
-        # Cost score (lower is better)
-        cost_ratio = self.ideal_cost / max(student_cost, 1)
-        cost_score = min(100, cost_ratio * 100)
-        
-        # Latency score (lower is better)
-        latency_ratio = self.ideal_p95 / max(self.metrics.p95_latency, 1)
-        latency_score = min(100, latency_ratio * 100)
-        
-        # Availability score
-        avail_ratio = self.metrics.availability / self.ideal_availability
-        availability_score = min(100, avail_ratio * 100)
-        
-        # Stale read penalty
-        stale_penalty = 0
-        if not self.config.stale_reads_allowed and self.metrics.stale_reads > 0:
-            stale_penalty = self.metrics.stale_reads * 20
-        
-        # Weighted total
-        total = (
-            (self.weights["cost"] / 100) * cost_score +
-            (self.weights["latency"] / 100) * latency_score +
-            (self.weights["availability"] / 100) * availability_score
-            - stale_penalty
-        )
-        
-        return {
-            "cost_score": cost_score,
-            "latency_score": latency_score,
-            "availability_score": availability_score,
-            "stale_penalty": stale_penalty,
-            "total": max(0, total),
-        }
-
-
-# ========================
 # Report Generator
 # ========================
 
-def print_report(config: StudentConfig, metrics: TestMetrics, scores: Dict[str, float]):
-    """Print the final grading report."""
+def print_report(config: StudentConfig, metrics: TestMetrics):
+    """Print the final results report."""
     cost = config.calculate_cost()
     
     print("\n")
@@ -516,91 +447,120 @@ def print_report(config: StudentConfig, metrics: TestMetrics, scores: Dict[str, 
     print("╠" + "═" * 68 + "╣")
     
     # Configuration
-    regions = ", ".join(r.upper() for r in config.get_enabled_regions())
-    print("║  " + f"Regions: {regions}".ljust(66) + "║")
-    print("║  " + f"Quorum: W={config.write_quorum}, R={config.read_quorum}".ljust(66) + "║")
-    print("║  " + f"Service Discovery: {'Yes' if config.service_discovery else 'No'}".ljust(66) + "║")
-    print("║  " + f"Total Cost: {cost} credits".ljust(66) + "║")
+    print("║  " + "CONFIGURATION".ljust(66) + "║")
+    print("║  " + f"├─ Leader: {config.leader_region.upper()}".ljust(66) + "║")
+    followers_str = ", ".join(f"{r.upper()}={c}" for r, c in config.followers.items() if c > 0)
+    print("║  " + f"├─ Followers: {followers_str}".ljust(66) + "║")
+    print("║  " + f"├─ Quorum: W={config.write_quorum}, R={config.read_quorum}".ljust(66) + "║")
+    print("║  " + f"└─ Total Cost: ${cost}".ljust(66) + "║")
     
     print("╠" + "═" * 68 + "╣")
     
     # Metrics
-    print("║  " + "METRICS".ljust(66) + "║")
+    print("║  " + "RESULTS".ljust(66) + "║")
     print("║  " + f"├─ Requests: {metrics.successful_requests}/{metrics.total_requests} successful".ljust(66) + "║")
+    print("║  " + f"├─ Availability: {metrics.availability:.1f}%".ljust(66) + "║")
     print("║  " + f"├─ P95 Latency: {metrics.p95_latency:.1f}ms".ljust(66) + "║")
     print("║  " + f"├─ Avg Latency: {metrics.avg_latency:.1f}ms".ljust(66) + "║")
-    print("║  " + f"├─ Availability: {metrics.availability:.1f}%".ljust(66) + "║")
-    print("║  " + f"└─ Stale Reads: {metrics.stale_reads}".ljust(66) + "║")
-    
-    print("╠" + "═" * 68 + "╣")
-    
-    # Scores
-    print("║  " + "SCORES".ljust(66) + "║")
-    print("║  " + f"├─ Cost Score: {scores['cost_score']:.1f}/100".ljust(66) + "║")
-    print("║  " + f"├─ Latency Score: {scores['latency_score']:.1f}/100".ljust(66) + "║")
-    print("║  " + f"├─ Availability Score: {scores['availability_score']:.1f}/100".ljust(66) + "║")
-    if scores["stale_penalty"] > 0:
-        print("║  " + f"├─ Stale Read Penalty: -{scores['stale_penalty']:.0f}".ljust(66) + "║")
-    print("║  " + f"└─ TOTAL SCORE: {scores['total']:.1f}/100".ljust(66) + "║")
+    stale_status = "✅ None" if metrics.stale_reads == 0 else f"❌ {metrics.stale_reads}"
+    print("║  " + f"└─ Stale Reads: {stale_status}".ljust(66) + "║")
     
     print("╚" + "═" * 68 + "╝")
+
+
+# ========================
+# Instructor Config
+# ========================
+
+@dataclass
+class InstructorConfig:
+    # Constraints - same for all students
+    total_requests: int = 100
+    rw_ratio: int = 80  # % reads
+    stale_reads_allowed: bool = False
+    
+    @classmethod
+    def from_file(cls, path: str) -> "InstructorConfig":
+        """Load instructor config from JSON."""
+        try:
+            with open(path, 'r') as f:
+                data = json.load(f)
+            config = cls()
+            # Load constraints
+            constraints = data.get("constraints", {})
+            config.total_requests = constraints.get("total_requests", 100)
+            config.rw_ratio = constraints.get("rw_ratio", 80)
+            config.stale_reads_allowed = constraints.get("stale_reads_allowed", False)
+            return config
+        except FileNotFoundError:
+            return cls()  # Use defaults
 
 
 # ========================
 # Main
 # ========================
 
-def main():
-    parser = argparse.ArgumentParser(description="Multi-Region Distributed KV Store Assessment")
-    parser.add_argument("--config", type=str, required=True, help="Path to student config file")
-    parser.add_argument("--ideal", action="store_true", help="Run ideal baseline config")
-    parser.add_argument("--cost-weight", type=int, default=33, help="Cost weight (0-100)")
-    parser.add_argument("--latency-weight", type=int, default=33, help="Latency weight (0-100)")
-    parser.add_argument("--availability-weight", type=int, default=34, help="Availability weight (0-100)")
-    
-    args = parser.parse_args()
-    
-    # Load config
-    print("\n📋 Loading configuration...")
-    try:
-        config = StudentConfig.from_file(args.config)
-        print(f"   Regions: {config.get_enabled_regions()}")
-        print(f"   Quorum: W={config.write_quorum}, R={config.read_quorum}")
-        print(f"   R/W Ratio: {config.rw_ratio}% reads")
-        print(f"   Cost: {config.calculate_cost()} credits")
-    except Exception as e:
-        print(f"❌ Failed to load config: {e}")
-        sys.exit(1)
-    
+def run_assessment(config: StudentConfig, instructor: InstructorConfig, label: str = "Student") -> Tuple[TestMetrics, int]:
+    """Run assessment for a config. Returns (metrics, cost)."""
     cluster = None
-    
     try:
-        # Start cluster
         cluster = ClusterManager(config)
         if not cluster.start():
-            sys.exit(1)
+            return None, 0
         
-        # Run tests
         runner = TestRunner(config, cluster)
         metrics = runner.run_all()
+        cost = config.calculate_cost()
         
-        # Calculate scores
-        weights = {
-            "cost": args.cost_weight,
-            "latency": args.latency_weight,
-            "availability": args.availability_weight,
-        }
-        scorer = Scorer(config, metrics, weights=weights)
-        scores = scorer.calculate_score()
-        
-        # Print report
-        print_report(config, metrics, scores)
-        
-    except KeyboardInterrupt:
-        print("\n\n⚠️ Assessment interrupted")
+        return metrics, cost
     finally:
         if cluster:
             cluster.stop()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Multi-Region Distributed KV Store Assessment")
+    parser.add_argument("--config", type=str, required=True, help="Path to student config file")
+    parser.add_argument("--instructor-config", type=str, default="instructor_config.json", 
+                        help="Path to instructor config (constraints)")
+    
+    args = parser.parse_args()
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Load instructor config
+    instructor_path = os.path.join(base_dir, args.instructor_config)
+    instructor = InstructorConfig.from_file(instructor_path)
+    print(f"\n📋 Instructor Config:")
+    print(f"   Constraints: {instructor.total_requests} requests, {instructor.rw_ratio}% reads, stale_reads_allowed={instructor.stale_reads_allowed}")
+    
+    # Load student config
+    print("\n📋 Loading student configuration...")
+    try:
+        student_config = StudentConfig.from_file(args.config)
+        # Apply instructor constraints
+        student_config.total_requests = instructor.total_requests
+        student_config.rw_ratio = instructor.rw_ratio
+        student_config.stale_reads_allowed = instructor.stale_reads_allowed
+        print(f"   Leader: {student_config.leader_region.upper()}")
+        print(f"   Followers: {student_config.followers}")
+        print(f"   Quorum: W={student_config.write_quorum}, R={student_config.read_quorum}")
+        print(f"   Cost: ${student_config.calculate_cost()}")
+    except Exception as e:
+        print(f"❌ Failed to load student config: {e}")
+        sys.exit(1)
+    
+    # Run assessment
+    print("\n" + "=" * 60)
+    print("               RUNNING ASSESSMENT")
+    print("=" * 60)
+    
+    student_metrics, student_cost = run_assessment(student_config, instructor, "Student")
+    if student_metrics is None:
+        print("❌ Assessment failed")
+        sys.exit(1)
+    
+    # Print final report (raw metrics)
+    print_report(student_config, student_metrics)
 
 
 if __name__ == "__main__":

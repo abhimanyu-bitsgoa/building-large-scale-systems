@@ -1,0 +1,7 @@
+{
+    "constraints": {
+        "total_requests": 100,
+        "rw_ratio": 1,
+        "stale_reads_allowed": false
+    }
+}

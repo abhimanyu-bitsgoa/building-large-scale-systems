@@ -1,16 +1,13 @@
 {
-    "regions": {
-        "us": true,
-        "eu": true,
-        "asia": true
+    "leader_region": "us",
+    "followers": {
+        "us": 1,
+        "eu": 1,
+        "asia": 1
     },
     "quorum": {
-        "write_quorum": 2,
-        "read_quorum": 1
+        "write_quorum": 1,
+        "read_quorum": 3
     },
-    "service_discovery": true,
-    "stale_reads_allowed": false,
-    "rw_ratio": 80,
-    "total_requests": 99,
-    "justification": "Deployed in all regions for low latency. W=2 for durability, R=1 for fast reads. Service discovery enabled for automatic recovery."
+    "justification": "Leader in US for most users. One follower in EU and Asia for global coverage. W=2, R=2 for strong consistency."
 }
