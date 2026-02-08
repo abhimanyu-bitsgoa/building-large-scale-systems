@@ -156,16 +156,30 @@ def start_cluster(student_config: dict) -> bool:
         return False
 
 def stop_cluster():
-    """Stop all cluster processes."""
+    """Stop all cluster processes (including spawned nodes)."""
     global processes
     print("\n🛑 Stopping cluster...")
+    
+    # Kill tracked processes (registry, coordinator, gateway)
     for proc in processes:
         try:
             proc.terminate()
             proc.wait(timeout=5)
         except:
-            proc.kill()
+            try:
+                proc.kill()
+            except:
+                pass
     processes = []
+    
+    # Also kill any node processes spawned by coordinator
+    # These run on ports 7000-7099
+    import subprocess as sp
+    try:
+        # Kill processes containing 'node.py' or on node ports
+        sp.run(["pkill", "-f", "node.py.*--port 70"], capture_output=True, timeout=5)
+    except:
+        pass
 
 # ========================
 # Test Runners
