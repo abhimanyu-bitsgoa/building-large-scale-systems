@@ -3,7 +3,7 @@
         {
             "id": "scenario_1",
             "name": "Fault Tolerance",
-            "description": "System must continue operating after 1 node failure",
+            "description": "System must continue operating after floor(N/2) node failures",
             "weight": 50,
             "tests": [
                 {
@@ -13,20 +13,21 @@
                     "value": "test_value"
                 },
                 {
-                    "id": "kill_one_follower",
-                    "type": "kill_node",
-                    "target": "follower-1"
+                    "id": "kill_max_tolerable",
+                    "type": "kill_nodes",
+                    "count": "floor(N/2)",
+                    "description": "Kill maximum tolerable number of followers"
                 },
                 {
-                    "id": "write_after_failure",
+                    "id": "write_after_failures",
                     "type": "write",
-                    "key": "after_failure",
+                    "key": "after_failures",
                     "value": "still_works"
                 },
                 {
-                    "id": "read_after_failure",
+                    "id": "read_after_failures",
                     "type": "read",
-                    "key": "after_failure",
+                    "key": "after_failures",
                     "expected_value": "still_works"
                 }
             ]

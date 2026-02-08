@@ -291,6 +291,44 @@ def run_kill_node_test(node_id: str) -> TestResult:
             message=str(e)
         )
 
+def run_kill_nodes_test(count: str, num_followers: int) -> TestResult:
+    """
+    Kill multiple nodes. 
+    count can be a number or 'floor(N/2)' for dynamic calculation.
+    """
+    # Calculate actual count
+    if count == "floor(N/2)":
+        actual_count = num_followers // 2
+    else:
+        actual_count = int(count)
+    
+    killed = []
+    for i in range(1, actual_count + 1):
+        node_id = f"follower-{i}"
+        try:
+            resp = requests.post(f"{COORDINATOR_URL}/kill/{node_id}", timeout=5)
+            if resp.status_code == 200:
+                killed.append(node_id)
+        except:
+            pass
+    
+    time.sleep(1)  # Wait for deaths to register
+    
+    if len(killed) == actual_count:
+        return TestResult(
+            test_id="kill_nodes",
+            description=f"Kill {actual_count} followers (floor({num_followers}/2))",
+            passed=True,
+            message=f"Killed: {', '.join(killed)}"
+        )
+    else:
+        return TestResult(
+            test_id="kill_nodes",
+            description=f"Kill {actual_count} followers",
+            passed=False,
+            message=f"Only killed {len(killed)}/{actual_count}"
+        )
+
 def run_burst_test(operation: str, count: int, key_prefix: str) -> TestResult:
     """Run burst of operations directly to coordinator (bypasses rate limiting)."""
     successes = 0
@@ -409,7 +447,7 @@ def run_stale_read_test(key: str) -> TestResult:
 # Scenario Runner
 # ========================
 
-def run_scenario(scenario: dict) -> ScenarioResult:
+def run_scenario(scenario: dict, num_followers: int) -> ScenarioResult:
     """Run all tests in a scenario."""
     results = []
     
@@ -426,6 +464,8 @@ def run_scenario(scenario: dict) -> ScenarioResult:
             result = run_read_test(test["key"], test.get("expected_value"))
         elif test_type == "kill_node":
             result = run_kill_node_test(test["target"])
+        elif test_type == "kill_nodes":
+            result = run_kill_nodes_test(test.get("count", "1"), num_followers)
         elif test_type == "burst":
             result = run_burst_test(test["operation"], test["count"], test["key_prefix"])
         elif test_type == "verify_burst":
@@ -595,7 +635,7 @@ def main():
         # Run scenarios
         scenario_results = []
         for scenario in instructor_config.get("scenarios", []):
-            result = run_scenario(scenario)
+            result = run_scenario(scenario, followers)
             scenario_results.append(result)
         
         # Print results
