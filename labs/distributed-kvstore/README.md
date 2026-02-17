@@ -299,6 +299,56 @@ This proves that the code you wrote in Lab 1 is production-ready!
 
 ---
 
+## Student Assessment
+
+Run the automated assessment to test your configuration:
+
+### Step 1: Create your configuration file
+
+Copy the example and modify:
+
+```bash
+cp student_config_example.json my_config.json
+# Edit my_config.json with your choices for W, R, followers, rate limiting
+```
+
+### Step 2: Run the assessment
+
+```bash
+# Automatic mode (starts cluster for you)
+python assessment.py --config my_config.json
+
+# Manual mode (if cluster is already running)
+python assessment.py --config my_config.json --no-start-cluster
+```
+
+### Configuration Options
+
+| Parameter | Description | Trade-off |
+|-----------|-------------|-----------|
+| `write_quorum` (W) | Followers that must ack writes | Higher = more durable, slower |
+| `read_quorum` (R) | Followers to query for reads | Higher = more consistent, slower |
+| `followers` | Total follower nodes | More = better fault tolerance |
+| `rate_limit_max` | Requests per window | Lower = more protection |
+| `rate_limit_window` | Window size in seconds | Shorter = faster recovery |
+
+### Example Grading Output
+
+```
+╔══════════════════════════════════════════════════════════════════════╗
+║             DISTRIBUTED KV STORE - ASSESSMENT RESULTS                ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  QUORUM WRITE TESTS                                                  ║
+║  ├─ ✅ Write succeeds with quorum                                    ║
+║  ├─ ✅ Sync acks meet quorum (W=2)                                   ║
+║  ...                                                                 ║
+║  SCORE: 12/12 tests passed                                           ║
+║  GRADE: A                                                            ║
+╚══════════════════════════════════════════════════════════════════════╝
+```
+
+---
+
 ## Key Takeaways
 
 1. **Code reuse matters**: Gateway imports rate limiting from Lab 1

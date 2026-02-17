@@ -1,0 +1,8 @@
+{
+    "deployment": {
+        "followers": 3,
+        "write_quorum": 2,
+        "read_quorum": 2
+    },
+    "justification": "TODO: Explain your trade-off choices here. Why did you choose these values for W, R, and followers?"
+}

@@ -1,0 +1,49 @@
+{
+    "scenarios": [
+        {
+            "id": "scenario_1",
+            "name": "Fault Tolerance",
+            "description": "System must continue operating after floor(N/2) node failures",
+            "weight": 50,
+            "tests": [
+                {
+                    "id": "basic_write",
+                    "type": "write",
+                    "key": "test_key",
+                    "value": "test_value"
+                },
+                {
+                    "id": "kill_max_tolerable",
+                    "type": "kill_nodes",
+                    "count": "floor(N/2)",
+                    "description": "Kill maximum tolerable number of followers"
+                },
+                {
+                    "id": "write_after_failures",
+                    "type": "write",
+                    "key": "after_failures",
+                    "value": "still_works"
+                },
+                {
+                    "id": "read_after_failures",
+                    "type": "read",
+                    "key": "after_failures",
+                    "expected_value": "still_works"
+                }
+            ]
+        },
+        {
+            "id": "scenario_2",
+            "name": "Stale Read Detection",
+            "description": "Check if read returns the version just written (tests async lag)",
+            "weight": 50,
+            "tests": [
+                {
+                    "id": "stale_read_test",
+                    "type": "stale_read",
+                    "key": "stale_test"
+                }
+            ]
+        }
+    ]
+}
