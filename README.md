@@ -1,8 +1,8 @@
-# Building Large Scale Systems: The Workshop 🏗️
+# Building Large Scale Systems: The Workshop
 
 Welcome to **Building Large Scale Systems**! Learn how to build resilient distributed systems from scratch through hands-on labs.
 
-## 🚀 Quick Start (Docker)
+## Quick Start (Docker)
 
 ### Prerequisites
 
@@ -29,11 +29,11 @@ Inside the container, test a simple node:
 python labs/scalability/node.py --port 5001 --id 1
 ```
 
-If you see `🚀 Node 1 starting on port 5001`, you're ready!
+If you see `Node 1 starting on port 5001`, you're ready!
 
 ---
 
-## 📂 Workshop Structure
+## Workshop Structure
 
 | Lab                                                               | Topic                          | What You'll Learn                                                                   |
 | ----------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------- |
