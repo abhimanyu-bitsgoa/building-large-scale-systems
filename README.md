@@ -29,7 +29,7 @@ Inside the container, test a simple node:
 python labs/scalability/node.py --port 5001 --id 1
 ```
 
-If you see `Node 1 starting on port 5001`, you're ready!
+If you see `Node 1 starting on port 5001`, you're ready for the workshop
 
 ---
 
