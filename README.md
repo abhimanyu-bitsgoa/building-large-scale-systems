@@ -30,6 +30,7 @@ python labs/scalability/node.py --port 5001 --id 1
 ```
 
 If you see `Node 1 starting on port 5001`, you're ready for the workshop
+Once done, please register your completion [here](https://forms.gle/fBfvTbLwgAKH13yd9)
 
 ---
 
