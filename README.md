@@ -14,7 +14,7 @@ Welcome to **Building Large Scale Systems**! Learn how to build resilient distri
 git clone https://github.com/abhimanyu-bitsgoa/building-large-scale-systems.git
 cd building-large-scale-systems
 
-# Build and start the container
+# Build and start the container (Make sure Docker is UP & RUNNING before this step)
 docker-compose up -d
 
 # Enter the workshop environment
