@@ -11,7 +11,7 @@ Welcome to **Building Large Scale Systems**! Learn how to build resilient distri
 ### 1. Clone and Start
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/abhimanyu-bitsgoa/building-large-scale-systems.git
 cd building-large-scale-systems
 
 # Build and start the container
