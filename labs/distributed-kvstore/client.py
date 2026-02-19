@@ -194,7 +194,6 @@ def interactive_mode(gateway_url: str):
     print("   read <key>          - Read data")
     print("   status              - Cluster status")
     print("   stats               - Gateway stats")
-    print("   graduate            - 🎓 Easter egg!")
     print("   quit                - Exit")
     print()
     

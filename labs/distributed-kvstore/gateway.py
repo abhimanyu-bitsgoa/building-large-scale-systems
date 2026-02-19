@@ -279,7 +279,6 @@ if __name__ == "__main__":
     print(f"   GET  /read/{{key}}    - Read data")
     print(f"   GET  /cluster-status - Cluster status")
     print(f"   GET  /stats         - Gateway stats")
-    print(f"   GET  /graduate      - 🎓 Easter egg!")
     print()
     
     uvicorn.run(app, host="0.0.0.0", port=args.port)

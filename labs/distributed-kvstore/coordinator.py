@@ -667,8 +667,7 @@ def start_cluster(num_followers: int, write_quorum: int, read_quorum: int,
         f"Registry: {registry_url}",
         f"Write Quorum: W={write_quorum} (followers must ack)",
         f"Read Quorum: R={read_quorum} (followers to query)",
-        f"Followers: {num_followers}",
-        f"Replication delay: {replication_delay}s"
+        f"Followers: {num_followers}"
     ])
     print()
     
