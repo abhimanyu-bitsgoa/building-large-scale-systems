@@ -120,7 +120,8 @@ class ClusterState:
         return self.leader and self.leader.get("status") == "alive" and alive_followers >= self.write_quorum
     
     def can_read(self) -> bool:
-        return len(self.get_alive_nodes()) >= self.read_quorum
+        """Check if we have enough followers for read quorum."""
+        return len(self.get_alive_followers()) >= self.read_quorum
 
 cluster = ClusterState()
 app = FastAPI(title="Distributed KV Store - Coordinator")
@@ -412,21 +413,6 @@ def read_data(key: str):
         except:
             logger.log("←", f"{node['node_id']}: Unreachable")
     
-    # Fall back to leader only if quorum of RESPONSES not met from followers
-    if len(results) < cluster.read_quorum and cluster.leader and cluster.leader.get("status") == "alive":
-        logger.log("→", f"Follower quorum not met ({len(results)}/{cluster.read_quorum}), querying leader")
-        try:
-            resp = requests.get(f"{cluster.leader['url']}/data/{key}", timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                logger.log("←", f"leader: v{data.get('version', 0)} \"{data.get('value')}\" [LEADER FALLBACK]")
-                results.append({"node_id": "leader", "value": data.get("value"), "version": data.get("version", 0)})
-            elif resp.status_code == 404:
-                logger.log("←", f"leader: NOT FOUND")
-                results.append({"node_id": "leader", "value": None, "version": 0})
-        except:
-            logger.log("←", f"leader: Unreachable")
-    
     # Check if we have R quorum responses
     if len(results) < cluster.read_quorum:
         logger.log("❌", f"QUORUM FAILED: Only {len(results)}/{cluster.read_quorum} nodes responded")
@@ -457,17 +443,30 @@ def read_data(key: str):
 
 @app.post("/spawn")
 def spawn_follower(request: Optional[SpawnRequest] = None):
-    """Start a new follower node."""
+    """Start a new follower node with smart slot reuse."""
     with cluster.lock:
+        # Priority 1: Use specific ID/Port if provided (e.g., from Registry Autospawn)
         if request and request.node_id and request.port:
             node_id = request.node_id
             port = request.port
-            logger.log("🔄", f"Reviving {node_id} on port {port}")
+            logger.log("🔄", f"Reviving {node_id} on port {port} (requested)")
+            
+        # Priority 2: Reuse an existing dead follower slot
         else:
-            cluster.node_counter += 1
-            node_id = f"follower-{cluster.node_counter}"
-            port = BASE_PORT + cluster.node_counter + 1
-        
+            dead_followers = [f for f in cluster.followers.values() if f.get("status") == "dead"]
+            if dead_followers:
+                dead = dead_followers[0]
+                node_id = dead["node_id"]
+                port = dead["port"]
+                logger.log("🔄", f"Reusing dead slot: {node_id} on port {port}")
+            
+            # Priority 3: Create a brand new slot
+            else:
+                cluster.node_counter += 1
+                node_id = f"follower-{cluster.node_counter}"
+                port = BASE_PORT + cluster.node_counter + 1
+                logger.log("🚀", f"Spawned NEW: {node_id} on port {port}")
+
         url = f"http://localhost:{port}"
         
         process = spawn_node(

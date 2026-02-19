@@ -117,52 +117,9 @@ python labs/distributed-kvstore/client.py
 >>> status
 ```
 
-### Using curl
-
-```bash
-# Write
-curl -X POST http://localhost:8000/write \
-  -H "Content-Type: application/json" \
-  -d '{"key": "hello", "value": "world"}'
-
-# Read
-curl http://localhost:8000/read/hello
-
-# Cluster status
-curl http://localhost:8000/cluster-status
-```
-
 ---
 
-## Demo 3: Rate Limiting in Action
-
-### Flood the gateway
-
-```bash
-# Quick loop to trigger rate limiting
-for i in {1..20}; do
-  curl -s http://localhost:8000/read/test | head -c 50
-  echo
-done
-```
-
-After 10 requests (the default limit), you'll see:
-
-```json
-{"error": "Too Many Requests", "retry_after": 60}
-```
-
-### Check gateway stats
-
-```bash
-curl http://localhost:8000/stats
-```
-
-Shows rate limiter statistics - imported directly from Lab 1!
-
----
-
-## Demo 4: Node Failure and Recovery
+## Demo 3: Node Failure and Recovery
 
 ### Step 1: Kill a follower
 
@@ -177,9 +134,8 @@ The node shows as 🔴 dead.
 ### Step 3: Check if writes still work
 
 ```bash
-curl -X POST http://localhost:8000/write \
-  -H "Content-Type: application/json" \
-  -d '{"key": "test", "value": "123"}'
+>>> write name distributed-systems
+>>> read name
 ```
 
 With W=2 and 2 remaining nodes (leader + 1 follower), writes succeed.
@@ -193,23 +149,27 @@ curl -X POST http://localhost:7000/kill/follower-2
 ### Step 5: Try to write
 
 ```bash
-curl -X POST http://localhost:8000/write \
-  -H "Content-Type: application/json" \
-  -d '{"key": "test", "value": "456"}'
+>>> write name distributed-systems
+>>> read name
 ```
 
-**Result**: 503 error - Write quorum not available!
+**Result**: error - Write quorum not available!
 
 ---
 
-## Demo 5: Automatic Catchup
+## Demo 4: Automatic Catchup
+
+### Step 1: Kill a follower node
+
+```bash
+curl -X POST http://localhost:7000/kill/follower-4
+```
 
 ### Step 1: Write some data first
 
 ```bash
-curl -X POST http://localhost:8000/write \
-  -H "Content-Type: application/json" \
-  -d '{"key": "secret", "value": "treasure"}'
+>>> write name distributed-systems
+>>> read name
 ```
 
 ### Step 2: Spawn a new follower
@@ -218,50 +178,13 @@ curl -X POST http://localhost:8000/write \
 curl -X POST http://localhost:7000/spawn
 ```
 
-### Step 3: Check the registry
+### Step 3: Verify catchup happened
 
 ```bash
-curl http://localhost:9000/nodes
+>>> read name
 ```
 
-The new follower appears!
-
-### Step 4: Verify catchup happened
-
-The registry automatically triggered catchup. The new follower has all the data from the leader.
-
----
-
-## Demo 6: The Easter Egg 🎓
-
-After completing the workshop:
-
-```bash
-curl http://localhost:8000/graduate
-```
-
-Or in the client:
-
-```bash
-python labs/distributed-kvstore/client.py
->>> graduate
-```
-
-🎓 **Congratulations, you're now a distributed systems engineer!**
-
----
-
-## Code Reuse from Lab 1
-
-The gateway imports directly from Lab 1 (Scalability):
-
-```python
-# In gateway.py
-from scalability.load_balancer import LoadBalancer, node_stats
-from scalability.rate_limiter import RateLimiter, FixedWindowStrategy
-```
-
-This proves that the code you wrote in Lab 1 is production-ready!
+Observe that the follower-3 has gotten the value.
 
 ---
 
@@ -275,7 +198,6 @@ This proves that the code you wrote in Lab 1 is production-ready!
 | GET    | `/read/{key}`     | Read data                    |
 | GET    | `/cluster-status` | Cluster status               |
 | GET    | `/stats`          | Gateway stats (rate limiter) |
-| GET    | `/graduate`       | 🎓 Easter egg                |
 
 ### Coordinator (port 7000)
 

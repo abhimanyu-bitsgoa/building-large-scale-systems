@@ -2,7 +2,6 @@
 Distributed KV Store Lab - Registry
 
 Service discovery with heartbeats, automatic pruning, and catchup triggering.
-Based on patterns from workshop_materials/11_membership/registry.py.
 """
 
 import uvicorn
