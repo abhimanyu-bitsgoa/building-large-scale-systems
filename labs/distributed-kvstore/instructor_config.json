@@ -4,7 +4,7 @@
             "id": "inc_basic",
             "name": "INC-0: Basic Operations",
             "description": "Verify the system can perform basic read, write, and overwrite operations",
-            "weight": 15,
+            "weight": 20,
             "tests": [
                 {
                     "id": "basic_write",
@@ -36,7 +36,7 @@
             "id": "inc_1",
             "name": "INC-1: Gateway Flood (Rate Limiting)",
             "description": "Gateway must block sustained burst traffic — not just a single spike",
-            "weight": 15,
+            "weight": 20,
             "tests": [
                 {
                     "id": "rate_limit_sustained",
@@ -49,7 +49,7 @@
             "id": "inc_3",
             "name": "INC-3: Stale Cart Data (Consistency)",
             "description": "Reads must return fresh data — tests whether W + R > N holds",
-            "weight": 25,
+            "weight": 30,
             "tests": [
                 {
                     "id": "consistency_immediate",
@@ -71,7 +71,7 @@
             "id": "inc_4",
             "name": "INC-4: Write Outage After Failure (Fault Tolerance)",
             "description": "System must continue operating after floor(N/2) node failures",
-            "weight": 25,
+            "weight": 30,
             "tests": [
                 {
                     "id": "ft_write_before",
@@ -102,36 +102,6 @@
                     "type": "read",
                     "key": "before_failure",
                     "expected_value": "safe_data"
-                }
-            ]
-        },
-        {
-            "id": "inc_recovery",
-            "name": "INC-2/5: Recovery & Right-Sizing",
-            "description": "System recovers after spawning a replacement node",
-            "weight": 20,
-            "tests": [
-                {
-                    "id": "recovery_write_before",
-                    "type": "write",
-                    "key": "pre_recovery",
-                    "value": "must_survive"
-                },
-                {
-                    "id": "recovery_kill",
-                    "type": "kill_node",
-                    "target": "follower-1"
-                },
-                {
-                    "id": "recovery_spawn",
-                    "type": "spawn_node",
-                    "description": "Spawn a replacement node"
-                },
-                {
-                    "id": "recovery_read",
-                    "type": "read",
-                    "key": "pre_recovery",
-                    "expected_value": "must_survive"
                 }
             ]
         }

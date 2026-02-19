@@ -277,15 +277,14 @@ nano labs/distributed-kvstore/student_config.json
 python labs/distributed-kvstore/assessment.py --config labs/distributed-kvstore/student_config.json
 ```
 
-The assessment tests 5 scenarios (100 points total):
+The assessment tests 4 scenarios (100 points total):
 
 | Scenario                                 | Points | Validates fix for |
 | ---------------------------------------- | ------ | ----------------- |
-| INC-0: Basic Operations                  | 15     | System works      |
-| INC-1: Gateway Flood (Rate Limiting)     | 15     | INC-1             |
-| INC-3: Stale Cart Data (Consistency)     | 25     | INC-3             |
-| INC-4: Write Outage (Fault Tolerance)    | 25     | INC-4             |
-| INC-2/5: Recovery & Right-Sizing         | 20     | INC-2 + INC-5     |
+| INC-0: Basic Operations                  | 20     | System works      |
+| INC-1: Gateway Flood (Rate Limiting)     | 20     | INC-1             |
+| INC-3: Stale Cart Data (Consistency)     | 30     | INC-3             |
+| INC-4: Write Outage (Fault Tolerance)    | 30     | INC-4             |
 
 ### Step 5: Iterate!
 

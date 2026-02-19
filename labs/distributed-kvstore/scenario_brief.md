@@ -131,11 +131,10 @@ for i in $(seq 1 30); do curl -s -o /dev/null -w "%{http_code}\n" http://localho
 
 | Scenario                                 | Points | What it validates                      |
 |------------------------------------------|--------|----------------------------------------|
-| INC-0: Basic Operations                  | 15     | Reads and writes work                  |
-| INC-1: Gateway Flood (Rate Limiting)     | 15     | Sustained burst protection (INC-1)     |
-| INC-3: Stale Cart Data (Consistency)     | 25     | No stale reads (INC-3)                 |
-| INC-4: Write Outage (Fault Tolerance)    | 25     | Survives node failures (INC-4)         |
-| INC-2/5: Recovery & Right-Sizing         | 20     | System recovery (INC-2 + INC-5)        |
+| INC-0: Basic Operations                  | 20     | Reads and writes work                  |
+| INC-1: Gateway Flood (Rate Limiting)     | 20     | Sustained burst protection (INC-1)     |
+| INC-3: Stale Cart Data (Consistency)     | 30     | No stale reads (INC-3)                 |
+| INC-4: Write Outage (Fault Tolerance)    | 30     | Survives node failures (INC-4)         |
 
 **Total: 100 points**
 
