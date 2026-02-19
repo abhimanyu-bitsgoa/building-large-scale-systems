@@ -1,13 +1,13 @@
 # Distributed KV Store Lab
 
-A fault-tolerant distributed key-value store combining concepts from Lab 1 (Scalability) and Lab 2 (Replication).
+A fault-tolerant distributed key-value store combining concepts learnt in Scalability & Replication module.
 
 ## Overview
 
 This lab demonstrates:
 
-- **Gateway with rate limiting** (imported from Lab 1!)
-- **Single-leader replication with quorum** (from Lab 2)
+- **Gateway with rate limiting**
+- **Single-leader replication with quorum**
 - **Service discovery with heartbeats**
 - **Automatic catchup for new followers**
 - **Fault tolerance and recovery**
@@ -35,16 +35,16 @@ This lab demonstrates:
 
 ## Files
 
-| File               | Description                                         |
-| ------------------ | --------------------------------------------------- |
-| `gateway.py`     | Entry point with rate limiting (imports from Lab 1) |
-| `coordinator.py` | Cluster manager with quorum and catchup             |
-| `registry.py`    | Service discovery with heartbeats                   |
-| `node.py`        | Leader or follower node                             |
-| `catchup.py`     | Data synchronization for new followers              |
-| `client.py`      | Interactive client                                  |
-| `assessment.py`  | Automated assessment script                         |
-| `scenario_brief.md` | Student mini-project business brief              |
+| File                  | Description                             |
+| --------------------- | --------------------------------------- |
+| `gateway.py`        | Entry point with rate limiting          |
+| `coordinator.py`    | Cluster manager with quorum and catchup |
+| `registry.py`       | Service discovery with heartbeats       |
+| `node.py`           | Leader or follower node                 |
+| `catchup.py`        | Data synchronization for new followers  |
+| `client.py`         | Interactive client                      |
+| `assessment.py`     | Automated assessment script             |
+| `scenario_brief.md` | Student mini-project business brief     |
 
 ---
 
@@ -342,14 +342,14 @@ Edit `student_config.json` with your choices:
 nano labs/distributed-kvstore/student_config.json
 ```
 
-| Parameter | What it controls | Key question |
-|-----------|-----------------|--------------|
-| `followers` | Number of follower nodes | How many failures can you survive? |
-| `write_quorum` (W) | Followers that must ack writes | Higher = more durable, slower |
-| `read_quorum` (R) | Followers queried for reads | Higher = more consistent, slower |
-| `auto_spawn` | Auto-replace dead nodes | Faster recovery vs complexity |
-| `rate_limit_max` | Max requests per window | Protection vs rejecting valid traffic |
-| `rate_limit_window` | Window size in seconds | Shorter = faster rate limit recovery |
+| Parameter             | What it controls               | Key question                          |
+| --------------------- | ------------------------------ | ------------------------------------- |
+| `followers`         | Number of follower nodes       | How many failures can you survive?    |
+| `write_quorum` (W)  | Followers that must ack writes | Higher = more durable, slower         |
+| `read_quorum` (R)   | Followers queried for reads    | Higher = more consistent, slower      |
+| `auto_spawn`        | Auto-replace dead nodes        | Faster recovery vs complexity         |
+| `rate_limit_max`    | Max requests per window        | Protection vs rejecting valid traffic |
+| `rate_limit_window` | Window size in seconds         | Shorter = faster rate limit recovery  |
 
 **Don't forget** to fill in all 4 justification fields explaining *why* you made each choice!
 
@@ -361,13 +361,13 @@ python labs/distributed-kvstore/assessment.py --config labs/distributed-kvstore/
 
 The assessment tests 5 scenarios (100 points total):
 
-| Scenario | Points | What it tests |
-|----------|--------|---------------|
-| Basic Operations | 15 | Reads and writes work |
-| Fault Tolerance | 25 | Survives node failures |
-| Consistency | 25 | No stale reads (W+R > N) |
-| Rate Limiting | 15 | Gateway rejects burst traffic |
-| Recovery | 20 | System recovers after node replacement |
+| Scenario         | Points | What it tests                          |
+| ---------------- | ------ | -------------------------------------- |
+| Basic Operations | 15     | Reads and writes work                  |
+| Fault Tolerance  | 25     | Survives node failures                 |
+| Consistency      | 25     | No stale reads (W+R > N)               |
+| Rate Limiting    | 15     | Gateway rejects burst traffic          |
+| Recovery         | 20     | System recovers after node replacement |
 
 ### Step 5: Iterate!
 

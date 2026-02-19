@@ -118,20 +118,33 @@ def auto_spawn_node(dead_node_id: str, port: int):
         print(f"❌ [Registry] Auto-spawn error: {e}")
 
 def trigger_catchup(node_id: str, node_url: str):
-    """Trigger catchup for a new follower node."""
-    try:
-        print(f"📥 [Registry] Triggering catchup for {node_id}")
-        resp = requests.post(
-            f"{COORDINATOR_URL}/catchup",
-            json={"node_id": node_id, "url": node_url},
-            timeout=10
-        )
-        if resp.status_code == 200:
-            print(f"✅ [Registry] Catchup triggered for {node_id}")
-        else:
-            print(f"⚠️ [Registry] Catchup failed for {node_id}: {resp.status_code}")
-    except Exception as e:
-        print(f"❌ [Registry] Catchup error for {node_id}: {e}")
+    """Trigger catchup for a new follower node with retries."""
+    max_retries = 5
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"📥 [Registry] Triggering catchup for {node_id} (attempt {attempt+1})")
+            resp = requests.post(
+                f"{COORDINATOR_URL}/catchup",
+                json={"node_id": node_id, "url": node_url},
+                timeout=10
+            )
+            if resp.status_code == 200:
+                print(f"✅ [Registry] Catchup triggered for {node_id}")
+                return
+            else:
+                print(f"⚠️ [Registry] Catchup failed for {node_id}: {resp.status_code}")
+                # For non-connection errors, we might not want to retry as aggressively,
+                # but let's allow it for consistency in this lab setup.
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+                continue
+            print(f"❌ [Registry] Catchup error for {node_id}: Coordinator unreachable after {max_retries} attempts.")
+        except Exception as e:
+            print(f"❌ [Registry] Catchup error for {node_id}: {e}")
+            break
 
 # Start pruner thread
 pruner_thread = threading.Thread(target=prune_nodes, daemon=True)
