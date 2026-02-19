@@ -223,57 +223,53 @@ Observe that the follower-3 has gotten the value.
 
 ---
 
-## Student Mini-Project: CloudCart KV Store
+## Student Mini-Project: CloudCart Incident Investigation
 
-Design and configure a distributed KV store for a fictional e-commerce company!
+Investigate production incidents in a misconfigured distributed KV store and fix the system!
 
-### Step 1: Read the scenario brief
+### Step 1: Read the incident brief
 
 ```bash
-# Understand the business requirements
+# Review the 5 open incident tickets
 cat labs/distributed-kvstore/scenario_brief.md
 ```
 
-Or open [scenario_brief.md](scenario_brief.md) — it describes CloudCart's traffic patterns, reliability needs, and budget constraints.
+Or open [scenario_brief.md](scenario_brief.md) — you'll play an SRE who inherited a broken system with 5 production incidents to investigate and fix.
 
-### Step 2: Experiment with the system
+### Step 2: Reproduce the incidents
 
-After the instructor demos, try things yourself:
+After the instructor demos, try reproducing each incident:
 
 ```bash
+# INC-1: Test rate limiting — does burst traffic get blocked?
+for i in $(seq 1 30); do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/read/test; done
+
+# INC-4: Kill a single node — do writes still work?
+curl -X POST http://localhost:7000/kill/follower-1
+curl -X POST http://localhost:8000/write -H "Content-Type: application/json" -d '{"key":"test","value":"hello"}'
+
 # Check cluster status
 curl http://localhost:7000/status
-
-# Write and read data
-curl -X POST http://localhost:8000/write -H "Content-Type: application/json" -d '{"key": "test", "value": "hello"}'
-curl http://localhost:8000/read/test
-
-# Kill a node and see what happens
-curl -X POST http://localhost:7000/kill/follower-1
-
-# Spawn a replacement
-curl -X POST http://localhost:7000/spawn
 ```
 
-### Step 3: Design your configuration
+### Step 3: Diagnose and fix the configuration
 
-Edit `student_config.json` with your choices:
+The current `student_config.json` contains the bugs. Investigate each incident, find the root cause, and fix it:
 
 ```bash
 # Edit the config file
 nano labs/distributed-kvstore/student_config.json
 ```
 
-| Parameter             | What it controls               | Key question                          |
-| --------------------- | ------------------------------ | ------------------------------------- |
-| `followers`         | Number of follower nodes       | How many failures can you survive?    |
-| `write_quorum` (W)  | Followers that must ack writes | Higher = more durable, slower         |
-| `read_quorum` (R)   | Followers queried for reads    | Higher = more consistent, slower      |
-| `auto_spawn`        | Auto-replace dead nodes        | Faster recovery vs complexity         |
-| `rate_limit_max`    | Max requests per window        | Protection vs rejecting valid traffic |
-| `rate_limit_window` | Window size in seconds         | Shorter = faster rate limit recovery  |
+| Parameter             | Incident | What to investigate                          |
+| --------------------- | -------- | -------------------------------------------- |
+| `rate_limit_window` | INC-1    | Why does the rate limiter never block bursts? |
+| `auto_spawn_delay`  | INC-2    | Why do ghost nodes appear after network blips?|
+| `read_quorum` (R)   | INC-3    | Why are customers seeing stale cart data?     |
+| `write_quorum` (W)  | INC-4    | Why does one node failure kill all writes?    |
+| `followers`          | INC-5    | Why is the cluster over budget?               |
 
-**Don't forget** to fill in all 4 justification fields explaining *why* you made each choice!
+**Don't forget** to fill in all 4 justification fields explaining *what was wrong* and *why your fix resolves it*!
 
 ### Step 4: Run the assessment
 
@@ -283,14 +279,14 @@ python labs/distributed-kvstore/assessment.py --config labs/distributed-kvstore/
 
 The assessment tests 5 scenarios (100 points total):
 
-| Scenario         | Points | What it tests                          |
-| ---------------- | ------ | -------------------------------------- |
-| Basic Operations | 15     | Reads and writes work                  |
-| Fault Tolerance  | 25     | Survives node failures                 |
-| Consistency      | 25     | No stale reads (W+R > N)               |
-| Rate Limiting    | 15     | Gateway rejects burst traffic          |
-| Recovery         | 20     | System recovers after node replacement |
+| Scenario                                 | Points | Validates fix for |
+| ---------------------------------------- | ------ | ----------------- |
+| INC-0: Basic Operations                  | 15     | System works      |
+| INC-1: Gateway Flood (Rate Limiting)     | 15     | INC-1             |
+| INC-3: Stale Cart Data (Consistency)     | 25     | INC-3             |
+| INC-4: Write Outage (Fault Tolerance)    | 25     | INC-4             |
+| INC-2/5: Recovery & Right-Sizing         | 20     | INC-2 + INC-5     |
 
 ### Step 5: Iterate!
 
-Adjust your config and re-run until you're happy with your score.
+Adjust your config and re-run until all incidents are resolved.

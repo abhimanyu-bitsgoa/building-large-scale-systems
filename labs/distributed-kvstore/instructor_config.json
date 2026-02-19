@@ -1,31 +1,19 @@
 {
     "scenarios": [
         {
-            "id": "scenario_1",
-            "name": "Basic Operations",
-            "description": "Verify the system can perform basic read and write operations",
+            "id": "inc_basic",
+            "name": "INC-0: Basic Operations",
+            "description": "Verify the system can perform basic read, write, and overwrite operations",
             "weight": 15,
             "tests": [
                 {
-                    "id": "basic_write_1",
-                    "type": "write",
-                    "key": "greeting",
-                    "value": "hello_world"
-                },
-                {
-                    "id": "basic_read_1",
-                    "type": "read",
-                    "key": "greeting",
-                    "expected_value": "hello_world"
-                },
-                {
-                    "id": "basic_write_2",
+                    "id": "basic_write",
                     "type": "write",
                     "key": "cart_item",
                     "value": "laptop"
                 },
                 {
-                    "id": "basic_read_2",
+                    "id": "basic_read",
                     "type": "read",
                     "key": "cart_item",
                     "expected_value": "laptop"
@@ -45,8 +33,43 @@
             ]
         },
         {
-            "id": "scenario_2",
-            "name": "Fault Tolerance",
+            "id": "inc_1",
+            "name": "INC-1: Gateway Flood (Rate Limiting)",
+            "description": "Gateway must block sustained burst traffic — not just a single spike",
+            "weight": 15,
+            "tests": [
+                {
+                    "id": "rate_limit_sustained",
+                    "type": "rate_limit_sustained",
+                    "description": "Send sustained burst traffic and verify rate limiting holds across window resets"
+                }
+            ]
+        },
+        {
+            "id": "inc_3",
+            "name": "INC-3: Stale Cart Data (Consistency)",
+            "description": "Reads must return fresh data — tests whether W + R > N holds",
+            "weight": 25,
+            "tests": [
+                {
+                    "id": "consistency_immediate",
+                    "type": "stale_read",
+                    "key": "stale_test_immediate",
+                    "delay_ms": 0,
+                    "description": "Write then immediately read — detects stale reads with no delay"
+                },
+                {
+                    "id": "consistency_delayed",
+                    "type": "stale_read",
+                    "key": "stale_test_delayed",
+                    "delay_ms": 500,
+                    "description": "Write then read after 500ms — even with replication lag, should be fresh"
+                }
+            ]
+        },
+        {
+            "id": "inc_4",
+            "name": "INC-4: Write Outage After Failure (Fault Tolerance)",
             "description": "System must continue operating after floor(N/2) node failures",
             "weight": 25,
             "tests": [
@@ -83,44 +106,8 @@
             ]
         },
         {
-            "id": "scenario_3",
-            "name": "Consistency",
-            "description": "Reads must return fresh data (tests W + R > N)",
-            "weight": 25,
-            "tests": [
-                {
-                    "id": "consistency_stale_1",
-                    "type": "stale_read",
-                    "key": "stale_test_1"
-                },
-                {
-                    "id": "consistency_stale_2",
-                    "type": "stale_read",
-                    "key": "stale_test_2"
-                },
-                {
-                    "id": "consistency_stale_3",
-                    "type": "stale_read",
-                    "key": "stale_test_3"
-                }
-            ]
-        },
-        {
-            "id": "scenario_4",
-            "name": "Rate Limiting",
-            "description": "Gateway must reject excess traffic with 429 responses",
-            "weight": 15,
-            "tests": [
-                {
-                    "id": "rate_limit_test",
-                    "type": "rate_limit",
-                    "description": "Send burst traffic and verify rate limiting kicks in"
-                }
-            ]
-        },
-        {
-            "id": "scenario_5",
-            "name": "Recovery",
+            "id": "inc_recovery",
+            "name": "INC-2/5: Recovery & Right-Sizing",
             "description": "System recovers after spawning a replacement node",
             "weight": 20,
             "tests": [

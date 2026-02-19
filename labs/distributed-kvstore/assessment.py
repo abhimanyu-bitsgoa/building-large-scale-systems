@@ -191,6 +191,30 @@ def stop_cluster():
     except:
         pass
 
+def reset_cluster(num_followers: int):
+    """Reset cluster state between scenarios by respawning all killed nodes."""
+    try:
+        # Get current cluster status
+        resp = requests.get(f"{COORDINATOR_URL}/status", timeout=5)
+        if resp.status_code != 200:
+            return
+        
+        status = resp.json()
+        dead_nodes = [n for n in status.get("nodes", []) if n.get("status") == "dead"]
+        
+        # Respawn each dead node
+        for node in dead_nodes:
+            try:
+                requests.post(f"{COORDINATOR_URL}/spawn", timeout=5)
+                time.sleep(2)  # Wait for catchup
+            except:
+                pass
+        
+        if dead_nodes:
+            time.sleep(2)  # Extra settle time
+    except:
+        pass
+
 # ========================
 # Test Runners
 # ========================
@@ -430,15 +454,112 @@ def run_rate_limit_test(student_config: dict) -> TestResult:
             message=f"Sent {total_requests} requests but none were rate-limited"
         )
 
-def run_stale_read_test(key: str) -> TestResult:
+def run_sustained_rate_limit_test(student_config: dict) -> TestResult:
+    """
+    Test that rate limiting blocks SUSTAINED burst traffic.
+    
+    Two-phase test:
+    1. Phase 1: Send max requests to saturate the window
+    2. Wait 5 seconds (enough for a short window to reset, not enough for a long one)
+    3. Phase 2: Send another burst — if these succeed, the window is too short
+    
+    With window=2s: Phase 2 succeeds (window reset) → FAIL
+    With window=60s: Phase 2 gets 429'd (still rate-limited) → PASS
+    """
+    gateway_config = student_config.get("gateway", {})
+    rate_limit_enabled = gateway_config.get("rate_limit_enabled", True)
+    rate_limit_max = gateway_config.get("rate_limit_max", 10)
+    rate_limit_window = gateway_config.get("rate_limit_window", 60)
+    
+    if not rate_limit_enabled:
+        return TestResult(
+            test_id="rate_limit_sustained",
+            description="Sustained burst protection",
+            passed=False,
+            message="Rate limiting is disabled in config"
+        )
+    
+    WAIT_BETWEEN_PHASES = 5  # seconds
+    PHASE2_REQUESTS = min(rate_limit_max, 10)  # send up to 10 requests in phase 2
+    
+    # Phase 1: Saturate the window
+    phase1_success = 0
+    phase1_limited = 0
+    for i in range(rate_limit_max + 5):
+        try:
+            resp = requests.get(f"{GATEWAY_URL}/read/burst_phase1_{i}", timeout=5)
+            if resp.status_code == 429:
+                phase1_limited += 1
+            else:
+                phase1_success += 1
+        except:
+            pass
+    
+    # Phase 1 should have triggered some rate limiting
+    if phase1_limited == 0:
+        return TestResult(
+            test_id="rate_limit_sustained",
+            description="Sustained burst protection",
+            passed=False,
+            message=f"Phase 1: Sent {rate_limit_max + 5} requests, none were rate-limited. Rate limiting may not be working."
+        )
+    
+    # Wait for potential window reset
+    time.sleep(WAIT_BETWEEN_PHASES)
+    
+    # Phase 2: Send another burst — should still be blocked if window is long enough
+    phase2_success = 0
+    phase2_limited = 0
+    for i in range(PHASE2_REQUESTS):
+        try:
+            resp = requests.get(f"{GATEWAY_URL}/read/burst_phase2_{i}", timeout=5)
+            if resp.status_code == 429:
+                phase2_limited += 1
+            else:
+                phase2_success += 1
+        except:
+            pass
+    
+    # If most Phase 2 requests succeeded, the window reset too fast
+    phase2_block_rate = phase2_limited / PHASE2_REQUESTS if PHASE2_REQUESTS > 0 else 0
+    
+    if phase2_block_rate >= 0.5:
+        # Window held — sustained burst was blocked
+        return TestResult(
+            test_id="rate_limit_sustained",
+            description="Sustained burst protection",
+            passed=True,
+            message=(
+                f"Phase 1: {phase1_success} succeeded, {phase1_limited} blocked | "
+                f"Waited {WAIT_BETWEEN_PHASES}s | "
+                f"Phase 2: {phase2_success} succeeded, {phase2_limited} blocked — "
+                f"window ({rate_limit_window}s) held, sustained burst blocked ✅"
+            )
+        )
+    else:
+        # Window reset — sustained burst got through
+        return TestResult(
+            test_id="rate_limit_sustained",
+            description="Sustained burst protection",
+            passed=False,
+            message=(
+                f"Phase 1: {phase1_success} succeeded, {phase1_limited} blocked | "
+                f"Waited {WAIT_BETWEEN_PHASES}s | "
+                f"Phase 2: {phase2_success} succeeded, {phase2_limited} blocked — "
+                f"window ({rate_limit_window}s) reset too fast, sustained bursts get through ❌"
+            )
+        )
+
+def run_stale_read_test(key: str, delay_ms: int = 0) -> TestResult:
     """
     Test for stale reads due to async replication lag.
     
     1. Write a value and get version
-    2. Immediately read
-    3. Compare versions - if read version < write version, it's stale
+    2. Wait delay_ms milliseconds (to test with/without replication lag)
+    3. Read and compare versions - if read version < write version, it's stale
     """
-    value = f"stale_test_value_{int(time.time())}"
+    value = f"stale_test_value_{int(time.time() * 1000)}"
+    delay_label = f" (after {delay_ms}ms)" if delay_ms > 0 else " (immediate)"
     
     # Write via coordinator and capture the version
     try:
@@ -450,9 +571,9 @@ def run_stale_read_test(key: str) -> TestResult:
         if resp.status_code != 200:
             return TestResult(
                 test_id="stale_read",
-                description="Stale read detection",
+                description=f"Consistency check{delay_label}",
                 passed=False,
-                message=f"Write failed: {resp.status_code}"
+                message=f"Cannot test: write quorum unavailable ({resp.status_code}) — fix write quorum first"
             )
         
         write_result = resp.json()
@@ -460,12 +581,16 @@ def run_stale_read_test(key: str) -> TestResult:
     except Exception as e:
         return TestResult(
             test_id="stale_read",
-            description="Stale read detection",
+            description=f"Consistency check{delay_label}",
             passed=False,
             message=f"Write error: {e}"
         )
     
-    # Immediately read - check if version matches
+    # Wait for specified delay
+    if delay_ms > 0:
+        time.sleep(delay_ms / 1000.0)
+    
+    # Read and check if version matches
     try:
         resp = requests.get(f"{COORDINATOR_URL}/read/{key}", timeout=5)
         if resp.status_code == 200:
@@ -476,35 +601,35 @@ def run_stale_read_test(key: str) -> TestResult:
             if read_version < written_version:
                 return TestResult(
                     test_id="stale_read",
-                    description="Stale read detection",
+                    description=f"Consistency check{delay_label}",
                     passed=False,
-                    message=f"Stale! Wrote v{written_version}, got v{read_version} (from {served_by})"
+                    message=f"Stale! Wrote v{written_version}, read v{read_version} (from {served_by})"
                 )
             else:
                 return TestResult(
                     test_id="stale_read",
-                    description="Stale read detection",
+                    description=f"Consistency check{delay_label}",
                     passed=True,
-                    message=f"Fresh read: v{read_version} (from {served_by})"
+                    message=f"Fresh: v{read_version} (from {served_by})"
                 )
         elif resp.status_code == 404:
             return TestResult(
                 test_id="stale_read",
-                description="Stale read detection",
+                description=f"Consistency check{delay_label}",
                 passed=False,
                 message=f"Stale! Key not found yet (wrote v{written_version})"
             )
         else:
             return TestResult(
                 test_id="stale_read",
-                description="Stale read detection",
+                description=f"Consistency check{delay_label}",
                 passed=False,
                 message=f"Read failed: {resp.status_code}"
             )
     except Exception as e:
         return TestResult(
             test_id="stale_read",
-            description="Stale read detection",
+            description=f"Consistency check{delay_label}",
             passed=False,
             message=f"Read error: {e}"
         )
@@ -574,7 +699,9 @@ def run_scenario(scenario: dict, num_followers: int, student_config: dict) -> Sc
         elif test_type == "verify_burst":
             result = run_verify_burst_test(test["key_prefix"], test["count"])
         elif test_type == "stale_read":
-            result = run_stale_read_test(test.get("key", "stale_test"))
+            result = run_stale_read_test(test.get("key", "stale_test"), test.get("delay_ms", 0))
+        elif test_type == "rate_limit_sustained":
+            result = run_sustained_rate_limit_test(student_config)
         else:
             result = TestResult(
                 test_id=test.get("id", "unknown"),
@@ -778,7 +905,11 @@ def main():
     try:
         # Run scenarios
         scenario_results = []
-        for scenario in instructor_config.get("scenarios", []):
+        scenarios = instructor_config.get("scenarios", [])
+        for i, scenario in enumerate(scenarios):
+            # Reset cluster between scenarios to prevent cascading failures
+            if i > 0:
+                reset_cluster(followers)
             result = run_scenario(scenario, followers, student_config)
             scenario_results.append(result)
         

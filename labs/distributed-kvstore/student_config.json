@@ -4,17 +4,17 @@
         "write_quorum": 4,
         "read_quorum": 1,
         "auto_spawn": true,
-        "auto_spawn_delay": 5
+        "auto_spawn_delay": 1
     },
     "gateway": {
         "rate_limit_enabled": true,
         "rate_limit_max": 20,
-        "rate_limit_window": 60
+        "rate_limit_window": 2
     },
     "justifications": {
-        "quorum_choice": "TODO: Why did you choose these W and R values? How does W + R compare to N?",
-        "follower_count": "TODO: Why this many followers? What failures can you tolerate?",
-        "rate_limiting": "TODO: Why these rate limit settings? How do they protect the system?",
-        "auto_spawn": "TODO: Why did you enable/disable auto-spawn? What's the trade-off?"
+        "quorum_choice": "TODO: What was wrong with the original W and R values? How does W + R compare to N, and why does that matter?",
+        "follower_count": "TODO: Why was the original follower count problematic? What's the right balance between fault tolerance and cost?",
+        "rate_limiting": "TODO: What was wrong with the rate limiting config? How does the window size affect burst protection?",
+        "auto_spawn": "TODO: What was wrong with the spawn delay? What problems can a too-aggressive respawn cause?"
     }
 }
