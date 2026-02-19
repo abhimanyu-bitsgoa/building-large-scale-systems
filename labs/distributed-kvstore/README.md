@@ -294,36 +294,3 @@ The assessment tests 5 scenarios (100 points total):
 ### Step 5: Iterate!
 
 Adjust your config and re-run until you're happy with your score.
-
----
-
-## Key Takeaways
-
-1. **Code reuse matters**: Gateway imports rate limiting from Lab 1
-2. **Layered architecture**: Gateway → Coordinator → Nodes
-3. **Service discovery**: Registry tracks all nodes via heartbeats
-4. **Automatic recovery**: New followers catch up from leader
-5. **Defense in depth**: Rate limiting at gateway protects the cluster
-
----
-
-## Troubleshooting
-
-**Gateway can't reach coordinator?**
-
-- Ensure coordinator is running on port 7000
-- Check the --coordinator flag
-
-**Nodes not appearing in registry?**
-
-- Check registry is running on port 9000
-- Verify nodes are sending heartbeats
-
-**Catchup not working?**
-
-- Check leader has `/snapshot` endpoint
-- Verify network connectivity between nodes
-
-**Rate limiting too aggressive?**
-
-- Adjust `--rate-limit-max` and `--rate-limit-window`
