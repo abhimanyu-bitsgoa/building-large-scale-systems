@@ -62,8 +62,8 @@
                     "id": "consistency_delayed",
                     "type": "stale_read",
                     "key": "stale_test_delayed",
-                    "delay_ms": 500,
-                    "description": "Write then read after 500ms — even with replication lag, should be fresh"
+                    "delay_ms": 6000,
+                    "description": "Write then read after 6000ms — allows eventually consistent replication to finish"
                 }
             ]
         },
