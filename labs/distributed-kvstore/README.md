@@ -43,6 +43,8 @@ This lab demonstrates:
 | `node.py`        | Leader or follower node                             |
 | `catchup.py`     | Data synchronization for new followers              |
 | `client.py`      | Interactive client                                  |
+| `assessment.py`  | Automated assessment script                         |
+| `scenario_brief.md` | Student mini-project business brief              |
 
 ---
 
@@ -299,53 +301,77 @@ This proves that the code you wrote in Lab 1 is production-ready!
 
 ---
 
-## Student Assessment
+## Student Mini-Project: CloudCart KV Store
 
-Run the automated assessment to test your configuration:
+Design and configure a distributed KV store for a fictional e-commerce company!
 
-### Step 1: Create your configuration file
-
-Copy the example and modify:
+### Step 1: Read the scenario brief
 
 ```bash
-cp student_config_example.json my_config.json
-# Edit my_config.json with your choices for W, R, followers, rate limiting
+# Understand the business requirements
+cat labs/distributed-kvstore/scenario_brief.md
 ```
 
-### Step 2: Run the assessment
+Or open [scenario_brief.md](scenario_brief.md) — it describes CloudCart's traffic patterns, reliability needs, and budget constraints.
+
+### Step 2: Experiment with the system
+
+After the instructor demos, try things yourself:
 
 ```bash
-# Automatic mode (starts cluster for you)
-python assessment.py --config my_config.json
+# Check cluster status
+curl http://localhost:7000/status
 
-# Manual mode (if cluster is already running)
-python assessment.py --config my_config.json --no-start-cluster
+# Write and read data
+curl -X POST http://localhost:8000/write -H "Content-Type: application/json" -d '{"key": "test", "value": "hello"}'
+curl http://localhost:8000/read/test
+
+# Kill a node and see what happens
+curl -X POST http://localhost:7000/kill/follower-1
+
+# Spawn a replacement
+curl -X POST http://localhost:7000/spawn
 ```
 
-### Configuration Options
+### Step 3: Design your configuration
 
-| Parameter | Description | Trade-off |
-|-----------|-------------|-----------|
+Edit `student_config.json` with your choices:
+
+```bash
+# Edit the config file
+nano labs/distributed-kvstore/student_config.json
+```
+
+| Parameter | What it controls | Key question |
+|-----------|-----------------|--------------|
+| `followers` | Number of follower nodes | How many failures can you survive? |
 | `write_quorum` (W) | Followers that must ack writes | Higher = more durable, slower |
-| `read_quorum` (R) | Followers to query for reads | Higher = more consistent, slower |
-| `followers` | Total follower nodes | More = better fault tolerance |
-| `rate_limit_max` | Requests per window | Lower = more protection |
-| `rate_limit_window` | Window size in seconds | Shorter = faster recovery |
+| `read_quorum` (R) | Followers queried for reads | Higher = more consistent, slower |
+| `auto_spawn` | Auto-replace dead nodes | Faster recovery vs complexity |
+| `rate_limit_max` | Max requests per window | Protection vs rejecting valid traffic |
+| `rate_limit_window` | Window size in seconds | Shorter = faster rate limit recovery |
 
-### Example Grading Output
+**Don't forget** to fill in all 4 justification fields explaining *why* you made each choice!
 
+### Step 4: Run the assessment
+
+```bash
+python labs/distributed-kvstore/assessment.py --config labs/distributed-kvstore/student_config.json
 ```
-╔══════════════════════════════════════════════════════════════════════╗
-║             DISTRIBUTED KV STORE - ASSESSMENT RESULTS                ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  QUORUM WRITE TESTS                                                  ║
-║  ├─ ✅ Write succeeds with quorum                                    ║
-║  ├─ ✅ Sync acks meet quorum (W=2)                                   ║
-║  ...                                                                 ║
-║  SCORE: 12/12 tests passed                                           ║
-║  GRADE: A                                                            ║
-╚══════════════════════════════════════════════════════════════════════╝
-```
+
+The assessment tests 5 scenarios (100 points total):
+
+| Scenario | Points | What it tests |
+|----------|--------|---------------|
+| Basic Operations | 15 | Reads and writes work |
+| Fault Tolerance | 25 | Survives node failures |
+| Consistency | 25 | No stale reads (W+R > N) |
+| Rate Limiting | 15 | Gateway rejects burst traffic |
+| Recovery | 20 | System recovers after node replacement |
+
+### Step 5: Iterate!
+
+Adjust your config and re-run until you're happy with your score.
 
 ---
 

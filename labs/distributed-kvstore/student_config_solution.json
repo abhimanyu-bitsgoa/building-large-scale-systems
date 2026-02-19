@@ -1,0 +1,20 @@
+{
+    "deployment": {
+        "followers": 3,
+        "write_quorum": 2,
+        "read_quorum": 2,
+        "auto_spawn": true,
+        "auto_spawn_delay": 5
+    },
+    "gateway": {
+        "rate_limit_enabled": true,
+        "rate_limit_max": 10,
+        "rate_limit_window": 60
+    },
+    "justifications": {
+        "quorum_choice": "W=2, R=2 with N=3 gives W+R=4 > 3, guaranteeing strong consistency. Every read overlaps with at least one sync-written follower, so no stale reads.",
+        "follower_count": "3 followers allows surviving floor(3/2)=1 failure while still meeting W=2 quorum. Total cost is $40/hr (4 nodes × $10), well within the $50 budget.",
+        "rate_limiting": "10 requests per 60s window protects against burst traffic during flash sales while allowing normal browsing patterns (~5 req/s steady state).",
+        "auto_spawn": "Enabled with 5s delay so dead followers are automatically replaced, minimizing downtime. 5s delay prevents thrashing from transient failures."
+    }
+}

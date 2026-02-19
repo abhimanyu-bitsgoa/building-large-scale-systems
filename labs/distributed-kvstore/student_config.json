@@ -1,8 +1,20 @@
 {
     "deployment": {
-        "followers": 3,
-        "write_quorum": 2,
-        "read_quorum": 2
+        "followers": 5,
+        "write_quorum": 4,
+        "read_quorum": 1,
+        "auto_spawn": true,
+        "auto_spawn_delay": 5
     },
-    "justification": "TODO: Explain your trade-off choices here. Why did you choose these values for W, R, and followers?"
+    "gateway": {
+        "rate_limit_enabled": true,
+        "rate_limit_max": 20,
+        "rate_limit_window": 60
+    },
+    "justifications": {
+        "quorum_choice": "TODO: Why did you choose these W and R values? How does W + R compare to N?",
+        "follower_count": "TODO: Why this many followers? What failures can you tolerate?",
+        "rate_limiting": "TODO: Why these rate limit settings? How do they protect the system?",
+        "auto_spawn": "TODO: Why did you enable/disable auto-spawn? What's the trade-off?"
+    }
 }
