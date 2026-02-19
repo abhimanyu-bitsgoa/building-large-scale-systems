@@ -29,14 +29,8 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Python Workshop Libraries into the venv
-RUN pip install --no-cache-dir \
-    fastapi \
-    uvicorn \
-    requests \
-    httpx \
-    glances \
-    httpie \
-    psutil
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 WORKDIR /workspace
 
