@@ -213,23 +213,7 @@ cat labs/distributed-kvstore/scenario_brief.md
 
 Or open [scenario_brief.md](scenario_brief.md) — you'll play an SRE who inherited a broken system with 5 production incidents to investigate and fix.
 
-### Step 2: Reproduce the incidents
-
-After the instructor demos, try reproducing each incident:
-
-```bash
-# INC-1: Test rate limiting — does the gateway block sustained burst traffic?
-for i in $(seq 1 30); do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/read/test; done
-
-# INC-4: Kill a single node — do writes still work?
-curl -X POST http://localhost:7000/kill/follower-1
-curl -X POST http://localhost:8000/write -H "Content-Type: application/json" -d '{"key":"test","value":"hello"}'
-
-# Check cluster status
-curl http://localhost:7000/status
-```
-
-### Step 3: Diagnose and fix the configuration
+### Step 2: Diagnose and fix the configuration
 
 The current `student_config.json` contains the bugs. Investigate each incident, find the root cause, and fix it:
 
@@ -248,7 +232,7 @@ nano labs/distributed-kvstore/student_config.json
 
 **Don't forget** to fill in all 4 justification fields explaining *what was wrong* and *why your fix resolves it*!
 
-### Step 4: Run the assessment
+### Step 3: Run the assessment
 
 ```bash
 python labs/distributed-kvstore/assessment.py --config labs/distributed-kvstore/student_config.json
@@ -263,6 +247,6 @@ The assessment tests 4 scenarios (100 points total):
 | INC-3: Stale Cart Data (Consistency)     | 30     | INC-3             |
 | INC-4: Write Outage (Fault Tolerance)    | 30     | INC-4             |
 
-### Step 5: Iterate!
+### Step 4: Iterate!
 
 Adjust your config and re-run until all incidents are resolved.
