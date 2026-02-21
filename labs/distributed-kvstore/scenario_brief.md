@@ -18,9 +18,8 @@ The previous engineer left abruptly, and the system has been plagued with produc
 **Reported by**: Platform Monitoring  
 **Time**: Last Tuesday, 14:02 UTC
 
-**What happened**: During our Valentine's Day flash sale, monitoring detected a sustained burst of 20+ requests/second from a range of IPs (likely scrapers/bots). The gateway was supposed to rate-limit this traffic, but **every request got through**. The entire cluster was overwhelmed and legitimate customers got timeouts for 15 minutes.
+**What happened**: During our Valentine's Day flash sale, monitoring detected a sustained burst of 20+ requests/second from a range of IPs (likely scrapers/bots). The gateway's rate limiter kicked in and blocked the first wave, but the attackers just waited a few seconds and tried again — and **the second wave went through completely unblocked**. This pattern repeated: burst → brief block → wait → burst gets through. The cluster was overwhelmed because the rate limiter couldn't sustain protection beyond a single spike.
 
-**What we know**: Rate limiting *is* enabled. The `rate_limit_max` is set to 20, which should catch this burst. But somehow the limiter never triggered during sustained abuse. The ops team says "it's like the counter keeps resetting before it ever reaches the limit."
 
 **Your task**: Figure out why the rate limiter fails to block sustained bursts and fix the config.
 
@@ -34,7 +33,6 @@ The previous engineer left abruptly, and the system has been plagued with produc
 
 **What happened**: A brief network congestion event (~2 seconds of packet loss) between our racks caused heartbeats to be delayed. When the network recovered, we found that the cluster had **spawned a duplicate of the same logical node on a different machine**. We now had two copies of `follower-2` — one on the original machine (which was alive the whole time) and a brand-new one spawned by auto-recovery. Replication traffic was going to both, causing inconsistent data.
 
-**What we know**: Auto-spawn is enabled (good for recovery), but the spawn delay seems extremely aggressive. The original node's heartbeat was only delayed by ~2 seconds due to the network blip, but by the time it arrived, a replacement had already been spawned. On a slow or congested network link, this would happen constantly.
 
 **Your task**: Fix the auto-spawn timing so transient network issues don't trigger unnecessary respawns.
 
@@ -48,7 +46,6 @@ The previous engineer left abruptly, and the system has been plagued with produc
 
 **What happened**: Multiple customers have reported that items they added to their cart "disappeared" on the checkout page, or that a coupon code they applied wasn't reflected when they hit "Pay." One customer was charged for an old cart that didn't include their discount. Investigation shows the **read path is sometimes returning stale data** — a version of the cart that doesn't include the most recent write.
 
-**What we know**: The writes succeed (the leader and enough followers acknowledge). But when a read goes out, it sometimes hits a follower that **hasn't received the latest write yet**. This suggests the read quorum isn't high enough to guarantee overlap with the write quorum. Check whether `W + R > N` holds.
 
 **Your task**: Adjust the quorum settings so reads always return the freshest data.
 
@@ -62,7 +59,6 @@ The previous engineer left abruptly, and the system has been plagued with produc
 
 **What happened**: Two follower nodes went down during a routine rolling update. Within seconds, **all write operations started failing** with `503 Write quorum not available`. The cluster has 5 followers — losing just 2 shouldn't cause a total outage. But it did.
 
-**What we know**: The write quorum (`W=4`) is set too high relative to the number of followers. With 5 followers and `W=4`, losing just 2 nodes means only 3 remain — not enough to meet the write quorum. A shopping cart system should tolerate `floor(N/2)` failures, but the current quorum is so tight that even a minor outage breaks writes.
 
 **Your task**: Lower the write quorum to a value that provides durability without making the system fragile to small-scale failures.
 
@@ -76,7 +72,6 @@ The previous engineer left abruptly, and the system has been plagued with produc
 
 **What happened**: Finance flagged that our KV store infrastructure costs **$60/hour** (1 leader + 5 followers = 6 nodes × $10/hr). Our budget is $50/hour. The previous engineer provisioned 5 followers "for safety" but we only need to survive 1 node failure. This is classic over-provisioning.
 
-**What we know**: With the right quorum settings, **3 followers** can survive 1 failure and provide strong consistency. That would bring costs to $40/hour — well within budget.
 
 **Your task**: Right-size the cluster to meet reliability needs without exceeding the budget.
 
@@ -103,3 +98,39 @@ The previous engineer left abruptly, and the system has been plagued with produc
 **Total: 100 points**
 
 > **💡 Tip**: The incidents are interconnected. Fixing one without considering the others can introduce new problems. Think about how `W`, `R`, and `N` interact before making changes.
+
+---
+
+## 🔍 Hints
+
+Stuck? Expand a hint below for guidance. Try to investigate on your own first!
+
+<details>
+<summary>INC-1: Gateway Flood</summary>
+
+Rate limiting *is* enabled and the `rate_limit_max` is set to 20. Individual bursts *do* get blocked — the limiter triggers correctly within a single window. But the `rate_limit_window` is so short that it resets before the next burst arrives. The ops team says "it blocks the first spike fine, but a few seconds later the counter resets and the next wave sails right through."
+</details>
+
+<details>
+<summary>INC-2: Ghost Nodes</summary>
+
+Auto-spawn is enabled (good for recovery), but the spawn delay seems extremely aggressive. The original node's heartbeat was only delayed by ~2 seconds due to the network blip, but by the time it arrived, a replacement had already been spawned. On a slow or congested network link, this would happen constantly.
+</details>
+
+<details>
+<summary>INC-3: Stale Cart Data</summary>
+
+The writes succeed (the leader and enough followers acknowledge). But when a read goes out, it sometimes hits a follower that **hasn't received the latest write yet**. This suggests the read quorum isn't high enough to guarantee overlap with the write quorum. Check whether `W + R > N` holds.
+</details>
+
+<details>
+<summary>INC-4: Write Outage</summary>
+
+The write quorum (`W=4`) is set too high relative to the number of followers. With 5 followers and `W=4`, losing just 2 nodes means only 3 remain — not enough to meet the write quorum. A shopping cart system should tolerate `floor(N/2)` failures, but the current quorum is so tight that even a minor outage breaks writes.
+</details>
+
+<details>
+<summary>INC-5: Over Budget</summary>
+
+With the right quorum settings, **3 followers** can survive 1 failure and provide strong consistency. That would bring costs to $40/hour — well within budget.
+</details>

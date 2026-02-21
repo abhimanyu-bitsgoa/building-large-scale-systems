@@ -241,7 +241,7 @@ Or open [scenario_brief.md](scenario_brief.md) — you'll play an SRE who inheri
 After the instructor demos, try reproducing each incident:
 
 ```bash
-# INC-1: Test rate limiting — does burst traffic get blocked?
+# INC-1: Test rate limiting — does the gateway block sustained burst traffic?
 for i in $(seq 1 30); do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/read/test; done
 
 # INC-4: Kill a single node — do writes still work?
@@ -263,7 +263,7 @@ nano labs/distributed-kvstore/student_config.json
 
 | Parameter             | Incident | What to investigate                          |
 | --------------------- | -------- | -------------------------------------------- |
-| `rate_limit_window` | INC-1    | Why does the rate limiter never block bursts? |
+| `rate_limit_window` | INC-1    | Why does the rate limiter fail to block sustained bursts? |
 | `auto_spawn_delay`  | INC-2    | Why do ghost nodes appear after network blips?|
 | `read_quorum` (R)   | INC-3    | Why are customers seeing stale cart data?     |
 | `write_quorum` (W)  | INC-4    | Why does one node failure kill all writes?    |
