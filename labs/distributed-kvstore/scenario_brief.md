@@ -10,14 +10,6 @@ The previous engineer left abruptly, and the system has been plagued with produc
 
 ---
 
-## System Context
-
-- **Traffic profile**: ~5 req/s normal, 20+ req/s during flash sales (70% reads, 30% writes)
-- **Budget**: Each node costs **$10/hour** (1 leader + N followers). Budget cap: **$50/hour**
-- **Consistency rule**: **W + R > N** guarantees no stale reads (W = write quorum, R = read quorum, N = followers)
-
----
-
 ## Open Incident Tickets
 
 ### 🔴 INC-1: Gateway Flooded During Flash Sale
@@ -90,41 +82,13 @@ The previous engineer left abruptly, and the system has been plagued with produc
 
 ---
 
-## Investigation Toolkit
-
-Use these commands to reproduce and diagnose the incidents:
-
-```bash
-# Check cluster status — see all nodes and their health
-curl http://localhost:7000/status
-
-# Write & read data — test basic operations
-curl -X POST http://localhost:8000/write -H "Content-Type: application/json" \
-  -d '{"key": "test", "value": "hello"}'
-curl http://localhost:8000/read/test
-
-# Kill a node — simulate failures (INC-4)
-curl -X POST http://localhost:7000/kill/follower-1
-
-# Spawn a replacement — test recovery (INC-2)
-curl -X POST http://localhost:7000/spawn
-
-# Check gateway stats — inspect rate limiter state (INC-1)
-curl http://localhost:8000/stats
-
-# Rapid-fire requests — reproduce burst traffic (INC-1)
-for i in $(seq 1 30); do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/read/test; done
-```
-
----
-
 ## Deliverables
 
 1. **Fix** `student_config.json` — resolve all 5 incidents
 2. **Justify** — fill in all 4 justification fields explaining what was wrong and why your fix addresses it
 3. **Validate** — run the assessment and confirm your fixes work:
    ```bash
-   python labs/distributed-kvstore/assessment.py --config labs/distributed-kvstore/student_config.json
+   python labs/distributed-kvstore/assessment.py --config student_config.json
    ```
 
 ## Grading
