@@ -162,7 +162,7 @@ curl -X POST http://localhost:7000/kill/follower-2
 ### Step 1: Kill a follower node
 
 ```bash
-curl -X POST http://localhost:7000/kill/follower-4
+curl -X POST http://localhost:7000/kill/follower-3
 ```
 
 ### Step 1: Write some data first
