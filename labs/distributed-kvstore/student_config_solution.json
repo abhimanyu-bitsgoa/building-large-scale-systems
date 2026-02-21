@@ -1,0 +1,20 @@
+{
+    "deployment": {
+        "followers": 3,
+        "write_quorum": 2,
+        "read_quorum": 2,
+        "auto_spawn": true,
+        "auto_spawn_delay": 5
+    },
+    "gateway": {
+        "rate_limit_enabled": true,
+        "rate_limit_max": 10,
+        "rate_limit_window": 60
+    },
+    "justifications": {
+        "quorum_choice": "Original had W=4 (too strict, losing 2 of 5 followers kills writes — INC-4) and R=1 (too loose, W+R=5=N, not strictly greater so stale reads possible — INC-3). W=2, R=2 with N=3 gives W+R=4 > 3, guaranteeing strong consistency while tolerating 1 follower failure.",
+        "follower_count": "Original had 5 followers ($60/hr, over budget — INC-5). 3 followers costs $40/hr (within $50 budget) and still allows floor(3/2)=1 failure tolerance.",
+        "rate_limiting": "Original window was 2 seconds — resets so fast that sustained bursts were never blocked (INC-1). 60s window with max=10 properly throttles flash-sale bot traffic while allowing normal browsing.",
+        "auto_spawn": "Original delay was 1 second — so aggressive that a slow heartbeat on a congested link caused ghost nodes (INC-2). 5s delay gives enough time for transient network issues to resolve before triggering respawn."
+    }
+}

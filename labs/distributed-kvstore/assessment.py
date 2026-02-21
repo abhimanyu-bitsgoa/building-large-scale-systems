@@ -4,10 +4,11 @@ Distributed KV Store Lab - Assessment Script
 
 Evaluates student configurations against test scenarios.
 Runs the cluster with student config and scores based on:
+- Basic operations (reads and writes work)
 - Fault tolerance (can survive node failures)
 - Consistency (reads return correct values)
 - Rate limiting (gateway protection works)
-- Cost efficiency (not over-provisioning)
+- Recovery (system recovers after node replacement)
 """
 
 import argparse
@@ -83,6 +84,8 @@ def start_cluster(student_config: dict) -> bool:
     followers = deployment.get("followers", 3)
     write_quorum = deployment.get("write_quorum", 2)
     read_quorum = deployment.get("read_quorum", 2)
+    auto_spawn = deployment.get("auto_spawn", False)
+    auto_spawn_delay = deployment.get("auto_spawn_delay", 5)
     
     rate_limit = gateway_config.get("rate_limit_enabled", True)
     rate_limit_max = gateway_config.get("rate_limit_max", 10)
@@ -92,14 +95,23 @@ def start_cluster(student_config: dict) -> bool:
     print(f"   Followers: {followers}")
     print(f"   Write Quorum: {write_quorum}")
     print(f"   Read Quorum: {read_quorum}")
+    print(f"   Auto-spawn: {'enabled' if auto_spawn else 'disabled'}", end="")
+    if auto_spawn:
+        print(f" (delay: {auto_spawn_delay}s)")
+    else:
+        print()
     print(f"   Rate Limit: {rate_limit_max}/{rate_limit_window}s" if rate_limit else "   Rate Limit: disabled")
     print()
     
     try:
-        # Start registry
+        # Start registry (with auto-spawn if configured)
         print("   Starting registry...")
+        registry_args = ["python", REGISTRY_SCRIPT, "--port", "9000"]
+        if auto_spawn:
+            registry_args.extend(["--auto-spawn", "--spawn-delay", str(auto_spawn_delay)])
+        
         registry_proc = subprocess.Popen(
-            ["python", REGISTRY_SCRIPT, "--port", "9000"],
+            registry_args,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
@@ -173,11 +185,33 @@ def stop_cluster():
     processes = []
     
     # Also kill any node processes spawned by coordinator
-    # These run on ports 7000-7099
     import subprocess as sp
     try:
-        # Kill processes containing 'node.py' or on node ports
         sp.run(["pkill", "-f", "node.py.*--port 70"], capture_output=True, timeout=5)
+    except:
+        pass
+
+def reset_cluster(num_followers: int):
+    """Reset cluster state between scenarios by respawning all killed nodes."""
+    try:
+        # Get current cluster status
+        resp = requests.get(f"{COORDINATOR_URL}/status", timeout=5)
+        if resp.status_code != 200:
+            return
+        
+        status = resp.json()
+        dead_nodes = [n for n in status.get("nodes", []) if n.get("status") == "dead"]
+        
+        # Respawn each dead node
+        for node in dead_nodes:
+            try:
+                requests.post(f"{COORDINATOR_URL}/spawn", timeout=5)
+                time.sleep(2)  # Wait for catchup
+            except:
+                pass
+        
+        if dead_nodes:
+            time.sleep(2)  # Extra settle time
     except:
         pass
 
@@ -343,12 +377,268 @@ def run_kill_nodes_test(count: str, num_followers: int) -> TestResult:
             message=f"Only killed {len(killed)}/{actual_count}"
         )
 
+def run_spawn_node_test() -> TestResult:
+    """Spawn a replacement node and wait for catchup."""
+    try:
+        resp = requests.post(f"{COORDINATOR_URL}/spawn", timeout=5)
+        if resp.status_code != 200:
+            return TestResult(
+                test_id="spawn",
+                description="Spawn replacement node",
+                passed=False,
+                message=f"Spawn failed with status {resp.status_code}"
+            )
+        
+        # Wait for the new node to catch up
+        time.sleep(5)
+        
+        return TestResult(
+            test_id="spawn",
+            description="Spawn replacement node",
+            passed=True,
+            message="Node spawned and catchup initiated"
+        )
+    except Exception as e:
+        return TestResult(
+            test_id="spawn",
+            description="Spawn replacement node",
+            passed=False,
+            message=str(e)
+        )
+
+def run_rate_limit_test(student_config: dict) -> TestResult:
+    """
+    Test that rate limiting works.
+    Sends more requests than the configured limit and verifies 429s appear.
+    """
+    gateway_config = student_config.get("gateway", {})
+    rate_limit_enabled = gateway_config.get("rate_limit_enabled", True)
+    rate_limit_max = gateway_config.get("rate_limit_max", 10)
+    
+    if not rate_limit_enabled:
+        return TestResult(
+            test_id="rate_limit",
+            description="Rate limiting",
+            passed=False,
+            message="Rate limiting is disabled in config"
+        )
+    
+    # Send rate_limit_max + 5 requests to gateway
+    total_requests = rate_limit_max + 5
+    success_count = 0
+    rate_limited_count = 0
+    
+    for i in range(total_requests):
+        try:
+            resp = requests.get(f"{GATEWAY_URL}/read/rate_test_{i}", timeout=5)
+            if resp.status_code == 429:
+                rate_limited_count += 1
+            else:
+                success_count += 1
+        except:
+            pass
+    
+    # Rate limiting works if we got some 429s
+    if rate_limited_count > 0:
+        return TestResult(
+            test_id="rate_limit",
+            description="Rate limiting",
+            passed=True,
+            message=f"Sent {total_requests} requests: {success_count} succeeded, {rate_limited_count} rate-limited (429)"
+        )
+    else:
+        return TestResult(
+            test_id="rate_limit",
+            description="Rate limiting",
+            passed=False,
+            message=f"Sent {total_requests} requests but none were rate-limited"
+        )
+
+def run_sustained_rate_limit_test(student_config: dict) -> TestResult:
+    """
+    Test that rate limiting blocks SUSTAINED burst traffic.
+    
+    Two-phase test:
+    1. Phase 1: Send max requests to saturate the window
+    2. Wait 5 seconds (enough for a short window to reset, not enough for a long one)
+    3. Phase 2: Send another burst — if these succeed, the window is too short
+    
+    With window=2s: Phase 2 succeeds (window reset) → FAIL
+    With window=60s: Phase 2 gets 429'd (still rate-limited) → PASS
+    """
+    gateway_config = student_config.get("gateway", {})
+    rate_limit_enabled = gateway_config.get("rate_limit_enabled", True)
+    rate_limit_max = gateway_config.get("rate_limit_max", 10)
+    rate_limit_window = gateway_config.get("rate_limit_window", 60)
+    
+    if not rate_limit_enabled:
+        return TestResult(
+            test_id="rate_limit_sustained",
+            description="Sustained burst protection",
+            passed=False,
+            message="Rate limiting is disabled in config"
+        )
+    
+    WAIT_BETWEEN_PHASES = 5  # seconds
+    PHASE2_REQUESTS = min(rate_limit_max, 10)  # send up to 10 requests in phase 2
+    
+    # Phase 1: Saturate the window
+    phase1_success = 0
+    phase1_limited = 0
+    for i in range(rate_limit_max + 5):
+        try:
+            resp = requests.get(f"{GATEWAY_URL}/read/burst_phase1_{i}", timeout=5)
+            if resp.status_code == 429:
+                phase1_limited += 1
+            else:
+                phase1_success += 1
+        except:
+            pass
+    
+    # Phase 1 should have triggered some rate limiting
+    if phase1_limited == 0:
+        return TestResult(
+            test_id="rate_limit_sustained",
+            description="Sustained burst protection",
+            passed=False,
+            message=f"Phase 1: Sent {rate_limit_max + 5} requests, none were rate-limited. Rate limiting may not be working."
+        )
+    
+    # Wait for potential window reset
+    time.sleep(WAIT_BETWEEN_PHASES)
+    
+    # Phase 2: Send another burst — should still be blocked if window is long enough
+    phase2_success = 0
+    phase2_limited = 0
+    for i in range(PHASE2_REQUESTS):
+        try:
+            resp = requests.get(f"{GATEWAY_URL}/read/burst_phase2_{i}", timeout=5)
+            if resp.status_code == 429:
+                phase2_limited += 1
+            else:
+                phase2_success += 1
+        except:
+            pass
+    
+    # If most Phase 2 requests succeeded, the window reset too fast
+    phase2_block_rate = phase2_limited / PHASE2_REQUESTS if PHASE2_REQUESTS > 0 else 0
+    
+    if phase2_block_rate >= 0.5:
+        # Window held — sustained burst was blocked
+        return TestResult(
+            test_id="rate_limit_sustained",
+            description="Sustained burst protection",
+            passed=True,
+            message=(
+                f"Phase 1: {phase1_success} succeeded, {phase1_limited} blocked | "
+                f"Waited {WAIT_BETWEEN_PHASES}s | "
+                f"Phase 2: {phase2_success} succeeded, {phase2_limited} blocked — "
+                f"window ({rate_limit_window}s) held, sustained burst blocked ✅"
+            )
+        )
+    else:
+        # Window reset — sustained burst got through
+        return TestResult(
+            test_id="rate_limit_sustained",
+            description="Sustained burst protection",
+            passed=False,
+            message=(
+                f"Phase 1: {phase1_success} succeeded, {phase1_limited} blocked | "
+                f"Waited {WAIT_BETWEEN_PHASES}s | "
+                f"Phase 2: {phase2_success} succeeded, {phase2_limited} blocked — "
+                f"window ({rate_limit_window}s) reset too fast, sustained bursts get through ❌"
+            )
+        )
+
+def run_stale_read_test(key: str, delay_ms: int = 0) -> TestResult:
+    """
+    Test for stale reads due to async replication lag.
+    
+    1. Write a value and get version
+    2. Wait delay_ms milliseconds (to test with/without replication lag)
+    3. Read and compare versions - if read version < write version, it's stale
+    """
+    value = f"stale_test_value_{int(time.time() * 1000)}"
+    delay_label = f" (after {delay_ms}ms)" if delay_ms > 0 else " (immediate)"
+    
+    # Write via coordinator and capture the version
+    try:
+        resp = requests.post(
+            f"{COORDINATOR_URL}/write",
+            json={"key": key, "value": value},
+            timeout=10
+        )
+        if resp.status_code != 200:
+            return TestResult(
+                test_id="stale_read",
+                description=f"Consistency check{delay_label}",
+                passed=False,
+                message=f"Cannot test: write quorum unavailable ({resp.status_code}) — fix write quorum first"
+            )
+        
+        write_result = resp.json()
+        written_version = write_result.get("version", 0)
+    except Exception as e:
+        return TestResult(
+            test_id="stale_read",
+            description=f"Consistency check{delay_label}",
+            passed=False,
+            message=f"Write error: {e}"
+        )
+    
+    # Wait for specified delay
+    if delay_ms > 0:
+        time.sleep(delay_ms / 1000.0)
+    
+    # Read and check if version matches
+    try:
+        resp = requests.get(f"{COORDINATOR_URL}/read/{key}", timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            read_version = data.get("version", 0)
+            served_by = data.get("served_by", "unknown")
+            
+            if read_version < written_version:
+                return TestResult(
+                    test_id="stale_read",
+                    description=f"Consistency check{delay_label}",
+                    passed=False,
+                    message=f"Stale! Wrote v{written_version}, read v{read_version} (from {served_by})"
+                )
+            else:
+                return TestResult(
+                    test_id="stale_read",
+                    description=f"Consistency check{delay_label}",
+                    passed=True,
+                    message=f"Fresh: v{read_version} (from {served_by})"
+                )
+        elif resp.status_code == 404:
+            return TestResult(
+                test_id="stale_read",
+                description=f"Consistency check{delay_label}",
+                passed=False,
+                message=f"Stale! Key not found yet (wrote v{written_version})"
+            )
+        else:
+            return TestResult(
+                test_id="stale_read",
+                description=f"Consistency check{delay_label}",
+                passed=False,
+                message=f"Read failed: {resp.status_code}"
+            )
+    except Exception as e:
+        return TestResult(
+            test_id="stale_read",
+            description=f"Consistency check{delay_label}",
+            passed=False,
+            message=f"Read error: {e}"
+        )
+
 def run_burst_test(operation: str, count: int, key_prefix: str) -> TestResult:
     """Run burst of operations directly to coordinator (bypasses rate limiting)."""
     successes = 0
     for i in range(count):
         if operation == "write":
-            # Use coordinator directly to avoid rate limiting interference
             result = run_write_test(f"{key_prefix}_{i}", f"value_{i}", use_coordinator=True)
         else:
             result = run_read_test(f"{key_prefix}_{i}", use_coordinator=True)
@@ -366,7 +656,6 @@ def run_verify_burst_test(key_prefix: str, count: int) -> TestResult:
     """Verify all burst writes are readable (uses coordinator to bypass rate limiting)."""
     successes = 0
     for i in range(count):
-        # Use coordinator directly to avoid rate limiting interference
         result = run_read_test(f"{key_prefix}_{i}", f"value_{i}", use_coordinator=True)
         if result.passed:
             successes += 1
@@ -378,90 +667,11 @@ def run_verify_burst_test(key_prefix: str, count: int) -> TestResult:
         message=f"{successes}/{count} verified"
     )
 
-def run_stale_read_test(key: str) -> TestResult:
-    """
-    Test for stale reads due to async replication lag.
-    
-    1. Write a value and get version
-    2. Immediately read
-    3. Compare versions - if read version < write version, it's stale
-    """
-    value = f"stale_test_value_{int(time.time())}"
-    
-    # Write via coordinator and capture the version
-    try:
-        resp = requests.post(
-            f"{COORDINATOR_URL}/write",
-            json={"key": key, "value": value},
-            timeout=10
-        )
-        if resp.status_code != 200:
-            return TestResult(
-                test_id="stale_read",
-                description="Stale read detection",
-                passed=False,
-                message=f"Write failed: {resp.status_code}"
-            )
-        
-        write_result = resp.json()
-        written_version = write_result.get("version", 0)
-    except Exception as e:
-        return TestResult(
-            test_id="stale_read",
-            description="Stale read detection",
-            passed=False,
-            message=f"Write error: {e}"
-        )
-    
-    # Immediately read - check if version matches
-    try:
-        resp = requests.get(f"{COORDINATOR_URL}/read/{key}", timeout=5)
-        if resp.status_code == 200:
-            data = resp.json()
-            read_version = data.get("version", 0)
-            served_by = data.get("served_by", "unknown")
-            
-            if read_version < written_version:
-                return TestResult(
-                    test_id="stale_read",
-                    description="Stale read detection",
-                    passed=False,
-                    message=f"Stale! Wrote v{written_version}, got v{read_version} (from {served_by})"
-                )
-            else:
-                return TestResult(
-                    test_id="stale_read",
-                    description="Stale read detection",
-                    passed=True,
-                    message=f"Fresh read: v{read_version} (from {served_by})"
-                )
-        elif resp.status_code == 404:
-            return TestResult(
-                test_id="stale_read",
-                description="Stale read detection",
-                passed=False,
-                message=f"Stale! Key not found yet (wrote v{written_version})"
-            )
-        else:
-            return TestResult(
-                test_id="stale_read",
-                description="Stale read detection",
-                passed=False,
-                message=f"Read failed: {resp.status_code}"
-            )
-    except Exception as e:
-        return TestResult(
-            test_id="stale_read",
-            description="Stale read detection",
-            passed=False,
-            message=f"Read error: {e}"
-        )
-
 # ========================
 # Scenario Runner
 # ========================
 
-def run_scenario(scenario: dict, num_followers: int) -> ScenarioResult:
+def run_scenario(scenario: dict, num_followers: int, student_config: dict) -> ScenarioResult:
     """Run all tests in a scenario."""
     results = []
     
@@ -473,19 +683,25 @@ def run_scenario(scenario: dict, num_followers: int) -> ScenarioResult:
         test_type = test.get("type")
         
         if test_type == "write":
-            result = run_write_test(test["key"], test["value"])
+            result = run_write_test(test["key"], test["value"], use_coordinator=True)
         elif test_type == "read":
-            result = run_read_test(test["key"], test.get("expected_value"))
+            result = run_read_test(test["key"], test.get("expected_value"), use_coordinator=True)
         elif test_type == "kill_node":
             result = run_kill_node_test(test["target"])
         elif test_type == "kill_nodes":
             result = run_kill_nodes_test(test.get("count", "1"), num_followers)
+        elif test_type == "spawn_node":
+            result = run_spawn_node_test()
+        elif test_type == "rate_limit":
+            result = run_rate_limit_test(student_config)
         elif test_type == "burst":
             result = run_burst_test(test["operation"], test["count"], test["key_prefix"])
         elif test_type == "verify_burst":
             result = run_verify_burst_test(test["key_prefix"], test["count"])
         elif test_type == "stale_read":
-            result = run_stale_read_test(test.get("key", "stale_test"))
+            result = run_stale_read_test(test.get("key", "stale_test"), test.get("delay_ms", 0))
+        elif test_type == "rate_limit_sustained":
+            result = run_sustained_rate_limit_test(student_config)
         else:
             result = TestResult(
                 test_id=test.get("id", "unknown"),
@@ -507,27 +723,36 @@ def run_scenario(scenario: dict, num_followers: int) -> ScenarioResult:
     )
 
 # ========================
-# Scoring
+# Scoring & Output
 # ========================
 
-def calculate_cost(student_config: dict, cost_model: dict) -> Tuple[float, float]:
-    """Calculate cost and efficiency score."""
+def calculate_cost(student_config: dict, cost_model: dict) -> Tuple[float, bool]:
+    """Calculate total cost and whether it's within budget."""
     followers = student_config.get("deployment", {}).get("followers", 3)
-    per_follower = cost_model.get("per_follower_cost", 10)
+    per_node = cost_model.get("per_node_cost", 10)
+    budget_limit = cost_model.get("budget_limit", 50)
     
     # 1 leader + N followers
-    total_cost = (1 + followers) * per_follower
+    total_cost = (1 + followers) * per_node
+    within_budget = total_cost <= budget_limit
     
-    # Ideal cost threshold from instructor config
-    ideal_cost = 40  # $40/hour (1 leader + 3 followers at $10 each)
+    return total_cost, within_budget
+
+def check_justifications(student_config: dict) -> Tuple[int, int, List[str]]:
+    """Check that justification fields are filled in. Returns (filled, total, missing_fields)."""
+    justifications = student_config.get("justifications", {})
+    expected_fields = ["quorum_choice", "follower_count", "rate_limiting", "auto_spawn"]
     
-    if total_cost <= ideal_cost:
-        efficiency = 100
-    else:
-        # Penalize over-provisioning
-        efficiency = max(0, 100 - ((total_cost - ideal_cost) / ideal_cost * 100))
+    filled = 0
+    missing = []
+    for field in expected_fields:
+        value = justifications.get(field, "")
+        if value and "TODO" not in value:
+            filled += 1
+        else:
+            missing.append(field)
     
-    return total_cost, efficiency
+    return filled, len(expected_fields), missing
 
 def print_results(scenario_results: List[ScenarioResult], 
                   student_config: dict, 
@@ -537,22 +762,39 @@ def print_results(scenario_results: List[ScenarioResult],
     total_score = 0
     max_score = 0
     
-    print("╔══════════════════════════════════════════════════════════════════════╗")
-    print("║             DISTRIBUTED KV STORE - ASSESSMENT RESULTS                ║")
-    print("╠══════════════════════════════════════════════════════════════════════╣")
+    print("╔══════════════════════════════════════════════════════════════════════════╗")
+    print("║              DISTRIBUTED KV STORE - ASSESSMENT RESULTS                   ║")
+    print("╠══════════════════════════════════════════════════════════════════════════╣")
     
     for result in scenario_results:
         max_score += result.weight
         total_score += result.score
         pct = (result.passed / result.total * 100) if result.total > 0 else 0
-        print(f"║  {result.name:<30} {result.passed}/{result.total} ({pct:.0f}%) │ {result.score:.1f}/{result.weight} pts ║")
+        icon = "✅" if pct == 100 else "⚠️ " if pct > 0 else "❌"
+        print(f"║  {icon} {result.name:<28} {result.passed}/{result.total} ({pct:>3.0f}%) │ {result.score:>5.1f}/{result.weight} pts  ║")
     
-    print("╠══════════════════════════════════════════════════════════════════════╣")
+    print("╠══════════════════════════════════════════════════════════════════════════╣")
+    
+    # Cost analysis
+    cost_model = instructor_config.get("cost_model", {})
+    total_cost, within_budget = calculate_cost(student_config, cost_model)
+    budget_limit = cost_model.get("budget_limit", 50)
+    cost_icon = "✅" if within_budget else "❌"
+    print(f"║  {cost_icon} Cost: ${total_cost}/hr (budget: ${budget_limit}/hr)                            ║")
+    
+    # Justification check
+    filled, total_j, missing = check_justifications(student_config)
+    just_icon = "✅" if filled == total_j else "⚠️ " if filled > 0 else "❌"
+    print(f"║  {just_icon} Justifications: {filled}/{total_j} completed                                    ║")
+    if missing:
+        print(f"║     Missing: {', '.join(missing):<55} ║")
+    
+    print("╠══════════════════════════════════════════════════════════════════════════╣")
     
     percentage = (total_score / max_score * 100) if max_score > 0 else 0
     
     if percentage >= 90:
-        grade = "A"
+        grade = "A ⭐"
     elif percentage >= 80:
         grade = "B"
     elif percentage >= 70:
@@ -562,16 +804,31 @@ def print_results(scenario_results: List[ScenarioResult],
     else:
         grade = "F"
     
-    print(f"║  TOTAL SCORE: {total_score:.1f}/{max_score} ({percentage:.1f}%)                              ║")
-    print(f"║  GRADE: {grade}                                                          ║")
-    print("╚══════════════════════════════════════════════════════════════════════╝")
+    print(f"║  TOTAL SCORE: {total_score:.1f}/{max_score} ({percentage:.1f}%)                                      ║")
+    print(f"║  GRADE: {grade}                                                            ║")
+    print("╚══════════════════════════════════════════════════════════════════════════╝")
     
-    # Print student justification
-    justification = student_config.get("justification", "")
-    if justification and "TODO" not in justification:
+    # Print student config summary
+    deployment = student_config.get("deployment", {})
+    print()
+    print("📊 Your Configuration:")
+    print(f"   Followers={deployment.get('followers')}, W={deployment.get('write_quorum')}, R={deployment.get('read_quorum')}")
+    w = deployment.get('write_quorum', 0)
+    r = deployment.get('read_quorum', 0)
+    n = deployment.get('followers', 0)
+    print(f"   W + R = {w + r} {'>' if w + r > n else '≤'} N = {n}", end="")
+    print(" → Strong consistency ✅" if w + r > n else " → Eventual consistency (stale reads possible) ⚠️")
+    
+    # Print justifications
+    justifications = student_config.get("justifications", {})
+    has_justifications = any(v and "TODO" not in v for v in justifications.values())
+    if has_justifications:
         print()
-        print("📝 Student Justification:")
-        print(f"   {justification}")
+        print("📝 Student Justifications:")
+        for key, value in justifications.items():
+            if value and "TODO" not in value:
+                label = key.replace("_", " ").title()
+                print(f"   {label}: {value}")
 
 # ========================
 # Main
@@ -628,9 +885,9 @@ def main():
         sys.exit(1)
     
     print()
-    print("╔══════════════════════════════════════════════════════════════════════╗")
-    print("║             DISTRIBUTED KV STORE - ASSESSMENT                        ║")
-    print("╚══════════════════════════════════════════════════════════════════════╝")
+    print("╔══════════════════════════════════════════════════════════════════════════╗")
+    print("║              DISTRIBUTED KV STORE - ASSESSMENT                           ║")
+    print("╚══════════════════════════════════════════════════════════════════════════╝")
     print()
     
     # Start cluster
@@ -648,8 +905,12 @@ def main():
     try:
         # Run scenarios
         scenario_results = []
-        for scenario in instructor_config.get("scenarios", []):
-            result = run_scenario(scenario, followers)
+        scenarios = instructor_config.get("scenarios", [])
+        for i, scenario in enumerate(scenarios):
+            # Reset cluster between scenarios to prevent cascading failures
+            if i > 0:
+                reset_cluster(followers)
+            result = run_scenario(scenario, followers, student_config)
             scenario_results.append(result)
         
         # Print results

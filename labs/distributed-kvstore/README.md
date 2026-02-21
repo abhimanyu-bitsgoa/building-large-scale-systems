@@ -1,13 +1,13 @@
 # Distributed KV Store Lab
 
-A fault-tolerant distributed key-value store combining concepts from Lab 1 (Scalability) and Lab 2 (Replication).
+A fault-tolerant distributed key-value store combining concepts learnt in Scalability & Replication module.
 
 ## Overview
 
 This lab demonstrates:
 
-- **Gateway with rate limiting** (imported from Lab 1!)
-- **Single-leader replication with quorum** (from Lab 2)
+- **Gateway with rate limiting**
+- **Single-leader replication with quorum**
 - **Service discovery with heartbeats**
 - **Automatic catchup for new followers**
 - **Fault tolerance and recovery**
@@ -35,14 +35,16 @@ This lab demonstrates:
 
 ## Files
 
-| File               | Description                                         |
-| ------------------ | --------------------------------------------------- |
-| `gateway.py`     | Entry point with rate limiting (imports from Lab 1) |
-| `coordinator.py` | Cluster manager with quorum and catchup             |
-| `registry.py`    | Service discovery with heartbeats                   |
-| `node.py`        | Leader or follower node                             |
-| `catchup.py`     | Data synchronization for new followers              |
-| `client.py`      | Interactive client                                  |
+| File                  | Description                             |
+| --------------------- | --------------------------------------- |
+| `gateway.py`        | Entry point with rate limiting          |
+| `coordinator.py`    | Cluster manager with quorum and catchup |
+| `registry.py`       | Service discovery with heartbeats       |
+| `node.py`           | Leader or follower node                 |
+| `catchup.py`        | Data synchronization for new followers  |
+| `client.py`         | Interactive client                      |
+| `assessment.py`     | Automated assessment script             |
+| `scenario_brief.md` | Student mini-project business brief     |
 
 ---
 
@@ -115,52 +117,9 @@ python labs/distributed-kvstore/client.py
 >>> status
 ```
 
-### Using curl
-
-```bash
-# Write
-curl -X POST http://localhost:8000/write \
-  -H "Content-Type: application/json" \
-  -d '{"key": "hello", "value": "world"}'
-
-# Read
-curl http://localhost:8000/read/hello
-
-# Cluster status
-curl http://localhost:8000/cluster-status
-```
-
 ---
 
-## Demo 3: Rate Limiting in Action
-
-### Flood the gateway
-
-```bash
-# Quick loop to trigger rate limiting
-for i in {1..20}; do
-  curl -s http://localhost:8000/read/test | head -c 50
-  echo
-done
-```
-
-After 10 requests (the default limit), you'll see:
-
-```json
-{"error": "Too Many Requests", "retry_after": 60}
-```
-
-### Check gateway stats
-
-```bash
-curl http://localhost:8000/stats
-```
-
-Shows rate limiter statistics - imported directly from Lab 1!
-
----
-
-## Demo 4: Node Failure and Recovery
+## Demo 3: Node Failure and Recovery
 
 ### Step 1: Kill a follower
 
@@ -175,9 +134,8 @@ The node shows as 🔴 dead.
 ### Step 3: Check if writes still work
 
 ```bash
-curl -X POST http://localhost:8000/write \
-  -H "Content-Type: application/json" \
-  -d '{"key": "test", "value": "123"}'
+>>> write name distributed-systems
+>>> read name
 ```
 
 With W=2 and 2 remaining nodes (leader + 1 follower), writes succeed.
@@ -191,23 +149,27 @@ curl -X POST http://localhost:7000/kill/follower-2
 ### Step 5: Try to write
 
 ```bash
-curl -X POST http://localhost:8000/write \
-  -H "Content-Type: application/json" \
-  -d '{"key": "test", "value": "456"}'
+>>> write name distributed-systems
+>>> read name
 ```
 
-**Result**: 503 error - Write quorum not available!
+**Result**: error - Write quorum not available!
 
 ---
 
-## Demo 5: Automatic Catchup
+## Demo 4: Automatic Catchup
+
+### Step 1: Kill a follower node
+
+```bash
+curl -X POST http://localhost:7000/kill/follower-4
+```
 
 ### Step 1: Write some data first
 
 ```bash
-curl -X POST http://localhost:8000/write \
-  -H "Content-Type: application/json" \
-  -d '{"key": "secret", "value": "treasure"}'
+>>> write name distributed-systems
+>>> read name
 ```
 
 ### Step 2: Spawn a new follower
@@ -216,50 +178,13 @@ curl -X POST http://localhost:8000/write \
 curl -X POST http://localhost:7000/spawn
 ```
 
-### Step 3: Check the registry
+### Step 3: Verify catchup happened
 
 ```bash
-curl http://localhost:9000/nodes
+>>> read name
 ```
 
-The new follower appears!
-
-### Step 4: Verify catchup happened
-
-The registry automatically triggered catchup. The new follower has all the data from the leader.
-
----
-
-## Demo 6: The Easter Egg 🎓
-
-After completing the workshop:
-
-```bash
-curl http://localhost:8000/graduate
-```
-
-Or in the client:
-
-```bash
-python labs/distributed-kvstore/client.py
->>> graduate
-```
-
-🎓 **Congratulations, you're now a distributed systems engineer!**
-
----
-
-## Code Reuse from Lab 1
-
-The gateway imports directly from Lab 1 (Scalability):
-
-```python
-# In gateway.py
-from scalability.load_balancer import LoadBalancer, node_stats
-from scalability.rate_limiter import RateLimiter, FixedWindowStrategy
-```
-
-This proves that the code you wrote in Lab 1 is production-ready!
+Observe that the follower-3 has gotten the value.
 
 ---
 
@@ -273,7 +198,6 @@ This proves that the code you wrote in Lab 1 is production-ready!
 | GET    | `/read/{key}`     | Read data                    |
 | GET    | `/cluster-status` | Cluster status               |
 | GET    | `/stats`          | Gateway stats (rate limiter) |
-| GET    | `/graduate`       | 🎓 Easter egg                |
 
 ### Coordinator (port 7000)
 
@@ -299,83 +223,69 @@ This proves that the code you wrote in Lab 1 is production-ready!
 
 ---
 
-## Student Assessment
+## Student Mini-Project: CloudCart Incident Investigation
 
-Run the automated assessment to test your configuration:
+Investigate production incidents in a misconfigured distributed KV store and fix the system!
 
-### Step 1: Create your configuration file
-
-Copy the example and modify:
+### Step 1: Read the incident brief
 
 ```bash
-cp student_config_example.json my_config.json
-# Edit my_config.json with your choices for W, R, followers, rate limiting
+# Review the 5 open incident tickets
+cat labs/distributed-kvstore/scenario_brief.md
 ```
 
-### Step 2: Run the assessment
+Or open [scenario_brief.md](scenario_brief.md) — you'll play an SRE who inherited a broken system with 5 production incidents to investigate and fix.
+
+### Step 2: Reproduce the incidents
+
+After the instructor demos, try reproducing each incident:
 
 ```bash
-# Automatic mode (starts cluster for you)
-python assessment.py --config my_config.json
+# INC-1: Test rate limiting — does burst traffic get blocked?
+for i in $(seq 1 30); do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/read/test; done
 
-# Manual mode (if cluster is already running)
-python assessment.py --config my_config.json --no-start-cluster
+# INC-4: Kill a single node — do writes still work?
+curl -X POST http://localhost:7000/kill/follower-1
+curl -X POST http://localhost:8000/write -H "Content-Type: application/json" -d '{"key":"test","value":"hello"}'
+
+# Check cluster status
+curl http://localhost:7000/status
 ```
 
-### Configuration Options
+### Step 3: Diagnose and fix the configuration
 
-| Parameter | Description | Trade-off |
-|-----------|-------------|-----------|
-| `write_quorum` (W) | Followers that must ack writes | Higher = more durable, slower |
-| `read_quorum` (R) | Followers to query for reads | Higher = more consistent, slower |
-| `followers` | Total follower nodes | More = better fault tolerance |
-| `rate_limit_max` | Requests per window | Lower = more protection |
-| `rate_limit_window` | Window size in seconds | Shorter = faster recovery |
+The current `student_config.json` contains the bugs. Investigate each incident, find the root cause, and fix it:
 
-### Example Grading Output
-
-```
-╔══════════════════════════════════════════════════════════════════════╗
-║             DISTRIBUTED KV STORE - ASSESSMENT RESULTS                ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  QUORUM WRITE TESTS                                                  ║
-║  ├─ ✅ Write succeeds with quorum                                    ║
-║  ├─ ✅ Sync acks meet quorum (W=2)                                   ║
-║  ...                                                                 ║
-║  SCORE: 12/12 tests passed                                           ║
-║  GRADE: A                                                            ║
-╚══════════════════════════════════════════════════════════════════════╝
+```bash
+# Edit the config file
+nano labs/distributed-kvstore/student_config.json
 ```
 
----
+| Parameter             | Incident | What to investigate                          |
+| --------------------- | -------- | -------------------------------------------- |
+| `rate_limit_window` | INC-1    | Why does the rate limiter never block bursts? |
+| `auto_spawn_delay`  | INC-2    | Why do ghost nodes appear after network blips?|
+| `read_quorum` (R)   | INC-3    | Why are customers seeing stale cart data?     |
+| `write_quorum` (W)  | INC-4    | Why does one node failure kill all writes?    |
+| `followers`          | INC-5    | Why is the cluster over budget?               |
 
-## Key Takeaways
+**Don't forget** to fill in all 4 justification fields explaining *what was wrong* and *why your fix resolves it*!
 
-1. **Code reuse matters**: Gateway imports rate limiting from Lab 1
-2. **Layered architecture**: Gateway → Coordinator → Nodes
-3. **Service discovery**: Registry tracks all nodes via heartbeats
-4. **Automatic recovery**: New followers catch up from leader
-5. **Defense in depth**: Rate limiting at gateway protects the cluster
+### Step 4: Run the assessment
 
----
+```bash
+python labs/distributed-kvstore/assessment.py --config labs/distributed-kvstore/student_config.json
+```
 
-## Troubleshooting
+The assessment tests 4 scenarios (100 points total):
 
-**Gateway can't reach coordinator?**
+| Scenario                                 | Points | Validates fix for |
+| ---------------------------------------- | ------ | ----------------- |
+| INC-0: Basic Operations                  | 20     | System works      |
+| INC-1: Gateway Flood (Rate Limiting)     | 20     | INC-1             |
+| INC-3: Stale Cart Data (Consistency)     | 30     | INC-3             |
+| INC-4: Write Outage (Fault Tolerance)    | 30     | INC-4             |
 
-- Ensure coordinator is running on port 7000
-- Check the --coordinator flag
+### Step 5: Iterate!
 
-**Nodes not appearing in registry?**
-
-- Check registry is running on port 9000
-- Verify nodes are sending heartbeats
-
-**Catchup not working?**
-
-- Check leader has `/snapshot` endpoint
-- Verify network connectivity between nodes
-
-**Rate limiting too aggressive?**
-
-- Adjust `--rate-limit-max` and `--rate-limit-window`
+Adjust your config and re-run until all incidents are resolved.

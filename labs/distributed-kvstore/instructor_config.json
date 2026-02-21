@@ -1,49 +1,113 @@
 {
     "scenarios": [
         {
-            "id": "scenario_1",
-            "name": "Fault Tolerance",
-            "description": "System must continue operating after floor(N/2) node failures",
-            "weight": 50,
+            "id": "inc_basic",
+            "name": "INC-0: Basic Operations",
+            "description": "Verify the system can perform basic read, write, and overwrite operations",
+            "weight": 20,
             "tests": [
                 {
                     "id": "basic_write",
                     "type": "write",
-                    "key": "test_key",
-                    "value": "test_value"
+                    "key": "cart_item",
+                    "value": "laptop"
                 },
                 {
-                    "id": "kill_max_tolerable",
+                    "id": "basic_read",
+                    "type": "read",
+                    "key": "cart_item",
+                    "expected_value": "laptop"
+                },
+                {
+                    "id": "basic_overwrite",
+                    "type": "write",
+                    "key": "cart_item",
+                    "value": "keyboard"
+                },
+                {
+                    "id": "basic_read_overwrite",
+                    "type": "read",
+                    "key": "cart_item",
+                    "expected_value": "keyboard"
+                }
+            ]
+        },
+        {
+            "id": "inc_1",
+            "name": "INC-1: Gateway Flood (Rate Limiting)",
+            "description": "Gateway must block sustained burst traffic — not just a single spike",
+            "weight": 20,
+            "tests": [
+                {
+                    "id": "rate_limit_sustained",
+                    "type": "rate_limit_sustained",
+                    "description": "Send sustained burst traffic and verify rate limiting holds across window resets"
+                }
+            ]
+        },
+        {
+            "id": "inc_3",
+            "name": "INC-3: Stale Cart Data (Consistency)",
+            "description": "Reads must return fresh data — tests whether W + R > N holds",
+            "weight": 30,
+            "tests": [
+                {
+                    "id": "consistency_immediate",
+                    "type": "stale_read",
+                    "key": "stale_test_immediate",
+                    "delay_ms": 0,
+                    "description": "Write then immediately read — detects stale reads with no delay"
+                },
+                {
+                    "id": "consistency_delayed",
+                    "type": "stale_read",
+                    "key": "stale_test_delayed",
+                    "delay_ms": 6000,
+                    "description": "Write then read after 6000ms — allows eventually consistent replication to finish"
+                }
+            ]
+        },
+        {
+            "id": "inc_4",
+            "name": "INC-4: Write Outage After Failure (Fault Tolerance)",
+            "description": "System must continue operating after floor(N/2) node failures",
+            "weight": 30,
+            "tests": [
+                {
+                    "id": "ft_write_before",
+                    "type": "write",
+                    "key": "before_failure",
+                    "value": "safe_data"
+                },
+                {
+                    "id": "ft_kill_nodes",
                     "type": "kill_nodes",
                     "count": "floor(N/2)",
                     "description": "Kill maximum tolerable number of followers"
                 },
                 {
-                    "id": "write_after_failures",
+                    "id": "ft_write_after",
                     "type": "write",
-                    "key": "after_failures",
+                    "key": "after_failure",
                     "value": "still_works"
                 },
                 {
-                    "id": "read_after_failures",
+                    "id": "ft_read_after",
                     "type": "read",
-                    "key": "after_failures",
+                    "key": "after_failure",
                     "expected_value": "still_works"
-                }
-            ]
-        },
-        {
-            "id": "scenario_2",
-            "name": "Stale Read Detection",
-            "description": "Check if read returns the version just written (tests async lag)",
-            "weight": 50,
-            "tests": [
+                },
                 {
-                    "id": "stale_read_test",
-                    "type": "stale_read",
-                    "key": "stale_test"
+                    "id": "ft_read_old_data",
+                    "type": "read",
+                    "key": "before_failure",
+                    "expected_value": "safe_data"
                 }
             ]
         }
-    ]
+    ],
+    "cost_model": {
+        "per_node_cost": 10,
+        "budget_limit": 50
+    }
 }

@@ -192,8 +192,9 @@ def replicate_async(async_followers: List[str], key: str, value: str, version: i
         return
     
     def do_async_replication():
-        for follower_url in async_followers:
-            replicate_to_follower(follower_url, key, value, version, ASYNC_DELAY)
+        with ThreadPoolExecutor(max_workers=len(async_followers)) as executor:
+            for follower_url in async_followers:
+                executor.submit(replicate_to_follower, follower_url, key, value, version, ASYNC_DELAY)
     
     # Start background thread
     thread = threading.Thread(target=do_async_replication, daemon=True)
