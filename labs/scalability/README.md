@@ -103,7 +103,7 @@ python labs/scalability/client.py --concurrent 20 --requests 100 --strategy adap
 
 ```bash
 # Terminal 1: Node with rate limiting (5 requests per 10 seconds)
-python labs/scalability/node.py --port 5001 --id 1 --rate-limit fixed_window --rate-limit-max 5 --rate-limit-window 10
+python labs/scalability/node.py --port 5001 --id 1 --rate-limit fixed_window --rate-limit-max 5 --rate-limit-window 10 --load-factor 35
 ```
 
 ### Step 2: Flood the node with requests
