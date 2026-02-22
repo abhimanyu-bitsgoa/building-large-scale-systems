@@ -235,7 +235,7 @@ nano labs/distributed-kvstore/student_config.json
 ### Step 3: Run the assessment
 
 ```bash
-python labs/distributed-kvstore/assessment.py --config labs/distributed-kvstore/student_config.json
+python labs/distributed-kvstore/assessment.py --config student_config.json
 ```
 
 The assessment tests 4 scenarios (100 points total):
