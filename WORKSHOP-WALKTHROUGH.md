@@ -35,7 +35,8 @@ The primary workshop lives in [`build-kvstore/`](build-kvstore/). The original t
 Every stage follows the same **red → green** loop:
 
 ```
-make up STAGE=NN          # start the system you have       (in shell A — it keeps running)
+make reset STAGE=NN       # load this stage into kvstore/ (use `make gap` for code stages)
+make up STAGE=NN          # start the system               (in shell A — it keeps running)
 make incident STAGE=NN    # ❌ reproduce the incident       (in shell B) — watch it FAIL
    …you add the next feature (write code) or change config…
 make incident STAGE=NN    # ✅ run it again — watch it PASS
@@ -47,8 +48,9 @@ Two kinds of stage:
 - **⌨️ Code stages — `03, 04, 05, 08`.** You implement a missing function. Start from the
   gapped code with `make gap STAGE=NN` (it drops a `raise NotImplementedError(...)` where your
   code goes).
-- **⚙️ Config / observe stages — `00, 01, 02, 06, 07, 09, 10`.** No code to write; you launch
-  the stage and observe the behavior (the corrected configuration is baked into the launcher).
+- **⚙️ Config / observe stages — `00, 01, 02, 06, 07, 09, 10`.** No code to write; load the
+  stage with `make reset STAGE=NN`, then launch and observe (the corrected configuration is
+  baked into the launcher).
 
 **The panic button:** at any time, `make reset STAGE=NN` overwrites the working directory with
 the known-good, complete code for stage `NN`. Nobody can get permanently stuck.
@@ -160,8 +162,16 @@ registry + heartbeats). Flag these to the room as "new chapter," not "rewrite."
 
 ## 6. Attendee guide — stage by stage
 
-Begin once with `make start`. For each stage, the loop is *run the incident → watch it fail →
-make the change → run it again → watch it pass*. Stuck? `make reset STAGE=NN`.
+Begin once with `make start`. **Then every stage starts by loading its code into the working
+directory `kvstore/` — before you `make up`:**
+
+- **Code stages (`03`, `04`, `05`, `08`):** `make gap STAGE=NN` (loads the gapped code you complete).
+- **All other stages:** `make reset STAGE=NN` (loads that stage's ready-to-run code).
+
+`make up STAGE=NN` runs *that stage's* launch command against whatever is in `kvstore/`, so
+skipping the load step runs a new stage's command against old code and errors out. The per-stage
+loop is then *run the incident → watch it fail → make the change → run it again → watch it pass*.
+Stuck? `make reset STAGE=NN` jumps you to a known-good solution.
 
 ### 00 — Single node ⚙️
 A KV store is just a dict behind HTTP: `POST /data`, `GET /data/{key}`. There's no failure to
@@ -180,14 +190,18 @@ ceiling, exactly the constraint Redis chose on purpose.
 **Do:** the launcher scales the node up with `--workers 4`. Run it and watch the p95 latency
 drop.
 ```bash
-make up STAGE=01 ; make incident STAGE=01     # ✅ p95 under budget with workers
+make reset STAGE=01      # load this stage into kvstore/
+make up STAGE=01         # shell A — single node with load-sim + 4 workers
+make incident STAGE=01   # shell B — ✅ p95 under budget with workers
 ```
 
 ### 02 — Horizontal scaling ⚙️
 **Incident:** a single node is both a single point of failure and a capacity wall.
 **Do:** run 3 nodes; the client spreads load across them.
 ```bash
-make up STAGE=02 ; make incident STAGE=02
+make reset STAGE=02      # load this stage into kvstore/
+make up STAGE=02         # shell A — 3 nodes on :5001-:5003
+make incident STAGE=02   # shell B
 ```
 *Note:* the three nodes have **separate** dicts — naive horizontal scaling splits your data.
 That's exactly what motivates replication at stage 05.
@@ -227,18 +241,22 @@ make up STAGE=05 ; make incident STAGE=05    # ✅ data written to the leader pr
 **Do:** raise the read quorum so `W + R > N`. The stage launches with `W=2, R=2` (N=3 ⇒
 `4 > 3`).
 ```bash
-# feel the failure first — run the stale-read check against the WEAK stage-05 config:
-make up STAGE=05 ; make incident STAGE=06    # ❌ stale read
+# feel the failure first — run the stale-read check against the WEAK stage-05 quorum:
+make reset STAGE=05 ; make up STAGE=05   # shell A: W=1, R=1
+make incident STAGE=06                   # shell B: ❌ stale read
 make down
-# now the corrected quorum:
-make up STAGE=06 ; make incident STAGE=06    # ✅ fresh read
+# now the corrected quorum (05/06/07 share code; only W/R differ):
+make reset STAGE=06 ; make up STAGE=06   # shell A: W=2, R=2
+make incident STAGE=06                   # shell B: ✅ fresh read
 ```
 
 ### 07 — Fault tolerance / CAP ⚙️
 **Incident:** with too-tight `W`, killing `floor(N/2)` followers causes a total **write outage**
 (`503`). With `W=2` and `N=3`, the cluster tolerates 1 follower loss and keeps serving.
 ```bash
-make up STAGE=07 ; make incident STAGE=07    # ✅ survives floor(N/2) kills at W=2
+make reset STAGE=07      # load this stage into kvstore/
+make up STAGE=07         # shell A — W=2, R=2
+make incident STAGE=07   # shell B — ✅ survives floor(N/2) kills at W=2
 ```
 *Experiment (see the outage):* stop, then launch the cluster manually with a too-tight quorum
 and re-run the incident:
@@ -263,7 +281,9 @@ make up STAGE=08 ; make incident STAGE=08    # ✅ a killed node is correctly re
 **Do:** the launcher enables `--auto-spawn`; the coordinator respawns the follower and **catches
 it up** from the leader's snapshot.
 ```bash
-make up STAGE=09 ; make incident STAGE=09    # ✅ killed follower is respawned AND has the data
+make reset STAGE=09      # load this stage into kvstore/
+make up STAGE=09         # shell A — registry auto-spawn + coordinator
+make incident STAGE=09   # shell B — ✅ killed follower is respawned AND has the data
 ```
 *This is **follower** recovery (replace + resync), not leader failover (that's Sentinel — out of
 scope).*
@@ -284,6 +304,7 @@ they inherit a **misconfigured version of the system they just built** and fix i
 config — not code.
 
 ```bash
+make reset STAGE=10              # load the full system into kvstore/
 make up STAGE=10                 # shell A: registry :9000 + coordinator :7000 + gateway :8000
 cat kvstore/scenario_brief.md    # the 5 CloudCart incident tickets
 nano kvstore/student_config.json # fix W, R, followers, rate-limit window, auto-spawn delay
