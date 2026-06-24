@@ -29,9 +29,11 @@ def main():
     if rr is None or ad is None:
         report("03", "Adaptive load balancing", False,
                "could not measure both strategies via client.py — is AdaptiveStrategy implemented?")
-    report("03", "Adaptive load balancing",
-           ad < rr,
-           f"round-robin p95={rr:.0f}ms vs adaptive p95={ad:.0f}ms (adaptive should avoid the slow node)")
+    ok = ad < rr
+    report("03", "Adaptive load balancing", ok,
+           f"round-robin p95={rr:.0f}ms vs adaptive p95={ad:.0f}ms — "
+           + ("adaptive routed around the slow node" if ok
+              else "adaptive did not beat round-robin (is AdaptiveStrategy picking the lowest-load node?)"))
 
 
 main()

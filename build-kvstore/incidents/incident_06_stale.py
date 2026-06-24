@@ -23,9 +23,11 @@ def main():
         r = requests.get(f"{C}/read/{key}", timeout=10)  # immediate
         if not (r.status_code == 200 and r.json().get("value") == "fresh"):
             stale += 1
-    report("06", "No stale reads (W+R>N)",
-           stale == 0,
-           f"{stale}/{N} immediate reads were stale (want 0 — raise R until W+R>N)")
+    ok = stale == 0
+    report("06", "No stale reads (W+R>N)", ok,
+           f"{stale}/{N} immediate reads were stale — "
+           + ("the read set overlaps the latest write (W+R>N)" if ok
+              else "raise R until W+R>N so the read set overlaps the latest write"))
 
 
 main()

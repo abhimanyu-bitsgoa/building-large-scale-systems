@@ -18,10 +18,11 @@ def main():
     nodes = requests.get(f"{R}/nodes", timeout=10).json().get("nodes", [])
     f1 = next((n for n in nodes if n["node_id"] == "follower-1"), None)
     status = f1["status"] if f1 else "unknown-to-registry"
-    report("08", "Death detection via heartbeats",
-           status == "dead",
-           f"registry reports follower-1 = {status} "
-           f"(want 'dead'; without heartbeats the registry never even sees the node)")
+    ok = status == "dead"
+    report("08", "Death detection via heartbeats", ok,
+           f"registry reports follower-1 = {status} — "
+           + ("heartbeats let the registry detect the death" if ok
+              else "want 'dead'; without heartbeats the registry never even sees the node"))
 
 
 main()

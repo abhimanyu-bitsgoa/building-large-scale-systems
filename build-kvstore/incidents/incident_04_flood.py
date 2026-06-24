@@ -18,9 +18,11 @@ def main():
         except Exception:
             codes.append(0)
     blocked = codes.count(429)
-    report("04", "Rate limiting blocks a flood",
-           blocked > 0,
-           f"sent 15 requests, {blocked} blocked with 429 (0 means no rate limiting in effect)")
+    ok = blocked > 0
+    report("04", "Rate limiting blocks a flood", ok,
+           f"sent 15 requests, {blocked} blocked with 429 — "
+           + ("the limiter is shedding the flood" if ok
+              else "none blocked: no rate limiting in effect"))
 
 
 main()

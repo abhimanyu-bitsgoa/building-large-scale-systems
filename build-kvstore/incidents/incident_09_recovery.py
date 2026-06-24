@@ -25,10 +25,11 @@ def main():
         has = requests.get(f"{f1['url']}/data/rec", timeout=5).status_code == 200
     except Exception:
         pass
-    report("09", "Auto-respawn + catchup",
-           alive >= n and has,
-           f"recovered to {alive}/{n} alive; revived follower has the data = {has} "
-           f"(needs --auto-spawn and catchup on /spawn)")
+    ok = alive >= n and has
+    report("09", "Auto-respawn + catchup", ok,
+           f"recovered to {alive}/{n} alive; revived follower has the data = {has} — "
+           + ("auto-spawn respawned it and catchup synced its data" if ok
+              else "needs --auto-spawn and catchup on /spawn"))
 
 
 main()

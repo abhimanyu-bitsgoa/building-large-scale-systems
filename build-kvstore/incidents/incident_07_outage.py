@@ -19,10 +19,11 @@ def main():
         requests.post(f"{C}/kill/follower-{i}", timeout=10)
     time.sleep(8)
     w = requests.post(f"{C}/write", json={"key": "after_failure", "value": "ok"}, timeout=20)
-    report("07", f"Survive floor(N/2)={to_kill} failures",
-           w.status_code == 200,
-           f"after killing {to_kill}/{n} followers, write returned {w.status_code} "
-           f"(503 means the write quorum is too tight — lower W)")
+    ok = w.status_code == 200
+    report("07", f"Survive floor(N/2)={to_kill} failures", ok,
+           f"after killing {to_kill}/{n} followers, write returned {w.status_code} — "
+           + ("quorum still met, writes survive the failures" if ok
+              else "503: the write quorum is too tight; lower W"))
 
 
 main()

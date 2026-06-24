@@ -22,9 +22,11 @@ def main():
         report("10", "Capstone assessment", False, f"could not run assessment.py: {e}")
     m = re.search(r"TOTAL SCORE:\s*([\d.]+)/", out)
     score = float(m.group(1)) if m else 0.0
-    report("10", "Capstone assessment",
-           score >= BAR,
-           f"assessment score = {score:.0f}/100 (bar {BAR}; edit student_config.json to resolve the incidents)")
+    ok = score >= BAR
+    report("10", "Capstone assessment", ok,
+           f"assessment score = {score:.0f}/100 (bar {BAR}) — "
+           + ("your config resolves the incidents" if ok
+              else "edit student_config.json to resolve the incidents"))
 
 
 main()

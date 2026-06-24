@@ -21,10 +21,11 @@ def main():
         except Exception:
             pass
     rate = ok / TOTAL
-    report("02", "Horizontal scaling across nodes",
-           rate >= 0.9,
-           f"{ok}/{TOTAL} requests served across {len(NODES)} nodes ({rate*100:.0f}%); "
-           f"a single node leaves the rest unreachable")
+    passed = rate >= 0.9
+    report("02", "Horizontal scaling across nodes", passed,
+           f"{ok}/{TOTAL} requests served across {len(NODES)} nodes ({rate*100:.0f}%) — "
+           + ("load is spread across the cluster" if passed
+              else "most failed: a single node leaves the other addresses unreachable"))
 
 
 main()

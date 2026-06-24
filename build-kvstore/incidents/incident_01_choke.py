@@ -27,10 +27,11 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
         lat = sorted(ex.map(one, range(N)))
     p95 = lat[int(0.95 * (len(lat) - 1))]
-    report("01", "Single-node saturation under load",
-           p95 < P95_BUDGET_MS,
-           f"p95={p95:.0f}ms over {N} concurrent writes (budget {P95_BUDGET_MS}ms; "
-           f"a single worker serializes on the GIL — scale up with --workers)")
+    ok = p95 < P95_BUDGET_MS
+    report("01", "Single-node saturation under load", ok,
+           f"p95={p95:.0f}ms over {N} concurrent writes (budget {P95_BUDGET_MS}ms) — "
+           + ("multiple workers absorb the concurrent load" if ok
+              else "a single worker serializes on the GIL; scale up with --workers"))
 
 
 main()

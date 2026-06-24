@@ -199,11 +199,15 @@ make incident STAGE=01         # shell B — ✅ p95 drops
 
 ### 02 — Horizontal scaling ⚙️
 **Incident:** a single node is both a single point of failure and a capacity wall.
-**Do:** run 3 nodes; the client spreads load across them.
+**Do:** see one node fail the spread, then run 3 nodes so the load is shared.
 ```bash
-make reset STAGE=02      # load this stage into kvstore/
-make up STAGE=02         # shell A — 3 nodes on :5001-:5003
-make incident STAGE=02   # shell B
+# fail first — incident 02 fans 30 requests across :5001-:5003, but only one node is up:
+make reset STAGE=00 ; make up STAGE=00   # shell A — a single node on :5001
+make incident STAGE=02                   # shell B — ❌ ~10/30 served (5002/5003 unreachable)
+make down
+# fix — three nodes share the load:
+make reset STAGE=02 ; make up STAGE=02   # shell A — 3 nodes on :5001-:5003
+make incident STAGE=02                   # shell B — ✅ 30/30 served
 ```
 *Note:* the three nodes have **separate** dicts — naive horizontal scaling splits your data.
 That's exactly what motivates replication at stage 05.
@@ -214,8 +218,11 @@ That's exactly what motivates replication at stage 05.
 lowest-score (least-loaded) node.
 ```bash
 make gap STAGE=03        # load the gapped code (raises NotImplementedError where you write)
-# …edit kvstore/load_balancer.py → AdaptiveStrategy.get_node…
-make up STAGE=03 ; make incident STAGE=03    # ✅ adaptive p95 < round-robin p95
+make up STAGE=03         # shell A
+make incident STAGE=03   # shell B — ❌ adaptive can't be measured (NotImplementedError)
+# …edit kvstore/load_balancer.py → AdaptiveStrategy.get_node, then restart…
+make down ; make up STAGE=03
+make incident STAGE=03   # shell B — ✅ adaptive p95 < round-robin p95
 ```
 
 ### 04 — Rate limiting ⌨️ **code**
@@ -223,8 +230,11 @@ make up STAGE=03 ; make incident STAGE=03    # ✅ adaptive p95 < round-robin p9
 **Do:** implement `FixedWindowStrategy.is_allowed` in `kvstore/rate_limiter.py`.
 ```bash
 make gap STAGE=04
-# …edit kvstore/rate_limiter.py → FixedWindowStrategy.is_allowed…
-make up STAGE=04 ; make incident STAGE=04    # ✅ first N succeed, the rest get 429
+make up STAGE=04         # shell A
+make incident STAGE=04   # shell B — ❌ nothing blocked (no rate limiting in effect)
+# …edit kvstore/rate_limiter.py → FixedWindowStrategy.is_allowed, then restart…
+make down ; make up STAGE=04
+make incident STAGE=04   # shell B — ✅ first N succeed, the rest get 429
 ```
 
 ### 05 — Replication ⌨️ **code**  *(chapter boundary: coordinator + leader/followers appear)*
@@ -233,8 +243,11 @@ make up STAGE=04 ; make incident STAGE=04    # ✅ first N succeed, the rest get
 follower's `/replicate`.
 ```bash
 make gap STAGE=05
-# …edit kvstore/node.py → replicate_to_follower…
-make up STAGE=05 ; make incident STAGE=05    # ✅ data written to the leader propagates
+make up STAGE=05         # shell A
+make incident STAGE=05   # shell B — ❌ followers never get the write
+# …edit kvstore/node.py → replicate_to_follower, then restart…
+make down ; make up STAGE=05
+make incident STAGE=05   # shell B — ✅ the write propagates to the followers
 ```
 *Note:* stage 05 runs a **weak quorum** (`W=1, R=1`) on purpose — that sets up the next stage.
 
@@ -256,16 +269,14 @@ make incident STAGE=06                   # shell B: ✅ fresh read
 **Incident:** with too-tight `W`, killing `floor(N/2)` followers causes a total **write outage**
 (`503`). With `W=2` and `N=3`, the cluster tolerates 1 follower loss and keeps serving.
 ```bash
-make reset STAGE=07      # load this stage into kvstore/
-make up STAGE=07         # shell A — W=2, R=2
-make incident STAGE=07   # shell B — ✅ survives floor(N/2) kills at W=2
-```
-*Experiment (see the outage):* stop, then launch the cluster manually with a too-tight quorum
-and re-run the incident:
-```bash
+make reset STAGE=07
+# fail first — run with a too-tight quorum (W=3); one kill breaks writes:
+(cd kvstore && python coordinator.py --followers 3 --write-quorum 3 --read-quorum 2)   # shell A
+make incident STAGE=07   # shell B — ❌ killing one follower loses write quorum → 503
 make down
-cd kvstore && python coordinator.py --followers 3 --write-quorum 3 --read-quorum 2   # shell A
-make incident STAGE=07    # ❌ killing one follower now loses write quorum → 503
+# fix — W=2 tolerates floor(N/2)=1 failure:
+make up STAGE=07         # shell A — W=2, R=2
+make incident STAGE=07   # shell B — ✅ writes survive the failures
 ```
 
 ### 08 — Service discovery ⌨️ **code**  *(chapter boundary: registry + heartbeats appear)*
@@ -274,18 +285,25 @@ make incident STAGE=07    # ❌ killing one follower now loses write quorum → 
 **Do:** implement `heartbeat_loop` in `kvstore/node.py` — POST to the registry every interval.
 ```bash
 make gap STAGE=08
-# …edit kvstore/node.py → heartbeat_loop…
-make up STAGE=08 ; make incident STAGE=08    # ✅ a killed node is correctly reported "dead"
+make up STAGE=08         # shell A
+make incident STAGE=08   # shell B — ❌ killed node still shows "alive" (registry never saw it)
+# …edit kvstore/node.py → heartbeat_loop, then restart…
+make down ; make up STAGE=08
+make incident STAGE=08   # shell B — ✅ a killed node is correctly reported "dead"
 ```
 
 ### 09 — Auto-recovery ⚙️
 **Incident:** a dead follower stays dead and the cluster runs degraded.
-**Do:** the launcher enables `--auto-spawn`; the coordinator respawns the follower and **catches
-it up** from the leader's snapshot.
+**Do:** enable `--auto-spawn`; the coordinator respawns the follower and **catches it up** from
+the leader's snapshot.
 ```bash
-make reset STAGE=09      # load this stage into kvstore/
-make up STAGE=09         # shell A — registry auto-spawn + coordinator
-make incident STAGE=09   # shell B — ✅ killed follower is respawned AND has the data
+# fail first — stage 08 has discovery but no auto-spawn, so a killed follower stays dead:
+make reset STAGE=08 ; make up STAGE=08   # shell A — registry (no auto-spawn) + coordinator
+make incident STAGE=09                   # shell B — ❌ killed follower stays dead
+make down
+# fix — stage 09 turns on auto-spawn + catchup:
+make reset STAGE=09 ; make up STAGE=09   # shell A — registry auto-spawn + coordinator
+make incident STAGE=09                   # shell B — ✅ killed follower is respawned AND has the data
 ```
 *This is **follower** recovery (replace + resync), not leader failover (that's Sentinel — out of
 scope).*
@@ -306,12 +324,15 @@ they inherit a **misconfigured version of the system they just built** and fix i
 config — not code.
 
 ```bash
-make reset STAGE=10              # load the full system into kvstore/
-make up STAGE=10                 # shell A: registry :9000 + coordinator :7000 + gateway :8000
-cat kvstore/scenario_brief.md    # the 5 CloudCart incident tickets
+make reset STAGE=10              # load the full system + configs into kvstore/
+make incident STAGE=10           # ❌ the graded assessment fails on the broken starter config
+cat kvstore/scenario_brief.md    # read the 5 CloudCart incident tickets
 nano kvstore/student_config.json # fix W, R, followers, rate-limit window, auto-spawn delay
-make incident STAGE=10           # shell B: the graded assessment — iterate until the score passes
+make incident STAGE=10           # ✅ re-run until the score clears the bar
 ```
+> `make incident STAGE=10` runs `assessment.py`, which spins up its **own** cluster from your
+> config — so don't leave `make up STAGE=10` running at the same time (port clash). To *explore*
+> the live system instead, run `make up STAGE=10` and drive it with `client.py`.
 
 The assessment scores out of 100 across the incident scenarios. The answer key (with written
 justifications) is `kvstore/student_config_solution.json` — **instructors should not surface
@@ -378,8 +399,10 @@ Almost everything is deterministic, with two machine-dependent exceptions:
 - **`incident_01`** asserts a p95 latency budget (`P95_BUDGET_MS=300`). It passes comfortably on
   normal hardware. If it flakes on a slow laptop, widen it via the env var rather than weakening
   the suite: `P95_BUDGET_MS=500 make incident STAGE=01`.
-- **`incident_03`** compares adaptive vs round-robin p95 (relative, not absolute) — robust, but
-  it's the other one that depends on the machine.
+- **`incident_03`** compares adaptive vs round-robin p95 (relative, not absolute). It usually
+  passes, but with only 24 requests the two can occasionally invert on a quiet or noisy machine
+  (adaptive measuring slower). If its GREEN case flakes, just **re-run it** — it's a timing
+  artifact, not a real regression (`bash tools/validate_ladder.sh 03`).
 
 ### 8.5 Foot-guns (these have cost real time — honor them)
 
@@ -403,6 +426,7 @@ Almost everything is deterministic, with two machine-dependent exceptions:
 | `NotImplementedError: STAGE NN: …` | you're on a code stage and the gap isn't filled | implement the function in `kvstore/`, or `make reset STAGE=NN` to see the solution |
 | An attendee is hopelessly behind | — | `make reset STAGE=NN` jumps their `kvstore/` to a known-good stage instantly |
 | `incident_01` fails on a slow machine | p95 budget too tight for that hardware | `P95_BUDGET_MS=500 make incident STAGE=01` |
+| `incident_03` green flakes (adaptive ≥ round-robin) | timing noise in the relative p95 comparison | re-run it; not a real regression |
 | `make: command not found` | you're on the host, not in the container | `docker-compose exec workshop bash` then `cd build-kvstore` |
 | Lost all your edits | you ran `make start`/`make gap`/`make reset` (they overwrite `kvstore/`) | expected — `kvstore/` is disposable; commit your own work elsewhere if you want to keep it |
 
