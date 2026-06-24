@@ -286,19 +286,34 @@ make reset STAGE=06 ; make up STAGE=06   # shell A: W=2, R=2
 make incident STAGE=06                   # shell B: ✅ 0/4 stale — always hits an up-to-date replica
 ```
 
-### 07 — Fault tolerance / CAP ⚙️
-**Incident:** with too-tight `W`, killing `floor(N/2)` followers causes a total **write outage**
-(`503`). With `W=2` and `N=3`, the cluster tolerates 1 follower loss and keeps serving.
+### 07 — Fault tolerance / CAP ⚙️  *(the payoff of the quorum arc — connect it back to 06)*
+**Incident:** `W` is a dial with a price. Stage 06 told you to *raise* `W+R` for consistency —
+but every ack you demand is a node that must be alive, so **tolerable failures = N − W**. Crank
+`W` all the way up to `N` (maximally "safe") and you tolerate **zero** deaths: one kill and
+writes go down (`503`).
+
+**The narrative:** `W=2, R=2` for `N=3` isn't arbitrary — it's the **majority** (`floor(N/2)+1`),
+the one setting that does *both* jobs: it survives `floor(N/2)=1` failure **and** keeps `W+R>N`
+(read/write sets always overlap → no stale reads, from stage 06). `W=3` is the over-tuned trap:
+still consistent, but a zero failure budget.
+
+**The CAP moment to point out:** on the ❌ run, after the kill the incident shows **writes
+refused (`503`) while reads still succeed**. Same cluster, same failure — the system *chose* to
+sacrifice write-availability to preserve consistency (the **CP** corner). A Dynamo-style AP
+system would instead accept the write and reconcile later. You pick the corner by how you set `W`.
+
 ```bash
 make reset STAGE=07
-# fail first — run with a too-tight quorum (W=3); one kill breaks writes:
+# fail first — over-tight quorum (W=3=N); one kill loses the write quorum:
 (cd kvstore && python coordinator.py --followers 3 --write-quorum 3 --read-quorum 2)   # shell A
-make incident STAGE=07   # shell B — ❌ killing one follower loses write quorum → 503
+make incident STAGE=07   # shell B — ❌ writes REFUSED (503) but reads still succeed (CP)
 make down
-# fix — W=2 tolerates floor(N/2)=1 failure:
+# fix — W=2 is the majority: tolerates floor(N/2)=1 death and stays consistent:
 make up STAGE=07         # shell A — W=2, R=2
-make incident STAGE=07   # shell B — ✅ writes survive the failures
+make incident STAGE=07   # shell B — ✅ writes AND reads survive the failure
 ```
+*Scope caveat:* this is *follower* fault tolerance (quorum counts followers; the leader is assumed
+alive). The leader remains a single point of failure this workshop doesn't solve.
 
 ### 08 — Service discovery ⌨️ **code**  *(chapter boundary: registry + heartbeats appear)*
 **Incident:** the registry never sees a node, so it can't detect the node's death — kills look
