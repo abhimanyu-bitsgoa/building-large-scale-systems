@@ -12,8 +12,10 @@ case "$STAGE" in
     python node.py --port 5001 --id 1
     ;;
   01)
-    echo "single node on :5001 with CPU load + workers (vertical scaling / GIL ceiling)"
-    python node.py --port 5001 --id 1 --load-factor 30 --workers 4
+    # WORKERS defaults to 4 (the fixed/green config); WORKERS=1 demos the single-thread choke.
+    W="${WORKERS:-4}"
+    echo "single node on :5001 with CPU load + $W worker(s) (vertical scaling / GIL ceiling)"
+    python node.py --port 5001 --id 1 --load-factor 30 --workers "$W"
     ;;
   02|03)
     echo "3 heterogeneous nodes :5001-:5003 (1 weak, 2 strong) — drive with client.py --strategy"

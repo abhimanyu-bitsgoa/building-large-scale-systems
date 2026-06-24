@@ -7,6 +7,7 @@ A chronological index of every decision recorded in this folder (newest first).
 
 | Date | Decision | Status | File |
 | ---- | -------- | ------ | ---- |
+| 2026-06-24 | Add a `WORKERS` override to `make up` (demo the stage-01 single-thread choke) | accepted | [2026-06-24_make-up-workers-override.md](2026-06-24_make-up-workers-override.md) |
 | 2026-06-24 | Fix walkthrough: load each stage into `kvstore/` (`reset`/`gap`) before `make up` | accepted | [2026-06-24_walkthrough-load-stage-before-up.md](2026-06-24_walkthrough-load-stage-before-up.md) |
 | 2026-06-24 | Add a stage-00 smoke-test incident (`make incident STAGE=00` shows the baseline works) | accepted | [2026-06-24_build-kvstore-stage00-smoke-incident.md](2026-06-24_build-kvstore-stage00-smoke-incident.md) |
 | 2026-06-23 | Add WORKSHOP-WALKTHROUGH.md (instructor + attendee run guide) | accepted | [2026-06-23_workshop-walkthrough-doc.md](2026-06-23_workshop-walkthrough-doc.md) |

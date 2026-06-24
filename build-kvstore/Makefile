@@ -8,6 +8,7 @@ help:
 	@echo "  make start              seed kvstore/ from checkpoint 00"
 	@echo "  make gap STAGE=NN       load the gapped start for a code stage (03/04/05/08)"
 	@echo "  make up STAGE=NN        start this stage's processes"
+	@echo "                          (stage 01: add WORKERS=1 to demo the single-thread choke)"
 	@echo "  make down               stop all workshop processes"
 	@echo "  make incident STAGE=NN  run this stage's red->green check"
 	@echo "  make reset STAGE=NN     reset kvstore/ to a known-good checkpoint"
@@ -22,7 +23,7 @@ gap:
 	@echo "kvstore/ loaded with the GAPPED starting point for stage $(STAGE)"
 
 up:
-	bash tools/up.sh $(STAGE)
+	WORKERS=$(WORKERS) bash tools/up.sh $(STAGE)
 
 down:
 	bash tools/down.sh

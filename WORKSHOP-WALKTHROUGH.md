@@ -187,12 +187,14 @@ each stage *starts* with a failing incident you then fix.
 ### 01 — Vertical scaling ⚙️
 **Incident:** one node saturates under concurrent load — its single thread (the GIL) is the
 ceiling, exactly the constraint Redis chose on purpose.
-**Do:** the launcher scales the node up with `--workers 4`. Run it and watch the p95 latency
-drop.
+**Do:** first watch it choke with a single worker, then scale up — *same node*, more workers.
 ```bash
-make reset STAGE=01      # load this stage into kvstore/
-make up STAGE=01         # shell A — single node with load-sim + 4 workers
-make incident STAGE=01   # shell B — ✅ p95 under budget with workers
+make reset STAGE=01            # load this stage into kvstore/
+make up STAGE=01 WORKERS=1     # shell A — one worker (one GIL)
+make incident STAGE=01         # shell B — ❌ p95 over budget (CPU-bound requests serialize)
+make down
+make up STAGE=01               # shell A — 4 workers (the default)
+make incident STAGE=01         # shell B — ✅ p95 drops
 ```
 
 ### 02 — Horizontal scaling ⚙️
