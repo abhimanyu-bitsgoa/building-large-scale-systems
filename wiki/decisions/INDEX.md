@@ -7,4 +7,7 @@ A chronological index of every decision recorded in this folder (newest first).
 
 | Date | Decision | Status | File |
 | ---- | -------- | ------ | ---- |
+| 2026-06-15 | Automate `validate_ladder.sh` into a real regression suite (GREEN/RED per stage) | accepted | [2026-06-15_build-kvstore-validate-ladder.md](2026-06-15_build-kvstore-validate-ladder.md) |
+| 2026-06-14 | `build-kvstore/` checkpoint build approach (flag-gating + subtraction) | accepted | [2026-06-14_build-kvstore-checkpoint-build-approach.md](2026-06-14_build-kvstore-checkpoint-build-approach.md) |
+| 2026-06-14 | Restructure workshop into an incremental `build-kvstore/` | accepted | [2026-06-14_build-kvstore-incremental-restructure.md](2026-06-14_build-kvstore-incremental-restructure.md) |
 | 2026-06-14 | Introduce CLAUDE.md (agent guidance) and a decision log | accepted | [2026-06-14_introduce-claude-md-and-decision-log.md](2026-06-14_introduce-claude-md-and-decision-log.md) |
