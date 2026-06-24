@@ -7,6 +7,7 @@ A chronological index of every decision recorded in this folder (newest first).
 
 | Date | Decision | Status | File |
 | ---- | -------- | ------ | ---- |
+| 2026-06-25 | Retool INC-06 to update-then-read pattern for genuine staleness (not absence) | accepted | [2026-06-25_incident-06-update-then-read-staleness.md](2026-06-25_incident-06-update-then-read-staleness.md) |
 | 2026-06-24 | Reframe INC-05 from "write rejected" to "a single copy is fragile" (read-replica stranding) | accepted | [2026-06-24_incident-05-fragility-framing.md](2026-06-24_incident-05-fragility-framing.md) |
 | 2026-06-24 | Make the walkthrough red-first throughout; incident messages outcome-honest | accepted | [2026-06-24_red-first-walkthrough-and-honest-incident-messages.md](2026-06-24_red-first-walkthrough-and-honest-incident-messages.md) |
 | 2026-06-24 | Add a `WORKERS` override to `make up` (demo the stage-01 single-thread choke) | accepted | [2026-06-24_make-up-workers-override.md](2026-06-24_make-up-workers-override.md) |

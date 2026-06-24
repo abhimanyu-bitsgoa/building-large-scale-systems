@@ -266,17 +266,24 @@ recovery come later (and even then this workshop recovers *followers*, not the l
 *Note:* stage 05 runs a **weak quorum** (`W=1, R=1`) on purpose — that sets up the next stage.
 
 ### 06 — Quorum ⚙️
-**Incident:** a read *immediately* after a write is **stale**, because `W + R ≤ N`.
-**Do:** raise the read quorum so `W + R > N`. The stage launches with `W=2, R=2` (N=3 ⇒
-`4 > 3`).
+**Incident:** a read *immediately* after an **update** returns the **old value**, not the new
+one — because `W + R ≤ N` lets the read set miss the node that received the latest write.
+**Do:** raise the read quorum so `W + R > N`. The stage launches with `W=2, R=2` (N=3 ⇒ `4 > 3`).
+
+*What the incident does (so you know what you're watching):* it writes `"old"`, waits 7s for
+every follower (including the slow async one) to catch up, then updates to `"fresh"` and reads
+**immediately**. With `W=1, R=1` the read lands on the async follower that still holds `"old"` —
+every node has the key, but one is behind. This is different from stage 05 where the key was
+**absent**; here it is **present but outdated**.
+
 ```bash
-# feel the failure first — run the stale-read check against the WEAK stage-05 quorum:
+# feel the failure first — run against the WEAK stage-05 quorum:
 make reset STAGE=05 ; make up STAGE=05   # shell A: W=1, R=1
-make incident STAGE=06                   # shell B: ❌ stale read
+make incident STAGE=06                   # shell B: ❌ 4/4 reads returned "old" (stale)
 make down
 # now the corrected quorum (05/06/07 share code; only W/R differ):
 make reset STAGE=06 ; make up STAGE=06   # shell A: W=2, R=2
-make incident STAGE=06                   # shell B: ✅ fresh read
+make incident STAGE=06                   # shell B: ✅ 0/4 stale — always hits an up-to-date replica
 ```
 
 ### 07 — Fault tolerance / CAP ⚙️
