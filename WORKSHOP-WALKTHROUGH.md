@@ -238,17 +238,31 @@ make incident STAGE=04   # shell B — ✅ first N succeed, the rest get 429
 ```
 
 ### 05 — Replication ⌨️ **code**  *(chapter boundary: coordinator + leader/followers appear)*
-**Incident:** a write to the leader never reaches the followers — the data isn't durable.
+**Incident:** one copy is fragile. Reads in this system are served by the **follower tier**
+(the read replicas, like Redis) — *never* the leader. Without replication the leader holds the
+only copy, so the followers are empty and your data is **stranded**: unreadable now, and gone
+if that node dies.
 **Do:** implement `replicate_to_follower` in `kvstore/node.py` — POST the write to the
-follower's `/replicate`.
+follower's `/replicate` — so the leader's writes land on the replicas that serve reads.
 ```bash
 make gap STAGE=05
 make up STAGE=05         # shell A
-make incident STAGE=05   # shell B — ❌ followers never get the write
+make incident STAGE=05   # shell B — ❌ data is stranded on the leader; the read-tier is empty
 # …edit kvstore/node.py → replicate_to_follower, then restart…
 make down ; make up STAGE=05
-make incident STAGE=05   # shell B — ✅ the write propagates to the followers
+make incident STAGE=05   # shell B — ✅ the write reaches the replicas; reads now succeed
 ```
+*Show the stranding live (optional, drives the point home):* on the ❌ run the leader **did**
+store the write — it's the only copy. With shell A's logs you can see the leader's port (the
+coordinator spawns it); then from shell B compare the leader directly against the read path:
+```bash
+curl -s localhost:7001/data/<key>   # the leader HAS it (200 + value)
+curl -s localhost:7000/read/<key>   # the coordinator read (follower tier) MISSES — stranded
+```
+*We are deliberately not doing leader failover here* — the point isn't "the leader died," it's
+that data living on a single node is fragile and unreachable through the read path. Failover/
+recovery come later (and even then this workshop recovers *followers*, not the leader).
+
 *Note:* stage 05 runs a **weak quorum** (`W=1, R=1`) on purpose — that sets up the next stage.
 
 ### 06 — Quorum ⚙️
