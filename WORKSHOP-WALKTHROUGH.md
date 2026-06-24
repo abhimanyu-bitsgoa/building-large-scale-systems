@@ -202,7 +202,7 @@ make incident STAGE=01         # shell B — ✅ p95 drops
 **Do:** see one node fail the spread, then run 3 nodes so the load is shared.
 ```bash
 # fail first — incident 02 fans 30 requests across :5001-:5003, but only one node is up:
-make reset STAGE=00 ; make up STAGE=00   # shell A — a single node on :5001
+make reset STAGE=01 ; make up STAGE=01   # shell A — a single node on :5001
 make incident STAGE=02                   # shell B — ❌ ~10/30 served (5002/5003 unreachable)
 make down
 # fix — three nodes share the load:
