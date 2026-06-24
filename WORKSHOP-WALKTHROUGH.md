@@ -164,11 +164,15 @@ Begin once with `make start`. For each stage, the loop is *run the incident → 
 make the change → run it again → watch it pass*. Stuck? `make reset STAGE=NN`.
 
 ### 00 — Single node ⚙️
-A KV store is just a dict behind HTTP: `POST /data`, `GET /data/{key}`.
+A KV store is just a dict behind HTTP: `POST /data`, `GET /data/{key}`. There's no failure to
+fix yet — stage 00 is the **baseline smoke test**: start the node and confirm a write reads back,
+so you know the foundation works before building on it.
 ```bash
-make up STAGE=00      # shell A — node on :5001
-make incident STAGE=00   # shell B  (in later stages; 00 is the warm-up)
+make up STAGE=00         # shell A — single node on :5001
+make incident STAGE=00   # shell B — ✅ write+read round-trip succeeds ("the store works")
 ```
+Stage 00 is the one green baseline with no "before" state to break; from stage **01** onward,
+each stage *starts* with a failing incident you then fix.
 
 ### 01 — Vertical scaling ⚙️
 **Incident:** one node saturates under concurrent load — its single thread (the GIL) is the

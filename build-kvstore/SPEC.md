@@ -69,6 +69,11 @@ coordinator + leader/follower replication) and 07→08 (introduce registry + hea
 `incidents/_harness.py` exposes `report(stage, name, resolved, detail)` → prints a banner,
 records into `progress.json`, exits `0` (green) / `1` (red). Each `incident_N.py` is black-box.
 
+> Incidents **01–10** are red→green (table below). Stage **00** additionally has
+> `incident_00_smoke.py`, a *baseline smoke test* (write+read round-trip on the single node)
+> with **no RED counterpart** — nothing precedes it — so it is intentionally **not** part of
+> `validate_ladder.sh` (which checks the 01–10 invariant). It just confirms the foundation works.
+
 | Incident | Does | RED (prev) | GREEN (this) | Reuses |
 |---|---|---|---|---|
 | 01 choke | flood 1 node, measure p95 | p95 high | p95 low (workers) | new |
