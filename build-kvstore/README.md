@@ -29,6 +29,18 @@ Fell behind or broke something? Jump straight to a known-good state:
 make reset STAGE=03     # kvstore/ becomes the correct, working stage-03 code
 ```
 
+For **any** stage, **play with the running system** instead of only checking it — every process
+gets its own tmux pane and a control pane lets you drive it by hand (one window, mouse mode on):
+
+```bash
+make lab STAGE=02       # 3 node panes + control: nwrite/nread, nload adaptive vs round_robin
+make lab STAGE=09       # registry/coordinator panes + control: kvwrite, kvkill 1, kvspawn
+bash tools/tmux_lab.sh down   # tear it all down
+```
+
+Curious *why* the system grows the way it does? [`docs/diffs/README.md`](docs/diffs/README.md)
+tells the whole build as one narrative arc — what each stage adds and the problem it solves.
+
 ## The ladder
 
 | # | Stage | You learn |

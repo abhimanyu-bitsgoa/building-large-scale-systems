@@ -98,14 +98,22 @@ app = FastAPI(title=f"Distributed KV Store - {NODE_ID}")
 def heartbeat_loop():
     """Send heartbeats to the registry so it knows this node is alive."""
     global running
-    # TODO [STAGE 08]: every HEARTBEAT_INTERVAL seconds (while `running`), POST to
-    #   f"{REGISTRY_URL}/heartbeat" with json
-    #   {"node_id": NODE_ID, "port": NODE_PORT,
-    #    "url": f"http://localhost:{NODE_PORT}", "role": NODE_ROLE}.
-    #   Without heartbeats the registry never sees this node, so it can't detect its
-    #   death (stage 08) or auto-respawn it (stage 09). Wrap the POST in try/except so a
-    #   transient registry hiccup doesn't kill the loop.
-    raise NotImplementedError("STAGE 08: implement the heartbeat loop")
+    while running:
+        try:
+            # TODO [STAGE 08]: tell the registry we're alive — send ONE heartbeat.
+            #   resp = requests.post(
+            #       f"{REGISTRY_URL}/heartbeat",
+            #       json={"node_id": NODE_ID, "port": NODE_PORT,
+            #             "url": f"http://localhost:{NODE_PORT}", "role": NODE_ROLE},
+            #       timeout=2,
+            #   )
+            # Replace the line below with that POST. The loop, error handling and pacing are
+            # done for you — without the heartbeat the registry never sees this node, so it
+            # can't detect its death (stage 08) or auto-respawn it (stage 09).
+            raise NotImplementedError("STAGE 08: POST a heartbeat to the registry")
+        except Exception as e:
+            print(f"[{NODE_ID}] ⚠️ heartbeat not sent yet (implement heartbeat_loop): {e}")
+        time.sleep(HEARTBEAT_INTERVAL)
 
 # ========================
 # Replication Functions

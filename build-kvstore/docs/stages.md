@@ -9,9 +9,24 @@ config/observe. Stuck? `make reset STAGE=NN` jumps you to a known-good solution.
 | begin | `make start` |
 | load a code-stage gap | `make gap STAGE=NN` |
 | run the stage | `make up STAGE=NN` (separate shell) |
+| **play (any stage)** | `make lab STAGE=NN` — every process in its own tmux pane + a control pane to drive it by hand |
 | check red→green | `make incident STAGE=NN` |
 | rescue | `make reset STAGE=NN` |
 | progress | `make status` |
+
+> **`make lab` vs `make up`:** `make up` runs the stage in one shell (what the incident drives).
+> `make lab` (any stage, **00–10**) is the *observe-and-play* view — every process gets its own
+> pane so you watch them react, plus a control pane of helpers:
+> - **00–04 (nodes):** `nwrite` / `nread` / `nhealth`, and `nload <strategy>` to fire load across
+>   the cluster (compare `nload adaptive` vs `nload round_robin` on stages 02/03).
+> - **05–10 (cluster):** `kvwrite` / `kvread` / `kvstatus`, plus `kvkill <n>` / `kvspawn` to crash
+>   a follower and watch recovery yourself instead of only running the checker.
+>
+> Mouse mode is on (click a pane, scroll to read history). `WORKERS=1 make lab STAGE=01` demos the
+> single-thread choke. Tear down with `bash tools/tmux_lab.sh down`.
+
+> Want to see *what changes between stages and why* the system grows the way it does? Read
+> [`diffs/README.md`](diffs/README.md) — the whole build as one narrative arc.
 
 ---
 

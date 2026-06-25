@@ -141,8 +141,14 @@ the per-stage guide, and the bug log — all verified inside the container. As o
 `tools/validate_ladder.sh` is a **working regression suite** (`make validate`): it boots each
 checkpoint via its own `up.sh`, asserts `incident_N` GREEN on `checkpoints/N` and RED on a
 per-stage "before" state, and confirms ports free between cases — 20/20 cases pass. See
-[`wiki/decisions/2026-06-15_build-kvstore-validate-ladder.md`]. (`docs/diffs/` chapter
-explainers and a `tmux` layout remain as optional polish; `docs/stages.md` covers the narrative.)
+[`wiki/decisions/2026-06-15_build-kvstore-validate-ladder.md`].
+
+As of 2026-06-25 the former "optional polish" is **done**: `docs/diffs/` now holds the full
+narrative arc (`README.md`) plus the two chapter deep-dives (`04-to-05-replication.md`,
+`07-to-08-discovery.md`); and `make lab STAGE=NN` (`tools/tmux_lab.sh` + `tools/kvplay.sh`) gives
+the cluster stages (05–10) a per-service tmux dashboard with a control pane to kill/spawn nodes by
+hand. The code-gap exercises (04/05/08) were also trimmed to a single core line each (boilerplate
+pre-filled). See `wiki/decisions/2026-06-25_build-kvstore-tmux-diffs-gap-reduction.md`.
 
 ## 11. Replication chapter (05/06/07) — how it's built
 

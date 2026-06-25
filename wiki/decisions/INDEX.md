@@ -7,7 +7,8 @@ A chronological index of every decision recorded in this folder (newest first).
 
 | Date | Decision | Status | File |
 | ---- | -------- | ------ | ---- |
-| 2026-06-25 | Optional tmux dashboards: stage-10 per-component view + per-incident "watch servers react" | accepted | [2026-06-25_tmux-stage10-dashboard.md](2026-06-25_tmux-stage10-dashboard.md) |
+| 2026-06-25 | build-kvstore: per-service `make lab` tmux (kill/spawn by hand), full `docs/diffs/` narrative arc + 2 chapter deep-dives, code gaps trimmed to one core line each | accepted | [2026-06-25_build-kvstore-tmux-diffs-gap-reduction.md](2026-06-25_build-kvstore-tmux-diffs-gap-reduction.md) |
+| 2026-06-25 | Optional tmux dashboards: stage-10 per-component view + per-incident "watch servers react" | superseded (stage-10 view folded into `make lab`) | [2026-06-25_tmux-stage10-dashboard.md](2026-06-25_tmux-stage10-dashboard.md) |
 | 2026-06-25 | Make INC-07 show the CAP tradeoff (writes refused, reads survive) + connect 06→07 | accepted | [2026-06-25_incident-07-cap-tradeoff-and-06-07-connection.md](2026-06-25_incident-07-cap-tradeoff-and-06-07-connection.md) |
 | 2026-06-25 | Retool INC-06 to update-then-read pattern for genuine staleness (not absence) | accepted | [2026-06-25_incident-06-update-then-read-staleness.md](2026-06-25_incident-06-update-then-read-staleness.md) |
 | 2026-06-24 | Reframe INC-05 from "write rejected" to "a single copy is fragile" (read-replica stranding) | accepted | [2026-06-24_incident-05-fragility-framing.md](2026-06-24_incident-05-fragility-framing.md) |

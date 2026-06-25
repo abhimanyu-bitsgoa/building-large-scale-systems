@@ -128,11 +128,25 @@ def replicate_to_follower(follower_url: str, key: str, value: str, version: int,
         print(f"[{NODE_ID}] ⏳ Replicating {key} to {follower_url} (delay: {actual_delay}s)...")
         time.sleep(actual_delay)
 
-    # TODO [STAGE 05]: send this write to the follower so it gets a copy.
-    #   POST to f"{follower_url}/replicate" with json
-    #   {"key": key, "value": value, "version": version, "source": NODE_ID} (timeout=10).
-    #   Return True on HTTP 200, otherwise False (also return False on any exception).
-    raise NotImplementedError("STAGE 05: implement replication to a follower")
+    try:
+        # TODO [STAGE 05]: replication itself — send the write to the follower over HTTP.
+        #   resp = requests.post(
+        #       f"{follower_url}/replicate",
+        #       json={"key": key, "value": value, "version": version, "source": NODE_ID},
+        #       timeout=10,
+        #   )
+        # Replace the line below with that POST. Everything after it is done for you.
+        raise NotImplementedError("STAGE 05: POST the write to the follower's /replicate")
+
+        if resp.status_code == 200:
+            replications_sent += 1
+            print(f"[{NODE_ID}] ✅ Replicated {key}={value} (v{version}) to {follower_url}")
+            return True
+        print(f"[{NODE_ID}] ❌ Replication to {follower_url} failed: {resp.status_code}")
+        return False
+    except Exception as e:
+        print(f"[{NODE_ID}] ❌ Replication to {follower_url} failed: {e}")
+        return False
 
 def replicate_sync(sync_followers: List[str], key: str, value: str, version: int) -> dict:
     """
