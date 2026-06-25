@@ -7,6 +7,7 @@ A chronological index of every decision recorded in this folder (newest first).
 
 | Date | Decision | Status | File |
 | ---- | -------- | ------ | ---- |
+| 2026-06-26 | `AdaptiveStrategy.get_node`: use O(n) `min` instead of O(n log n) sort (and match the line the walkthrough teaches) | accepted | [2026-06-26_adaptive-strategy-min-over-sort.md](2026-06-26_adaptive-strategy-min-over-sort.md) |
 | 2026-06-26 | Move the load balancer's debut from stage 02 to 03 (stage 02 = naive inline client, no `load_balancer.py`) so the 02→03 step adds a real artifact | accepted | [2026-06-26_stage-02-naive-client-load-balancer-debuts-at-03.md](2026-06-26_stage-02-naive-client-load-balancer-debuts-at-03.md) |
 | 2026-06-26 | Add a client-side vs server-side load-balancing reference (real systems + pros/cons) for stage 03 | accepted | [2026-06-26_load-balancing-client-vs-server-reference-doc.md](2026-06-26_load-balancing-client-vs-server-reference-doc.md) |
 | 2026-06-25 | build-kvstore: per-service `make lab` tmux (kill/spawn by hand), full `docs/diffs/` narrative arc + 2 chapter deep-dives, code gaps trimmed to one core line each | accepted | [2026-06-25_build-kvstore-tmux-diffs-gap-reduction.md](2026-06-25_build-kvstore-tmux-diffs-gap-reduction.md) |
