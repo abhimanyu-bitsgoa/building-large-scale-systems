@@ -20,7 +20,7 @@ The primary workshop lives in [`build-kvstore/`](build-kvstore/). The original t
 1. [How the workshop works (the core idea)](#1-how-the-workshop-works-the-core-idea)
 2. [One-time setup (instructor & attendees)](#2-one-time-setup-instructor--attendees)
 3. [The command cheat sheet](#3-the-command-cheat-sheet)
-4. [Ports & the two-shell model](#4-ports--the-two-shell-model)
+4. [Running the system: two shells, or the tmux dashboard](#4-running-the-system-two-shells-or-the-tmux-dashboard)
 5. [The stage ladder](#5-the-stage-ladder)
 6. [Attendee guide — stage by stage](#6-attendee-guide--stage-by-stage)
 7. [The capstone (stage 10)](#7-the-capstone-stage-10)
@@ -46,14 +46,23 @@ make status               # see the ladder of resolved incidents
 Two kinds of stage:
 
 - **⌨️ Code stages — `03, 04, 05, 08`.** You implement a missing function. Start from the
-  gapped code with `make gap STAGE=NN` (it drops a `raise NotImplementedError(...)` where your
-  code goes).
+  gapped code with `make gap STAGE=NN`. **The gap is deliberately tiny** — all the boilerplate
+  (loops, try/except, metadata, logging) is pre-filled and a single `raise NotImplementedError(...)`
+  marks the **one core line** you write. You're adding the *idea*, not the plumbing.
 - **⚙️ Config / observe stages — `00, 01, 02, 06, 07, 09, 10`.** No code to write; load the
   stage with `make reset STAGE=NN`, then launch and observe (the corrected configuration is
   baked into the launcher).
 
 **The panic button:** at any time, `make reset STAGE=NN` overwrites the working directory with
 the known-good, complete code for stage `NN`. Nobody can get permanently stuck.
+
+**Two ways to drive the system** (covered in detail in [§4](#4-running-the-system-two-shells-or-the-tmux-dashboard)):
+
+- **Two shells** — `make up` in one, `make incident` in another. Simple, minimal.
+- **One window — `make lab STAGE=NN`** (recommended for demos). A tmux dashboard puts every
+  process in its own pane and gives you a control pane to drive the system *by hand* (write/read,
+  and on the cluster stages **crash and respawn nodes**). This is the best way to project the
+  system to a room.
 
 ---
 
@@ -107,34 +116,111 @@ Run all of these from inside the container, in the `build-kvstore/` directory.
 | `make down` | Stop **all** workshop processes (safe to run between every stage). |
 | `make incident STAGE=NN` | Run this stage's red→green check. Exit `0` = ✅ resolved, `1` = ❌ active. |
 | `make reset STAGE=NN` | Overwrite `kvstore/` with the known-good code for stage `NN` (the rescue). |
+| `make lab STAGE=NN` | **tmux dashboard for any stage (00–10):** every process in its own pane + a control pane to drive it by hand. See [§4](#4-running-the-system-two-shells-or-the-tmux-dashboard). |
 | `make status` | Show the ladder of resolved incidents (reads `progress.json`). |
 | `make validate` | **Author/instructor only.** Run the whole regression suite (~3.5 min). |
 
-`STAGE` is always a two-digit number (`00`, `01`, … `10`).
+`STAGE` is always a two-digit number (`00`, `01`, … `10`). Tear down a `make lab` session with
+`bash tools/tmux_lab.sh down` (it kills the tmux session **and** all stage processes).
 
 ---
 
-## 4. Ports & the two-shell model
+## 4. Running the system: two shells, or the tmux dashboard
 
-`make up` runs the system in the **foreground** so attendees can see the logs — it does not
-return until you stop it. So you always work with **two container shells**:
+There are two ways to run a stage. The **two-shell model** is the minimal path. The **tmux
+dashboard (`make lab`)** is richer and is what you'll want for **demos** — one window, every
+process visible, and a control pane to poke the system live.
+
+### 4.0 Ports (both models)
+
+Ports shift once, at the architecture jump from a single service to a cluster:
+
+| Stages | Ports |
+|---|---|
+| `00`–`04` (single-service tier) | nodes on `5001`, `5002`, `5003` |
+| `05`–`10` (cluster tier) | registry `9000`, coordinator `7000` (it spawns leader `7001` + followers `7002`–`7004`), gateway `8000` |
+
+**Always run `make down` (or `bash tools/tmux_lab.sh down`) before starting a different stage** —
+it stops every process *and* frees the ports (including orphaned `uvicorn` workers that a plain
+process-name kill would miss). Leftover processes serving stale data on `7002–7004` are the #1
+cause of confusing behavior.
+
+### 4.1 The two-shell model
+
+`make up` runs the system in the **foreground** so you can see the logs — it does not return
+until you stop it. So you work with **two container shells**:
 
 - **Shell A** — runs `make up STAGE=NN` (the system; leave it running).
 - **Shell B** — runs `make incident STAGE=NN`, edits code, runs `make status`.
 
 Open a second shell the same way: `docker-compose exec workshop bash`, then `cd build-kvstore`.
+All the per-stage recipes in [§6](#6-attendee-guide--stage-by-stage) are written in this model.
 
-**Ports shift once, at the architecture jump from a single service to a cluster:**
+### 4.2 The tmux dashboard — `make lab STAGE=NN` (recommended for demos)
 
-| Stages | Ports |
-|---|---|
-| `00`–`04` (single-service tier) | nodes on `5001`, `5002`, `5003` |
-| `05`–`10` (cluster tier) | registry `9000`, coordinator `7000`, gateway `8000` |
+`make lab STAGE=NN` builds a **single tmux window** with one pane per process the stage runs,
+plus panes to drive and check it. **Mouse mode is on**, so it's friendly even if you've never
+used tmux.
 
-**Always run `make down` before starting a different stage** — it stops every process *and*
-frees the ports (including orphaned `uvicorn` workers that a plain process-name kill would
-miss). Leftover processes serving stale data on `7002–7004` are the #1 cause of confusing
-behavior.
+```bash
+make lab STAGE=07        # build the dashboard for stage 07 and attach
+```
+
+**What you get (panes):**
+
+- **One pane per process** — the node(s) on stages `00`–`04`; `registry` / `coordinator` /
+  `gateway` (as the stage requires) on `05`–`10`. Each pane is labelled in its top border.
+  *(The leader + followers are children the coordinator spawns, so their logs share the
+  **coordinator** pane — there's no separate pane for them.)*
+- **A `control` pane** — pre-loaded with helper commands so you drive the system **by hand**
+  (see the table below). This is where the live demo happens.
+- **An `incident` pane** — the graded check is **pre-typed** (`make incident STAGE=NN`); press
+  **Enter** to fire it, re-run as often as you like.
+- **A `scratch` pane** — a free shell (e.g. `make status`, ad-hoc `curl`).
+
+**Control-pane helpers** (already loaded; type them in the `control` pane):
+
+| Stages | Helper | What it does |
+|---|---|---|
+| `00`–`04` | `nwrite <key> <value>` | write to the node (`POST /data`) |
+| `00`–`04` | `nread <key>` | read it back |
+| `00`–`04` | `nhealth` | node health + in-flight request count |
+| `02`–`03` | `nload [strategy] [reqs] [conc]` | fire load across all nodes — compare `nload adaptive` vs `nload round_robin` |
+| `05`–`10` | `kvwrite <key> <value>` / `kvread <key>` | write / read via the cluster (gateway on stage 10, coordinator otherwise) |
+| `05`–`10` | `kvstatus` | show the leader + followers (alive/dead) |
+| `05`–`10` | `kvkill <n>` | **crash** `follower-<n>` (a hard kill — simulates a real crash) |
+| `05`–`10` | `kvspawn` | respawn a follower (auto-catchup on stages 09/10) |
+
+Type `kvhelp` in the control pane at any time to reprint the menu for the current stage.
+
+**tmux controls (mouse mode on):**
+
+- **Click** a pane to focus it. **Scroll** with the mouse wheel to read a pane's history
+  (press **`q`** to leave scroll/copy mode).
+- **Detach** (leave it running): **`Ctrl-b`** then **`d`** (press and release `Ctrl-b`, *then*
+  the next key). Re-attach with `tmux attach -t kvlab`.
+- **Tear it all down:** `bash tools/tmux_lab.sh down`.
+
+**Seeding behaviour:** `make lab` is **non-destructive on the code stages (`03/04/05/08`)** — it
+will not overwrite a solution you're working on. For all other stages it seeds the correct
+checkpoint code automatically. So the normal flows are:
+
+- **Config/observe stage:** `make lab STAGE=06` — just works (boots the correct code).
+- **Code stage:** `make gap STAGE=05` first (load the gap), *then* `make lab STAGE=05`.
+
+**Demoing a code stage in the dashboard** (one extra step — you must restart the edited process):
+
+```bash
+make gap STAGE=05            # load the gap
+make lab STAGE=05            # boots with the gapped code
+#   → press Enter in the incident pane: ❌ (replication not implemented)
+#   → edit kvstore/node.py (host editor or nano) — fill the one core line
+#   → in the COORDINATOR pane: Ctrl-C, then ↑ Enter to relaunch with your edit
+#   → press Enter in the incident pane again: ✅
+```
+
+> `make lab STAGE=01` runs 4 workers by default; **`WORKERS=1 make lab STAGE=01`** demos the
+> single-thread choke.
 
 ---
 
@@ -157,6 +243,13 @@ behavior.
 The two **chapter boundaries** — where the code jumps rather than nudges — are **04 → 05**
 (introduce the coordinator + leader/follower replication) and **07 → 08** (introduce the
 registry + heartbeats). Flag these to the room as "new chapter," not "rewrite."
+
+> **What changes between every stage, and why** is documented as a single narrative arc in
+> [`build-kvstore/docs/diffs/README.md`](build-kvstore/docs/diffs/README.md), with deep-dives on
+> the two boundaries ([04→05](build-kvstore/docs/diffs/04-to-05-replication.md),
+> [07→08](build-kvstore/docs/diffs/07-to-08-discovery.md)). Read these to narrate *why* the system
+> grows the way it does (e.g. why the load balancer and rate limiter leave at stage 05 and return
+> on the gateway at stage 10).
 
 ---
 
@@ -181,6 +274,9 @@ so you know the foundation works before building on it.
 make up STAGE=00         # shell A — single node on :5001
 make incident STAGE=00   # shell B — ✅ write+read round-trip succeeds ("the store works")
 ```
+🖥️ **One-window demo:** `make lab STAGE=00` → in the `control` pane: `nwrite hello world` then
+`nread hello`; press Enter in the `incident` pane to run the smoke test.
+
 Stage 00 is the one green baseline with no "before" state to break; from stage **01** onward,
 each stage *starts* with a failing incident you then fix.
 
@@ -196,6 +292,8 @@ make down
 make up STAGE=01               # shell A — 4 workers (the default)
 make incident STAGE=01         # shell B — ✅ p95 drops
 ```
+🖥️ **One-window demo:** `WORKERS=1 make lab STAGE=01` → run the `incident` pane (❌); tear down
+(`bash tools/tmux_lab.sh down`), then `make lab STAGE=01` (4 workers) → `incident` pane (✅).
 
 ### 02 — Horizontal scaling ⚙️
 **Incident:** a single node is both a single point of failure and a capacity wall.
@@ -209,13 +307,16 @@ make down
 make reset STAGE=02 ; make up STAGE=02   # shell A — 3 nodes on :5001-:5003
 make incident STAGE=02                   # shell B — ✅ 30/30 served
 ```
+🖥️ **One-window demo:** `make lab STAGE=02` → three node panes are visible; in the `control`
+pane run `nload round_robin 40 10` and watch requests land across all three nodes.
+
 *Note:* the three nodes have **separate** dicts — naive horizontal scaling splits your data.
 That's exactly what motivates replication at stage 05.
 
 ### 03 — Load balancing ⌨️ **code**
 **Incident:** round-robin ignores node capacity and tanks on the slow node.
-**Do:** implement `AdaptiveStrategy.get_node` in `kvstore/load_balancer.py` — pick the
-lowest-score (least-loaded) node.
+**Do (one line):** in `kvstore/load_balancer.py` → `AdaptiveStrategy.get_node`, return the
+lowest-score node — `return min(nodes, key=node_stats.get_score)`.
 ```bash
 make gap STAGE=03        # load the gapped code (raises NotImplementedError where you write)
 make up STAGE=03         # shell A
@@ -224,10 +325,15 @@ make incident STAGE=03   # shell B — ❌ adaptive can't be measured (NotImplem
 make down ; make up STAGE=03
 make incident STAGE=03   # shell B — ✅ adaptive p95 < round-robin p95
 ```
+🖥️ **One-window demo:** after implementing, `make gap STAGE=03 && make lab STAGE=03`; in the
+`control` pane compare `nload round_robin 40 10` vs `nload adaptive 40 10` — adaptive steers away
+from the weak node. (Restart the node panes after editing: `Ctrl-C` then `↑ Enter` in each.)
 
 ### 04 — Rate limiting ⌨️ **code**
 **Incident:** a flood overwhelms the node (no `429`s — every request gets in).
-**Do:** implement `FixedWindowStrategy.is_allowed` in `kvstore/rate_limiter.py`.
+**Do (a few lines):** in `kvstore/rate_limiter.py` → `FixedWindowStrategy.is_allowed`, write the
+fixed-window core (the metadata is pre-filled): reset the counter when the window expires, then
+allow while `count < max` (incrementing), else reject.
 ```bash
 make gap STAGE=04
 make up STAGE=04         # shell A
@@ -236,14 +342,17 @@ make incident STAGE=04   # shell B — ❌ nothing blocked (no rate limiting in 
 make down ; make up STAGE=04
 make incident STAGE=04   # shell B — ✅ first N succeed, the rest get 429
 ```
+🖥️ **One-window demo:** `make gap STAGE=04 && make lab STAGE=04`; press Enter in the `incident`
+pane (❌), implement the gap, restart the node pane (`Ctrl-C`, `↑ Enter`), re-run incident (✅).
 
 ### 05 — Replication ⌨️ **code**  *(chapter boundary: coordinator + leader/followers appear)*
 **Incident:** one copy is fragile. Reads in this system are served by the **follower tier**
 (the read replicas, like Redis) — *never* the leader. Without replication the leader holds the
 only copy, so the followers are empty and your data is **stranded**: unreadable now, and gone
 if that node dies.
-**Do:** implement `replicate_to_follower` in `kvstore/node.py` — POST the write to the
-follower's `/replicate` — so the leader's writes land on the replicas that serve reads.
+**Do (one line):** in `kvstore/node.py` → `replicate_to_follower`, write the single POST that *is*
+replication (the try/except and result handling are pre-filled):
+`resp = requests.post(f"{follower_url}/replicate", json={"key": key, "value": value, "version": version, "source": NODE_ID}, timeout=10)`.
 ```bash
 make gap STAGE=05
 make up STAGE=05         # shell A
@@ -252,6 +361,10 @@ make incident STAGE=05   # shell B — ❌ data is stranded on the leader; the r
 make down ; make up STAGE=05
 make incident STAGE=05   # shell B — ✅ the write reaches the replicas; reads now succeed
 ```
+🖥️ **One-window demo:** `make gap STAGE=05 && make lab STAGE=05`. In the `control` pane,
+`kvwrite cart shoes` then `kvread cart` (❌ before you implement). Implement, restart the
+`coordinator` pane (`Ctrl-C`, `↑ Enter`), and `kvread cart` succeeds. The `coordinator` pane
+shows the leader + followers, so you can watch replication land.
 *Show the stranding live (optional, drives the point home):* on the ❌ run the leader **did**
 store the write — it's the only copy. With shell A's logs you can see the leader's port (the
 coordinator spawns it); then from shell B compare the leader directly against the read path:
@@ -285,6 +398,8 @@ make down
 make reset STAGE=06 ; make up STAGE=06   # shell A: W=2, R=2
 make incident STAGE=06                   # shell B: ✅ 0/4 stale — always hits an up-to-date replica
 ```
+🖥️ **One-window demo:** `make lab STAGE=05` (weak quorum) → `incident` pane shows stale reads;
+tear down, `make lab STAGE=06` (W=2,R=2) → `incident` pane is clean.
 
 ### 07 — Fault tolerance / CAP ⚙️  *(the payoff of the quorum arc — connect it back to 06)*
 **Incident:** `W` is a dial with a price. Stage 06 told you to *raise* `W+R` for consistency —
@@ -312,13 +427,21 @@ make down
 make up STAGE=07         # shell A — W=2, R=2
 make incident STAGE=07   # shell B — ✅ writes AND reads survive the failure
 ```
+🖥️ **One-window demo (the CAP moment, by hand):** `make lab STAGE=07` (W=2,R=2). In the `control`
+pane: `kvwrite cart shoes` → `kvkill 1` → `kvstatus` (one follower dead, writes still work — a
+`kvwrite` succeeds) → `kvkill 2` → now `kvwrite` is **refused (503)** because the write quorum is
+lost, while `kvread cart` still succeeds. Watch the `coordinator` pane log the quorum decision.
+That's the CP choice made visible — no script needed.
+
 *Scope caveat:* this is *follower* fault tolerance (quorum counts followers; the leader is assumed
 alive). The leader remains a single point of failure this workshop doesn't solve.
 
 ### 08 — Service discovery ⌨️ **code**  *(chapter boundary: registry + heartbeats appear)*
 **Incident:** the registry never sees a node, so it can't detect the node's death — kills look
 "alive."
-**Do:** implement `heartbeat_loop` in `kvstore/node.py` — POST to the registry every interval.
+**Do (one line):** in `kvstore/node.py` → `heartbeat_loop`, write the single POST that announces
+the node is alive (the `while` loop, try/except and pacing are pre-filled):
+`resp = requests.post(f"{REGISTRY_URL}/heartbeat", json={"node_id": NODE_ID, "port": NODE_PORT, "url": f"http://localhost:{NODE_PORT}", "role": NODE_ROLE}, timeout=2)`.
 ```bash
 make gap STAGE=08
 make up STAGE=08         # shell A
@@ -327,6 +450,9 @@ make incident STAGE=08   # shell B — ❌ killed node still shows "alive" (regi
 make down ; make up STAGE=08
 make incident STAGE=08   # shell B — ✅ a killed node is correctly reported "dead"
 ```
+🖥️ **One-window demo:** `make gap STAGE=08 && make lab STAGE=08` → watch the `registry` and
+`coordinator` panes side by side. `kvkill 1`, then `kvstatus`: before you implement heartbeats the
+registry never marks it dead; after (restart the `coordinator` pane), the death is detected.
 
 ### 09 — Auto-recovery ⚙️
 **Incident:** a dead follower stays dead and the cluster runs degraded.
@@ -341,6 +467,11 @@ make down
 make reset STAGE=09 ; make up STAGE=09   # shell A — registry auto-spawn + coordinator
 make incident STAGE=09                   # shell B — ✅ killed follower is respawned AND has the data
 ```
+🖥️ **One-window demo (watch self-healing):** `make lab STAGE=09`. In the `control` pane:
+`kvwrite cart shoes` → `kvkill 2` → `kvstatus` (dead) → wait ~5s → `kvstatus` again: the registry
+auto-respawned it and the `coordinator` pane shows the catchup. `kvread cart` confirms the revived
+follower has the data. (Compare with stage 08, where it would just stay dead.)
+
 *This is **follower** recovery (replace + resync), not leader failover (that's Sentinel — out of
 scope).*
 
@@ -367,8 +498,11 @@ nano kvstore/student_config.json # fix W, R, followers, rate-limit window, auto-
 make incident STAGE=10           # ✅ re-run until the score clears the bar
 ```
 > `make incident STAGE=10` runs `assessment.py`, which spins up its **own** cluster from your
-> config — so don't leave `make up STAGE=10` running at the same time (port clash). To *explore*
-> the live system instead, run `make up STAGE=10` and drive it with `client.py`.
+> config — so don't leave `make up STAGE=10` (or `make lab STAGE=10`) running at the same time
+> (port clash). To *explore* the live full system instead, run **`make lab STAGE=10`**: you get
+> `registry` / `coordinator` / `gateway` panes and a control pane (`kvwrite`/`kvread` go through
+> the gateway on `:8000`; `kvkill`/`kvspawn`/`kvstatus` hit the coordinator). Tear it down before
+> running the graded `make incident STAGE=10`.
 
 The assessment scores out of 100 across the incident scenarios. The answer key (with written
 justifications) is `kvstore/student_config_solution.json` — **instructors should not surface
@@ -450,6 +584,26 @@ Almost everything is deterministic, with two machine-dependent exceptions:
 - **Never `pkill -f coordinator.py` from a script whose own text contains that string** — it
   SIGKILLs itself. `make down` is the safe default; the regression suite already handles this
   correctly.
+- **Zombie processes are handled — but recreate the container after pulling.** The container runs
+  with `init: true` (PID 1 is `docker-init`/tini), which **reaps** the orphaned node subprocesses
+  that pile up over many `up`/`down`/`lab` cycles — without it they accumulate as `<defunct>`
+  zombies and eventually exhaust the PID table (`fork()` hangs). This only takes effect after
+  `docker-compose up -d` **recreates** the container, so do that once after pulling these changes.
+  If a long-lived container ever feels sluggish: `docker-compose restart workshop`.
+
+### 8.6 Demoing with the tmux dashboard
+
+For a live audience, prefer **`make lab STAGE=NN`** over the two-shell model — it projects the
+whole system in one window (one pane per process) and lets you drive it by hand from the control
+pane (see [§4.2](#42-the-tmux-dashboard--make-lab-stagenn-recommended-for-demos)). The highest-
+impact moments to do *live* rather than via the incident script:
+
+- **02/03:** `nload round_robin` vs `nload adaptive` — watch load redistribute across node panes.
+- **07:** `kvkill 1` (survives) then `kvkill 2` (writes refused, reads survive) — the CAP choice.
+- **09:** `kvkill 2`, wait, `kvstatus` — the cluster respawns and catches up the follower itself.
+
+Mouse mode is on, so you can click/scroll panes without teaching tmux keybindings. Tear down
+between stages with `bash tools/tmux_lab.sh down`.
 
 ---
 
@@ -465,6 +619,11 @@ Almost everything is deterministic, with two machine-dependent exceptions:
 | `incident_03` green flakes (adaptive ≥ round-robin) | timing noise in the relative p95 comparison | re-run it; not a real regression |
 | `make: command not found` | you're on the host, not in the container | `docker-compose exec workshop bash` then `cd build-kvstore` |
 | Lost all your edits | you ran `make start`/`make gap`/`make reset` (they overwrite `kvstore/`) | expected — `kvstore/` is disposable; commit your own work elsewhere if you want to keep it |
+| `make lab` edits don't take effect (code stage) | the service pane is still running your old code | in the relevant service pane (e.g. `coordinator`): `Ctrl-C`, then `↑ Enter` to relaunch |
+| `make lab STAGE=05/08` boots the solution, not the gap | `make lab` is non-destructive on code stages and reused existing `kvstore/` | run `make gap STAGE=NN` first, then `make lab STAGE=NN` |
+| `tmux not found` | rare; tmux missing in the container | `apt-get install -y tmux` (or use the two-shell model) |
+| Stuck inside tmux | — | detach with `Ctrl-b` then `d`; re-attach `tmux attach -t kvlab`; kill all `bash tools/tmux_lab.sh down` |
+| Container slow / `fork`/exec hangs after many runs | (only on a container created *without* `init: true`) zombie buildup | `docker-compose up -d` to recreate with the init, or `docker-compose restart workshop` |
 
 ---
 
@@ -491,9 +650,12 @@ Each has its own `README.md` with step-by-step demos.
 | `build-kvstore/README.md` | Attendee-facing intro to the ladder |
 | `build-kvstore/SPEC.md` | The full design + phase status (source of truth) |
 | `build-kvstore/docs/stages.md` | The per-stage guide (condensed in §6 above) |
+| `build-kvstore/docs/diffs/` | The build as one narrative arc — what changes between every stage and why (incl. the two chapter deep-dives) |
 | `build-kvstore/docs/bugs-fixed.md` | Running log of bugs found & fixed during verification |
+| `build-kvstore/tools/tmux_lab.sh` | The `make lab` dashboard (one pane per process + a control pane) |
+| `build-kvstore/tools/kvplay.sh` | The control-pane helpers (`nwrite`/`nload`/`kvkill`/`kvspawn`/…) sourced by `make lab` |
 | `build-kvstore/checkpoints/NN-*/` | Frozen, known-good snapshot of each stage |
-| `build-kvstore/stages/{03,04,05,08}/` | Gapped starting points for the code stages |
+| `build-kvstore/stages/{03,04,05,08}/` | Gapped starting points for the code stages (one core line each) |
 | `build-kvstore/incidents/` | The black-box red→green incident scripts |
 | `build-kvstore/kvstore/` | The working dir attendees edit (gitignored; seeded by `make start`) |
 
