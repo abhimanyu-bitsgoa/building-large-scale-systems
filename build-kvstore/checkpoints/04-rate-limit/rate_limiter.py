@@ -61,43 +61,29 @@ class FixedWindowStrategy(RateLimiterStrategy):
         return "fixed_window"
     
     def is_allowed(self, client_id: str) -> Tuple[bool, dict]:
-        """
-        Check if request is allowed under rate limit.
-        
-        ========================================
-        TODO: [STUDENT EXERCISE]
-        The implementation below shows the core 
-        rate limiting logic. Students will study
-        and understand this section.
-        ========================================
-        """
         now = time.time()
         bucket = self.buckets[client_id]
-        
-        # Check if we're in a new window
+
+        # Reset window if it has expired
         if now - bucket["window_start"] >= self.window_seconds:
-            # New window - reset counter
             bucket["window_start"] = now
             bucket["count"] = 0
-        
-        # Calculate remaining requests and reset time
-        remaining = self.max_requests - bucket["count"]
+
+        # Allow if under the limit, else reject
+        allowed = bucket["count"] < self.max_requests
+        if allowed:
+            bucket["count"] += 1
+
+        # Response metadata
+        remaining = max(0, self.max_requests - bucket["count"])
         reset_in = int(bucket["window_start"] + self.window_seconds - now)
-        
         metadata = {
-            "remaining": max(0, remaining - 1) if remaining > 0 else 0,
+            "remaining": remaining,
             "limit": self.max_requests,
             "reset": reset_in,
             "window_start": bucket["window_start"]
         }
-        
-        if bucket["count"] < self.max_requests:
-            # Allow request
-            bucket["count"] += 1
-            return True, metadata
-        else:
-            # Rate limit exceeded
-            return False, metadata
+        return allowed, metadata
         
         # ========================================
         # END TODO

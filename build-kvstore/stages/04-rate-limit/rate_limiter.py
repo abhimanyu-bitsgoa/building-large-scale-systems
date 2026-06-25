@@ -61,22 +61,17 @@ class FixedWindowStrategy(RateLimiterStrategy):
         return "fixed_window"
     
     def is_allowed(self, client_id: str) -> Tuple[bool, dict]:
-        """
-        Check if a request is allowed under the rate limit.
-
-        TODO [STAGE 04]: the core of a fixed-window limiter — just two steps:
-          1. If the current window has expired
-             (now - bucket["window_start"] >= self.window_seconds),
-             start a fresh window: bucket["window_start"] = now and bucket["count"] = 0.
-          2. If bucket["count"] < self.max_requests, this request fits:
-             increment bucket["count"] and set allowed = True.
-             Otherwise the window is full: leave allowed = False.
-        The response metadata below is already written for you.
-        """
+        """Check if a request is allowed under the rate limit (fixed window)."""
         now = time.time()
         bucket = self.buckets[client_id]
         allowed = False
 
+        # TODO [STAGE 04]: the core of a fixed-window limiter — just two steps:
+        #   1. If the window has expired (now - bucket["window_start"] >= self.window_seconds),
+        #      start a fresh window:  bucket["window_start"] = now;  bucket["count"] = 0
+        #   2. If bucket["count"] < self.max_requests, this request fits:
+        #      bucket["count"] += 1 and allowed = True   (otherwise leave allowed = False)
+        # Replace the line below with those two steps. The metadata after it is done for you.
         raise NotImplementedError("STAGE 04: reset the window if expired, then allow/reject")
 
         # --- response metadata (done for you) ---
