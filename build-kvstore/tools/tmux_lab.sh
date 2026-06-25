@@ -129,7 +129,10 @@ if [ "$TIER" = node ]; then
   else
     NODES="$NODE_URL"
   fi
-  CTRL_ENV="export TIER=node NODE_URL=$NODE_URL NODES=$NODES KVDIR='$KV'"
+  # HAS_LB marks stages whose client.py has the load balancer (03/04) so `nload`
+  # offers a strategy arg; stage 02's client routes naive round-robin (no strategy).
+  if [ "$N" -eq 3 ] || [ "$N" -eq 4 ]; then HAS_LB=1; else HAS_LB=; fi
+  CTRL_ENV="export TIER=node NODE_URL=$NODE_URL NODES=$NODES KVDIR='$KV' HAS_LB='$HAS_LB'"
 else
   if [ "$N" -ge 10 ]; then WR_URL="http://localhost:8000"; else WR_URL="http://localhost:7000"; fi
   CTRL_ENV="export TIER=cluster WR_URL=$WR_URL ADMIN_URL=http://localhost:7000"

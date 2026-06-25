@@ -16,10 +16,18 @@ nwrite() {  # nwrite <key> <value>
 }
 nread()   { curl -s "$NODE_URL/data/${1:?usage: nread <key>}"; echo; }
 nhealth() { curl -s "$NODE_URL/health"; echo; }
-nload() {   # nload [strategy] [requests] [concurrency] — drive the load balancer across all nodes
-  ( cd "${KVDIR:?KVDIR not set}" && \
-    python client.py --nodes "$NODES" --strategy "${1:-adaptive}" \
-      --requests "${2:-30}" --concurrent "${3:-10}" -v )
+nload() {   # fire load across all nodes
+  # Stages with a load balancer (03/04, HAS_LB=1): nload [strategy] [requests] [concurrency].
+  # Stage 02 (no load balancer): nload [requests] [concurrency] — routing is naive round-robin.
+  if [ -n "${HAS_LB:-}" ]; then
+    ( cd "${KVDIR:?KVDIR not set}" && \
+      python client.py --nodes "$NODES" --strategy "${1:-adaptive}" \
+        --requests "${2:-30}" --concurrent "${3:-10}" -v )
+  else
+    ( cd "${KVDIR:?KVDIR not set}" && \
+      python client.py --nodes "$NODES" \
+        --requests "${1:-30}" --concurrent "${2:-10}" -v )
+  fi
 }
 
 # ── cluster tier (05-10): data via WR_URL, membership via ADMIN_URL ──────────
@@ -37,7 +45,8 @@ kvspawn()  { curl -s -X POST "$ADMIN_URL/spawn"; echo; }
 
 kvhelp() {
   if [ "${TIER:-cluster}" = node ]; then
-    cat <<EOF
+    if [ -n "${HAS_LB:-}" ]; then
+      cat <<EOF
 
   ── play with the node(s) (data → ${NODE_URL}) ──
     nwrite <key> <value>    write a value
@@ -50,6 +59,20 @@ kvhelp() {
   Try it: nwrite cart shoes → nread cart   |   nload adaptive 40 10  (watch the panes)
   Run the graded check any time:  make incident STAGE=NN
 EOF
+    else
+      cat <<EOF
+
+  ── play with the node(s) (data → ${NODE_URL}) ──
+    nwrite <key> <value>    write a value
+    nread  <key>            read it back
+    nhealth                 node health + in-flight requests
+    nload [reqs] [conc]     fire load across all nodes (naive round-robin; NO load balancer yet)
+                            e.g.  nload 40 10  — watch the WEAK node (node-1) drag the tail latency
+
+  Stage 03 adds load_balancer.py so routing can dodge the slow node.
+  Run the graded check any time:  make incident STAGE=NN
+EOF
+    fi
   else
     cat <<EOF
 

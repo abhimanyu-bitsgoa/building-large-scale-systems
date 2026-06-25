@@ -42,14 +42,20 @@ ceiling, exactly the constraint Redis chose on purpose.
 
 ## 02 — Horizontal scaling
 **Incident:** a single node is a SPOF and a capacity wall.
-**Do:** run 3 nodes; the client spreads load across them. *(config)*
+**Do:** run 3 nodes; the client spreads load across them by **naive round-robin** (no load balancer
+yet — just `client.py`). *(config)*
 **Note:** independent nodes have *separate* dicts — naive horizontal scaling splits your data,
-which is exactly what motivates replication (stage 05).
+which is exactly what motivates replication (stage 05). And round-robin is blind to capacity, which
+is what motivates the load balancer (stage 03). Try `nload 40 10` and watch the weak node drag p95.
 
 ## 03 — Load balancing ⌨️ code
 **Incident:** round-robin ignores capacity and tanks on the slow node.
-**Do:** implement `AdaptiveStrategy.get_node` in `load_balancer.py` (pick the lowest-score node).
+**Do:** implement `AdaptiveStrategy.get_node` in `load_balancer.py` — **the file this stage
+introduces** (pick the lowest-score node). Compare `nload round_robin 40 10` vs `nload adaptive 40 10`.
 **Anchor:** power-of-two-choices / least-connections (Nginx, HAProxy, Netflix).
+**Talk reference:** [`load-balancing-client-vs-server.md`](load-balancing-client-vs-server.md) —
+client-side vs server-side load balancing (real systems + pros/cons), and how this lab moves from
+one to the other.
 
 ## 04 — Rate limiting ⌨️ code
 **Incident:** a flood overwhelms the node.

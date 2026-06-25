@@ -33,7 +33,7 @@ For **any** stage, **play with the running system** instead of only checking it 
 gets its own tmux pane and a control pane lets you drive it by hand (one window, mouse mode on):
 
 ```bash
-make lab STAGE=02       # 3 node panes + control: nwrite/nread, nload adaptive vs round_robin
+make lab STAGE=02       # 3 node panes + control: nwrite/nread, nload (naive round-robin, no LB yet)
 make lab STAGE=09       # registry/coordinator panes + control: kvwrite, kvkill 1, kvspawn
 make lab-down           # tear it all down
 ```

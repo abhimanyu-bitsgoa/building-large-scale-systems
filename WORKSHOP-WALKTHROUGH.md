@@ -186,7 +186,8 @@ make lab STAGE=07        # build the dashboard for stage 07 and attach
 | `00`–`04` | `nwrite <key> <value>` | write to the node (`POST /data`) |
 | `00`–`04` | `nread <key>` | read it back |
 | `00`–`04` | `nhealth` | node health + in-flight request count |
-| `02`–`03` | `nload [strategy] [reqs] [conc]` | fire load across all nodes — compare `nload adaptive` vs `nload round_robin` |
+| `02` | `nload [reqs] [conc]` | fire load across all nodes — **naive round-robin, no load balancer** (watch the weak node drag p95) |
+| `03`–`04` | `nload [strategy] [reqs] [conc]` | fire load via the load balancer — compare `nload adaptive` vs `nload round_robin` |
 | `05`–`10` | `kvwrite <key> <value>` / `kvread <key>` | write / read via the cluster (gateway on stage 10, coordinator otherwise) |
 | `05`–`10` | `kvstatus` | show the leader + followers (alive/dead) |
 | `05`–`10` | `kvkill <n>` | **crash** `follower-<n>` (a hard kill — simulates a real crash) |
@@ -309,10 +310,13 @@ make reset STAGE=02 ; make up STAGE=02   # shell A — 3 nodes on :5001-:5003
 make incident STAGE=02                   # shell B — ✅ 30/30 served
 ```
 🖥️ **One-window demo:** `make lab STAGE=02` → three node panes are visible; in the `control`
-pane run `nload round_robin 40 10` and watch requests land across all three nodes.
+pane run `nload 40 10` (naive round-robin — **no load balancer yet**) and watch a third of the
+requests pile onto the weak node (node-1, 1 worker) and drag the global p95. That pain is the setup
+for stage 03.
 
 *Note:* the three nodes have **separate** dicts — naive horizontal scaling splits your data.
-That's exactly what motivates replication at stage 05.
+That's exactly what motivates replication at stage 05. And round-robin's blindness to capacity is
+what motivates the load balancer at stage 03.
 
 ### 03 — Load balancing ⌨️ **code**
 **Incident:** round-robin ignores node capacity and tanks on the slow node.
@@ -599,7 +603,8 @@ whole system in one window (one pane per process) and lets you drive it by hand 
 pane (see [§4.2](#42-the-tmux-dashboard--make-lab-stagenn-recommended-for-demos)). The highest-
 impact moments to do *live* rather than via the incident script:
 
-- **02/03:** `nload round_robin` vs `nload adaptive` — watch load redistribute across node panes.
+- **02 → 03:** on 02 run `nload 40 10` (naive round-robin) and watch the weak node drag p95; on 03
+  compare `nload round_robin 40 10` vs `nload adaptive 40 10` — the load balancer redistributes.
 - **07:** `kvkill 1` (survives) then `kvkill 2` (writes refused, reads survive) — the CAP choice.
 - **09:** `kvkill 2`, wait, `kvstatus` — the cluster respawns and catches up the follower itself.
 

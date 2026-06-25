@@ -47,8 +47,8 @@ Ports: **00–04 → `5001+`** (single service tier); **05–10 → `registry 90
 |---|---|---|---|---|---|
 | 00 | single-node | scalability `node.py` (trim) | KV behind HTTP | type/read together | — |
 | 01 | vertical | + load-sim & `--workers` | single-thread ceiling (GIL≈Redis) | config | — |
-| 02 | horizontal | + `client.py`, `load_balancer.py` (RR) | N nodes + client LB | config | — |
-| 03 | load-balancing | same files | smart LB | write `AdaptiveStrategy.get_node` | ✅ |
+| 02 | horizontal | + `client.py` (naive inline round-robin, no LB) | N nodes, dumb spread | config | — |
+| 03 | load-balancing | + `load_balancer.py` (strategy pattern) | smart client-side LB | write `AdaptiveStrategy.get_node` | ✅ |
 | 04 | rate-limit | + `rate_limiter.py` | protect the node | write `FixedWindow.is_allowed` | ✅ |
 | 05 | replication | replication `coordinator.py`+`node.py` (trim quorum) | single-leader replication | write `replicate_to_follower` | ✅ |
 | 06 | quorum | + quorum logic (W/R, sync/async/read sets) | W+R>N | write quorum read selection | ✅ |

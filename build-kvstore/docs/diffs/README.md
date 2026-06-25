@@ -24,7 +24,7 @@ solution code at all* — they're a config flip plus a new thing to observe.
 ```
 
 A through-line worth noticing before you start: **the load balancer and rate limiter appear in
-Chapter 1 (stages 02–04), disappear at stage 05, and come back at stage 10.** That's not churn —
+Chapter 1 (stages 03–04), disappear at stage 05, and come back at stage 10.** That's not churn —
 it's the architecture talking. In the single-node era those concerns live *on the node*; once we
 become a replicated cluster the interesting problem moves inside (replication, quorum), and the
 edge concerns return at the very end where they belong in a real system: on a **gateway** in
@@ -48,26 +48,33 @@ front of everything. See [04→05](#0405--chapter-1-from-one-node-to-a-replicate
 
 ## 01 → 02 — one box becomes many
 
-- **Diff:** Adds `client.py` and `load_balancer.py` (round-robin strategy). `node.py` unchanged in
-  spirit — you just run three of it.
+- **Diff:** Adds `client.py` — and *only* `client.py`. There is **no load balancer yet**: the
+  client spreads requests across the three nodes by **naive round-robin**, a single inline counter
+  (`node = nodes[i % len(nodes)]`). `node.py` is unchanged in spirit — you just run three of it.
 - **Why:** A single box is both a capacity wall *and* a single point of failure. The cure is
-  **horizontal scaling**: run N nodes and spread requests across them with a balancer. The client
-  now owns a `LoadBalancer` and rotates requests round-robin.
-- **The catch (sets up stage 05):** these three nodes have *separate* dicts. Horizontal scaling
-  naively **splits your data** — a key written to node 1 isn't on node 2. Hold that thought; it's
-  the whole reason replication exists.
+  **horizontal scaling**: run N nodes and spread requests across them. The simplest possible spread
+  is round-robin by turn, so that's where we start.
+- **The pain it sets up (stage 03):** the three nodes are *heterogeneous* — one weak (1 worker), two
+  strong (4 workers). Round-robin is blind to that, so a third of the traffic piles onto the slow
+  node and the tail latency suffers. Run `nload 40 10` and watch node-1 drag the global p95.
+- **The other catch (sets up stage 05):** these three nodes have *separate* dicts. Horizontal
+  scaling naively **splits your data** — a key written to node 1 isn't on node 2. Hold that thought;
+  it's the whole reason replication exists.
 
 ## 02 → 03 — route by capacity, not by turn
 
-- **Diff:** **No checkpoint-code change.** `checkpoints/02` already ships the complete
-  `load_balancer.py`, including `AdaptiveStrategy`. What changes is *which strategy the client
-  uses* and the cluster shape (one weak node + two strong ones).
+- **Diff:** **`load_balancer.py` appears** — this is the stage that introduces it. It brings the
+  strategy pattern (`RoundRobinStrategy`, `AdaptiveStrategy`, power-of-two, weighted, random), and
+  `client.py` is rewired to route through a `LoadBalancer` selected with `--strategy` instead of its
+  old inline counter.
 - **The exercise:** in the gapped start (`make gap STAGE=03`) you implement the one line at the
   heart of `AdaptiveStrategy.get_node` — pick the node with the lowest score (latency + in-flight
   load).
-- **Why:** Round-robin is blind: it sends an equal share to a node that's already drowning.
-  Adaptive routing watches each node and steers away from the slow one. On a heterogeneous cluster
-  the difference in p95 is dramatic and visible.
+- **Why:** Round-robin (stage 02) is blind: it sends an equal share to a node that's already
+  drowning. Adaptive routing watches each node and steers away from the slow one. Compare
+  `nload round_robin 40 10` vs `nload adaptive 40 10` on the heterogeneous cluster — the difference
+  in p95 is dramatic and visible. (This is **client-side** load balancing; see
+  [`load-balancing-client-vs-server.md`](../load-balancing-client-vs-server.md).)
 - **Anchor:** least-connections / power-of-two-choices (Nginx, HAProxy, Netflix).
 
 ## 03 → 04 — protect the node from a flood

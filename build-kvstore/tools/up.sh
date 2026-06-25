@@ -17,8 +17,14 @@ case "$STAGE" in
     echo "single node on :5001 with CPU load + $W worker(s) (vertical scaling / GIL ceiling)"
     python node.py --port 5001 --id 1 --load-factor 30 --workers "$W"
     ;;
-  02|03)
-    echo "3 heterogeneous nodes :5001-:5003 (1 weak, 2 strong) — drive with client.py --strategy"
+  02)
+    echo "3 heterogeneous nodes :5001-:5003 (1 weak, 2 strong) — naive round-robin from client.py (no load balancer yet)"
+    python node.py --port 5001 --id 1 --load-factor 28 --workers 1 &
+    python node.py --port 5002 --id 2 --load-factor 28 --workers 4 &
+    python node.py --port 5003 --id 3 --load-factor 28 --workers 4
+    ;;
+  03)
+    echo "3 heterogeneous nodes :5001-:5003 (1 weak, 2 strong) — drive with client.py --strategy (load_balancer.py)"
     python node.py --port 5001 --id 1 --load-factor 28 --workers 1 &
     python node.py --port 5002 --id 2 --load-factor 28 --workers 4 &
     python node.py --port 5003 --id 3 --load-factor 28 --workers 4
