@@ -25,6 +25,12 @@
 # ============================================================================
 set -euo pipefail
 
+# Force a UTF-8 locale so the tmux server (and the shells/Python it spawns) render
+# the incident banners' ❌/✅/— instead of "_". The tmux server picks UTF-8 vs not
+# from the locale present when it STARTS, so this must be exported before any tmux
+# command below — and `tmux -u` (in new-session) forces UTF-8 even if it isn't.
+export LANG="${LANG:-C.UTF-8}" LC_ALL="${LC_ALL:-C.UTF-8}"
+
 SESSION="kvlab"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"   # build-kvstore/ (where the Makefile lives)
 KV="$HERE/kvstore"
@@ -134,7 +140,7 @@ PANES=(); TITLES=()
 add_pane() {  # add_pane <cwd> <title>
   local cwd=$1 title=$2
   if [ "${#PANES[@]}" -eq 0 ]; then
-    tmux new-session -d -s "$SESSION" -n "lab$STAGE" -c "$cwd"
+    tmux -u new-session -d -s "$SESSION" -n "lab$STAGE" -c "$cwd"
     PANES+=("$(tmux display-message -p -t "$SESSION:0" '#{pane_id}')")
   else
     PANES+=("$(tmux split-window -d -P -F '#{pane_id}' -t "${PANES[-1]}" -c "$cwd")")

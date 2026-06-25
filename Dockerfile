@@ -18,6 +18,12 @@ RUN apt-get update && apt-get install -y \
     tmux \
     && rm -rf /var/lib/apt/lists/*
 
+# Ubuntu 24.04 ships the C.UTF-8 locale built in (no `locales` package needed).
+# Without a UTF-8 locale, terminals/Python fall back to ASCII and render the
+# incident banners' ❌/✅/— as "_". This makes every shell UTF-8 by default.
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
 # Symlink python to python3 for convenience
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
