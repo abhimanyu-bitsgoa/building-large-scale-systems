@@ -100,7 +100,9 @@ case "$N" in
     S_CMD+=("python node.py --port 5001 --id 1 --load-factor 28 --rate-limit fixed_window --rate-limit-max 5 --rate-limit-window 10")
     ;;
   *)  # cluster tier (05-10)
-    if [ "$N" -eq 5 ]; then WR=1; RR=1; else WR=2; RR=2; fi
+    if [ "$N" -eq 5 ]; then WR=1; RR=1          # weak: stale reads visible
+    elif [ "$N" -eq 6 ]; then WR=3; RR=1        # all followers sync: fresh, but no fault tolerance
+    else WR=2; RR=2; fi                          # majority quorum: fault-tolerant AND fresh
     if [ "$N" -ge 8 ]; then
       if [ "$N" -ge 9 ]; then
         S_TITLE+=("registry  :9000  (discovery + heartbeats + AUTO-SPAWN)")
@@ -112,7 +114,10 @@ case "$N" in
     fi
     COORD_CMD="python coordinator.py --followers 3 --write-quorum $WR --read-quorum $RR"
     [ "$N" -ge 8 ] && COORD_CMD="$COORD_CMD --registry http://localhost:9000"
-    S_TITLE+=("coordinator  :7000  (quorum W=$WR,R=$RR; also shows leader :7001 + followers :7002-:7004)")
+    if [ "$N" -eq 5 ]; then QLABEL="WEAK W=1,R=1 - stale reads"
+    elif [ "$N" -eq 6 ]; then QLABEL="ALL SYNC W=3,R=1 - fresh, no fault tolerance"
+    else QLABEL="majority quorum W=$WR,R=$RR - fault-tolerant + fresh"; fi
+    S_TITLE+=("coordinator  :7000  ($QLABEL; also shows leader :7001 + followers :7002-:7004)")
     S_CMD+=("$COORD_CMD")
     if [ "$N" -ge 10 ]; then
       S_TITLE+=("gateway  :8000  (edge: rate limit -> coordinator)")

@@ -1,7 +1,7 @@
-"""INC-07 (fault tolerance / CAP): how you tune W decides how many failures you survive.
-Writes need W followers alive, so tolerable failures = N - W. A too-tight W (e.g. W=N) tolerates
-ZERO deaths. The majority quorum (W = floor(N/2)+1) is the sweet spot: it survives floor(N/2)
-failures AND keeps W+R>N (the stage-06 consistency property).
+"""INC-07 (quorum & fault tolerance / CAP): all-sync (stage 06, W=N) gives fresh reads but tolerates
+ZERO failures — a write needs EVERY follower, so one death halts writes. Writes need W followers
+alive, so tolerable failures = N - W. The majority quorum (W = floor(N/2)+1, here W=2) is the sweet
+spot: it survives floor(N/2) failures AND still keeps W+R>N, so reads stay fresh too.
 
 This incident makes the CAP tradeoff visible: after killing floor(N/2) followers, writes may be
 refused (503) while reads still succeed — the system sacrifices write-availability to preserve

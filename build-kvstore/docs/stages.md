@@ -67,16 +67,19 @@ one to the other.
 **Do:** implement `replicate_to_follower` in `node.py` (POST the write to `/replicate`).
 **Anchor:** Redis primary–replica asynchronous replication.
 
-## 06 — Quorum
-**Incident:** a read right after a write is **stale** (W+R ≤ N).
-**Do:** raise the read quorum `R` until `W + R > N`. *(config)*
-**Anchor:** Dynamo/Cassandra tunable consistency. *(Read quorums are a leaderless idea — a
-deliberate twist on our single-leader store so staleness is observable.)*
+## 06 — Synchronous replication (no stale reads)
+**Incident:** a read right after an update is **stale** — an async follower hasn't caught up.
+**Do:** make **every follower synchronous** — raise `W` to `N` (launches `W=3, R=1`) so each write
+reaches all followers before it returns. *(config)*
+**Anchor:** synchronous replication / "write to everyone ⇒ read from anyone." *(Strong — but you'll
+pay for it next stage: a write now needs every follower alive.)*
 
-## 07 — Fault tolerance (CAP)
-**Incident:** killing `floor(N/2)` followers with too-tight `W` → total write outage (503).
-**Do:** lower `W` so the cluster tolerates `floor(N/2)` failures. *(config)*
-**Anchor:** the CAP choice — when quorum is lost we reject writes (consistency over availability).
+## 07 — Quorum & fault tolerance (CAP)
+**Incident:** all-sync (`W=3=N`) tolerates **zero** failures — kill one follower and writes stop (503).
+**Do:** switch to a **majority quorum** — `W=2, R=2`. It survives `floor(N/2)` failures *and* keeps
+`W + R > N` so reads stay fresh. *(config)*
+**Anchor:** Dynamo/Cassandra tunable consistency + the CAP choice (lost quorum → refuse writes to
+keep consistency, the CP corner). The general rule: **W + R > N**; tune `W` along the CAP spectrum.
 
 ## 08 — Service discovery ⌨️ code
 **Incident:** the registry never sees a node, so it can't detect its death.

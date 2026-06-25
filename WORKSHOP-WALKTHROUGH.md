@@ -236,8 +236,8 @@ make lab STAGE=05            # boots with the gapped code
 | 03 | load balancing | ⌨️ | round-robin vs adaptive routing | power-of-two / least-connections (Nginx, HAProxy) |
 | 04 | rate limiting | ⌨️ | protecting the store from floods | Redis `INCR`+`EXPIRE` fixed window |
 | 05 | replication | ⌨️ | single-leader replication | Redis primary–replica async replication |
-| 06 | quorum | ⚙️ | `W + R > N` and stale reads | Dynamo/Cassandra tunable consistency |
-| 07 | fault tolerance | ⚙️ | quorum loss & the CAP tradeoff | consistency-over-availability choice |
+| 06 | synchronous replication | ⚙️ | all followers sync (`W = N`) → no stale reads | synchronous replication / read-from-any |
+| 07 | quorum & fault tolerance | ⚙️ | majority quorum (`W + R > N`) & the CAP tradeoff | Dynamo/Cassandra tunable consistency; CP choice |
 | 08 | service discovery | ⌨️ | heartbeats that detect death | Redis Cluster gossip / etcd / Consul |
 | 09 | auto-recovery | ⚙️ | respawn + catchup (*follower* recovery) | Redis `PSYNC` resync |
 | 10 | full system | ⚙️ | edge gateway + the SRE capstone | the whole thing, misconfigured |
@@ -383,10 +383,13 @@ recovery come later (and even then this workshop recovers *followers*, not the l
 
 *Note:* stage 05 runs a **weak quorum** (`W=1, R=1`) on purpose — that sets up the next stage.
 
-### 06 — Quorum ⚙️
-**Incident:** a read *immediately* after an **update** returns the **old value**, not the new
-one — because `W + R ≤ N` lets the read set miss the node that received the latest write.
-**Do:** raise the read quorum so `W + R > N`. The stage launches with `W=2, R=2` (N=3 ⇒ `4 > 3`).
+### 06 — Synchronous replication ⚙️
+**Incident:** a read *immediately* after an **update** returns the **old value**, not the new one —
+because only *some* followers are synchronous, so the update acks before the slow async follower has
+it, and the read can land on that lagging node.
+**Do:** make **every follower synchronous** — raise `W` to `N`. The stage launches with `W=3, R=1`:
+each write reaches all three followers before it returns, so any single read (`R=1`) is guaranteed
+fresh. (It's still the overlap rule `W + R > N` — `3+1>3` — but the idea here is simply "all sync.")
 
 *What the incident does (so you know what you're watching):* it writes `"old"`, waits 7s for
 every follower (including the slow async one) to catch up, then updates to `"fresh"` and reads
@@ -399,23 +402,27 @@ every node has the key, but one is behind. This is different from stage 05 where
 make reset STAGE=05 ; make up STAGE=05   # shell A: W=1, R=1
 make incident STAGE=06                   # shell B: ❌ 4/4 reads returned "old" (stale)
 make down
-# now the corrected quorum (05/06/07 share code; only W/R differ):
-make reset STAGE=06 ; make up STAGE=06   # shell A: W=2, R=2
-make incident STAGE=06                   # shell B: ✅ 0/4 stale — always hits an up-to-date replica
+# now make every follower sync (05/06/07 share code; only W/R differ):
+make reset STAGE=06 ; make up STAGE=06   # shell A: W=3, R=1 (all followers sync)
+make incident STAGE=06                   # shell B: ✅ 0/4 stale — every write reaches all followers
 ```
 🖥️ **One-window demo:** `make lab STAGE=05` (weak quorum) → `incident` pane shows stale reads;
-tear down, `make lab STAGE=06` (W=2,R=2) → `incident` pane is clean.
+tear down, `make lab STAGE=06` (W=3,R=1, all sync) → `incident` pane is clean.
 
-### 07 — Fault tolerance / CAP ⚙️  *(the payoff of the quorum arc — connect it back to 06)*
-**Incident:** `W` is a dial with a price. Stage 06 told you to *raise* `W+R` for consistency —
-but every ack you demand is a node that must be alive, so **tolerable failures = N − W**. Crank
-`W` all the way up to `N` (maximally "safe") and you tolerate **zero** deaths: one kill and
-writes go down (`503`).
+*Note:* you killed staleness by coupling the cluster's fate together — a write now needs **all
+three** followers. That zero-failure-budget is exactly the trap stage 07 springs.
+
+### 07 — Quorum & fault tolerance / CAP ⚙️  *(the payoff — connect it back to 06)*
+**Incident:** stage 06's all-sync (`W=3=N`) is consistent but **brittle** — every ack you demand is
+a node that must be alive, so **tolerable failures = N − W = 0**. One kill and writes go down
+(`503`).
+**Do:** switch to a **majority quorum** — `W=2, R=2`.
 
 **The narrative:** `W=2, R=2` for `N=3` isn't arbitrary — it's the **majority** (`floor(N/2)+1`),
 the one setting that does *both* jobs: it survives `floor(N/2)=1` failure **and** keeps `W+R>N`
-(read/write sets always overlap → no stale reads, from stage 06). `W=3` is the over-tuned trap:
-still consistent, but a zero failure budget.
+(`4>3`, read/write sets overlap → reads stay fresh). All-sync `W=3` was the over-tuned trap:
+consistent, but a zero failure budget. (Drop `R` back to 1 here and `W+R = 3 ≤ N` → stale reads
+return — that's the general rule **W + R > N** doing its work.)
 
 **The CAP moment to point out:** on the ❌ run, after the kill the incident shows **writes
 refused (`503`) while reads still succeed**. Same cluster, same failure — the system *chose* to
@@ -423,14 +430,13 @@ sacrifice write-availability to preserve consistency (the **CP** corner). A Dyna
 system would instead accept the write and reconcile later. You pick the corner by how you set `W`.
 
 ```bash
-make reset STAGE=07
-# fail first — over-tight quorum (W=3=N); one kill loses the write quorum:
-(cd kvstore && python coordinator.py --followers 3 --write-quorum 3 --read-quorum 2)   # shell A
-make incident STAGE=07   # shell B — ❌ writes REFUSED (503) but reads still succeed (CP)
+# fail first — stage 06's all-sync quorum (W=3=N); one kill loses the write quorum:
+make reset STAGE=06 ; make up STAGE=06   # shell A — W=3, R=1 (all followers sync)
+make incident STAGE=07                   # shell B — ❌ writes REFUSED (503) but reads still succeed (CP)
 make down
 # fix — W=2 is the majority: tolerates floor(N/2)=1 death and stays consistent:
-make up STAGE=07         # shell A — W=2, R=2
-make incident STAGE=07   # shell B — ✅ writes AND reads survive the failure
+make reset STAGE=07 ; make up STAGE=07   # shell A — W=2, R=2
+make incident STAGE=07                   # shell B — ✅ writes AND reads survive the failure
 ```
 🖥️ **One-window demo (the CAP moment, by hand):** `make lab STAGE=07` (W=2,R=2). In the `control`
 pane: `kvwrite cart shoes` → `kvkill 1` → `kvstatus` (one follower dead, writes still work — a

@@ -37,8 +37,12 @@ case "$STAGE" in
     echo "coordinator :7000 — replication, WEAK quorum (W=1,R=1) → stale reads are visible"
     python coordinator.py --followers 3 --write-quorum 1 --read-quorum 1
     ;;
-  06|07)
-    echo "coordinator :7000 — replication with quorum W=2,R=2 (W+R>N)"
+  06)
+    echo "coordinator :7000 — ALL followers sync (W=3,R=1): no stale reads, but ZERO fault tolerance"
+    python coordinator.py --followers 3 --write-quorum 3 --read-quorum 1
+    ;;
+  07)
+    echo "coordinator :7000 — majority quorum W=2,R=2 (W+R>N): fault-tolerant AND fresh reads"
     python coordinator.py --followers 3 --write-quorum 2 --read-quorum 2
     ;;
   08)

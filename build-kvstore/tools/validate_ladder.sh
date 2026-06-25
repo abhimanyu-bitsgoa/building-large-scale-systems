@@ -12,7 +12,7 @@
 #   • code-gap stages (03,04,05,08) → the gapped `stages/N` (NotImplementedError),
 #     launched on the *same* topology as the checkpoint — proves the gap matters.
 #   • config/observe stages → the previous checkpoint or a tightened/loosened config
-#     (e.g. 06 red = W=1,R=1; 07 red = W=3; 09 red = no auto-spawn; 10 red = broken
+#     (e.g. 06 red = W=1,R=1; 07 red = all-sync W=3 [stage 06]; 09 red = no auto-spawn; 10 red = broken
 #     student_config.json). 01 red = the single-worker node (GIL ceiling).
 #
 # Everything runs inside the Docker container. Cleanup uses tools/down.sh (kills by
@@ -171,13 +171,13 @@ run 04 red   stages/04-rate-limit               "up:04" "http:http://localhost:5
 run 05 green checkpoints/05-replication         "up:05" "followers:http://localhost:7000/status:3" ""
 run 05 red   stages/05-replication              "up:05" "followers:http://localhost:7000/status:3" ""
 
-# 06 no stale reads — green: W=2,R=2 (W+R>N); red: W=1,R=1 (stale)
+# 06 no stale reads — green: all followers sync W=3,R=1; red: W=1,R=1 (stale)
 run 06 green checkpoints/06-quorum              "up:06" "followers:http://localhost:7000/status:3" ""
 run 06 red   checkpoints/05-replication         "up:05" "followers:http://localhost:7000/status:3" ""
 
-# 07 survive floor(N/2) — green: W=2; red: W=3 (one death loses write quorum)
+# 07 survive floor(N/2) — green: majority quorum W=2,R=2; red: all-sync W=3 (one death loses write quorum)
 run 07 green checkpoints/07-fault-tolerance     "up:07" "followers:http://localhost:7000/status:3" ""
-run 07 red   checkpoints/07-fault-tolerance     "cmd:python coordinator.py --followers 3 --write-quorum 3 --read-quorum 2" "followers:http://localhost:7000/status:3" ""
+run 07 red   checkpoints/06-quorum              "up:06" "followers:http://localhost:7000/status:3" ""
 
 # 08 death detection — green: heartbeats; red: gapped heartbeat_loop (registry never sees node)
 run 08 green checkpoints/08-discovery           "up:08" "followers:http://localhost:7000/status:3" ""

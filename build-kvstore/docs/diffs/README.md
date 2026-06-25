@@ -106,27 +106,36 @@ This is the first big jump, and it has its own deep-dive: **[04-to-05-replicatio
 - **The exercise:** implement the core of `replicate_to_follower` — the one POST that *is*
   replication (the leader sending a write to a follower).
 
-## 05 → 06 — make stale reads impossible
+## 05 → 06 — make every follower synchronous (kill stale reads)
 
-- **Diff:** **No code change.** `up.sh` flips the quorum from `W=1,R=1` to `W=2,R=2`.
-- **Why:** This is the heart of the whole workshop: **W + R > N**. With `W=1,R=1` on 3 followers,
-  a write waits for only one replica and a read consults only one — they can miss each other, so an
-  immediate read after a write can return a *stale* value (you watch this happen at stage 05).
-  Raising R until `W + R > N` forces the read set and the write set to overlap on at least one node,
-  so a read is guaranteed to see the latest write.
-- **Anchor:** Dynamo/Cassandra tunable consistency. (Read quorums are a leaderless idea; we layer
-  them onto our single-leader store *on purpose* so staleness is observable — say so out loud, or a
-  sharp attendee will ask "why not just read the leader?")
+- **Diff:** **No code change.** `up.sh` raises the write quorum from `W=1,R=1` to **`W=3,R=1`**.
+- **Why:** Stage 05's stale read happened because only *one* follower was synchronous — the write
+  acked before the slow async followers had it, and the read landed on a lagging one. The bluntest
+  fix is to make **every follower synchronous**: set `W = N` so a write doesn't return until *all*
+  followers have it. Now every replica is current, so you can read from any one (`R=1`) and never see
+  stale data. (Mechanically this is still the overlap rule `W + R > N` — `3+1>3` — but the *idea* at
+  this stage is simply "all followers sync.")
+- **The catch (sets up stage 07):** you've coupled the cluster's fate together. A write now needs
+  **all three** followers, so the system tolerates **zero** failures — one dead follower and writes
+  stop. Hold that thought.
+- **Anchor:** synchronous replication / "write to everyone ⇒ read from anyone."
 
-## 06 → 07 — what happens when nodes die (CAP)
+## 06 → 07 — quorum: fault tolerance without losing freshness (CAP)
 
-- **Diff:** **No code change.** Same `W=2,R=2`. The stage is operational, not additive.
-- **Why:** With `W=2` on 3 followers you can lose `floor(N/2)` followers and still assemble a write
-  quorum — the cluster serves through the failure. Kill one more and the quorum can't be met: writes
-  return `503`. That refusal is a **choice**: when consistency can't be guaranteed we reject the
-  write rather than accept a split-brain one. That's the **C-over-A** corner of CAP, made concrete.
-- **Try it by hand:** `make lab STAGE=07`, then in the control pane `kvkill 1` (survives) and watch
-  `kvstatus`; the incident kills `floor(N/2)` for you.
+- **Diff:** **No code change.** `up.sh` relaxes `W=3,R=1` to a **majority quorum `W=2,R=2`**.
+- **Why:** All-sync (stage 06) is safe but brittle — `W=N` survives no failures. You don't actually
+  need *every* follower, just a **majority**. With `W=2` on 3 followers you can lose `floor(N/2)=1`
+  and still assemble a write quorum, *and* because `W + R = 4 > 3` the read set still overlaps the
+  write set, so reads stay fresh. This is the **quorum sweet spot**, and the general rule is
+  **`W + R > N`** — tune `W` to slide along the consistency/availability spectrum. (Drop `R` back to 1
+  here and `W+R = 3 ≤ N` → stale reads return: that's the formula doing its work.)
+- **The CAP moment:** kill one *more* follower and the write quorum can't be met — writes return
+  `503` while reads still succeed. That refusal is a **choice**: consistency over availability, the
+  **CP** corner of CAP, made concrete.
+- **Try it by hand:** `make lab STAGE=07`, then `kvkill 1` (survives) vs `kvkill 2` (writes refused,
+  reads survive); the incident kills `floor(N/2)` for you.
+- **Anchor:** Dynamo/Cassandra tunable consistency + the CAP choice. (Read quorums are a leaderless
+  idea; we layer them onto our single-leader store *on purpose* so staleness is observable.)
 
 ---
 

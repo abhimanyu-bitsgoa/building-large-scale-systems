@@ -51,8 +51,8 @@ Ports: **00–04 → `5001+`** (single service tier); **05–10 → `registry 90
 | 03 | load-balancing | + `load_balancer.py` (strategy pattern) | smart client-side LB | write `AdaptiveStrategy.get_node` | ✅ |
 | 04 | rate-limit | + `rate_limiter.py` | protect the node | write `FixedWindow.is_allowed` | ✅ |
 | 05 | replication | replication `coordinator.py`+`node.py` (trim quorum) | single-leader replication | write `replicate_to_follower` | ✅ |
-| 06 | quorum | + quorum logic (W/R, sync/async/read sets) | W+R>N | write quorum read selection | ✅ |
-| 07 | fault-tolerance | *same code as 06* | quorum loss / CAP | config (tune W) | — |
+| 06 | sync-replication | *same code as 05* | all followers sync (W=N) → no stale reads | config (raise W to N: W=3,R=1) | — |
+| 07 | quorum + fault-tolerance | *same code as 05* | majority quorum (W+R>N) + CAP | config (W=2,R=2) | — |
 | 08 | discovery | KV `registry.py` + node `heartbeat_loop` | heartbeats detect death | write `heartbeat_loop` | ✅ |
 | 09 | auto-recovery | + auto-spawn + `catchup.py` | respawn + catchup | config + read | — |
 | 10 | full-system | + `gateway.py`, `assessment.py`, configs | edge gateway + capstone | config-tune capstone | — |

@@ -51,8 +51,8 @@ tells the whole build as one narrative arc — what each stage adds and the prob
 | 03 | load balancing | round-robin vs adaptive routing |
 | 04 | rate limiting | protecting the store from floods |
 | 05 | replication | single-leader replication |
-| 06 | quorum | `W + R > N` and stale reads |
-| 07 | fault tolerance | quorum loss and the CAP tradeoff |
+| 06 | synchronous replication | all followers sync (`W = N`) → no stale reads |
+| 07 | quorum & fault tolerance | majority quorum (`W + R > N`) + the CAP tradeoff |
 | 08 | service discovery | heartbeats that detect death |
 | 09 | auto-recovery | respawn + catchup (follower recovery) |
 | 10 | full system | gateway + the capstone |
