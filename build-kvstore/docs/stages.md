@@ -23,7 +23,7 @@ config/observe. Stuck? `make reset STAGE=NN` jumps you to a known-good solution.
 >   a follower and watch recovery yourself instead of only running the checker.
 >
 > Mouse mode is on (click a pane, scroll to read history). `WORKERS=1 make lab STAGE=01` demos the
-> single-thread choke. Tear down with `bash tools/tmux_lab.sh down`.
+> single-thread choke. Tear down with `make lab-down`.
 
 > Want to see *what changes between stages and why* the system grows the way it does? Read
 > [`diffs/README.md`](diffs/README.md) — the whole build as one narrative arc.

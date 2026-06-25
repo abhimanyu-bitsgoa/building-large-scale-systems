@@ -35,7 +35,7 @@ gets its own tmux pane and a control pane lets you drive it by hand (one window,
 ```bash
 make lab STAGE=02       # 3 node panes + control: nwrite/nread, nload adaptive vs round_robin
 make lab STAGE=09       # registry/coordinator panes + control: kvwrite, kvkill 1, kvspawn
-bash tools/tmux_lab.sh down   # tear it all down
+make lab-down           # tear it all down
 ```
 
 Curious *why* the system grows the way it does? [`docs/diffs/README.md`](docs/diffs/README.md)

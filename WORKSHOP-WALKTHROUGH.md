@@ -117,11 +117,12 @@ Run all of these from inside the container, in the `build-kvstore/` directory.
 | `make incident STAGE=NN` | Run this stage's red→green check. Exit `0` = ✅ resolved, `1` = ❌ active. |
 | `make reset STAGE=NN` | Overwrite `kvstore/` with the known-good code for stage `NN` (the rescue). |
 | `make lab STAGE=NN` | **tmux dashboard for any stage (00–10):** every process in its own pane + a control pane to drive it by hand. See [§4](#4-running-the-system-two-shells-or-the-tmux-dashboard). |
+| `make lab-down` | Tear down the `make lab` tmux session **and** all stage processes. |
 | `make status` | Show the ladder of resolved incidents (reads `progress.json`). |
 | `make validate` | **Author/instructor only.** Run the whole regression suite (~3.5 min). |
 
 `STAGE` is always a two-digit number (`00`, `01`, … `10`). Tear down a `make lab` session with
-`bash tools/tmux_lab.sh down` (it kills the tmux session **and** all stage processes).
+`make lab-down` (it kills the tmux session **and** all stage processes).
 
 ---
 
@@ -140,7 +141,7 @@ Ports shift once, at the architecture jump from a single service to a cluster:
 | `00`–`04` (single-service tier) | nodes on `5001`, `5002`, `5003` |
 | `05`–`10` (cluster tier) | registry `9000`, coordinator `7000` (it spawns leader `7001` + followers `7002`–`7004`), gateway `8000` |
 
-**Always run `make down` (or `bash tools/tmux_lab.sh down`) before starting a different stage** —
+**Always run `make down` (or `make lab-down`) before starting a different stage** —
 it stops every process *and* frees the ports (including orphaned `uvicorn` workers that a plain
 process-name kill would miss). Leftover processes serving stale data on `7002–7004` are the #1
 cause of confusing behavior.
@@ -199,7 +200,7 @@ Type `kvhelp` in the control pane at any time to reprint the menu for the curren
   (press **`q`** to leave scroll/copy mode).
 - **Detach** (leave it running): **`Ctrl-b`** then **`d`** (press and release `Ctrl-b`, *then*
   the next key). Re-attach with `tmux attach -t kvlab`.
-- **Tear it all down:** `bash tools/tmux_lab.sh down`.
+- **Tear it all down:** `make lab-down`.
 
 **Seeding behaviour:** `make lab` is **non-destructive on the code stages (`03/04/05/08`)** — it
 will not overwrite a solution you're working on. For all other stages it seeds the correct
@@ -293,7 +294,7 @@ make up STAGE=01               # shell A — 4 workers (the default)
 make incident STAGE=01         # shell B — ✅ p95 drops
 ```
 🖥️ **One-window demo:** `WORKERS=1 make lab STAGE=01` → run the `incident` pane (❌); tear down
-(`bash tools/tmux_lab.sh down`), then `make lab STAGE=01` (4 workers) → `incident` pane (✅).
+(`make lab-down`), then `make lab STAGE=01` (4 workers) → `incident` pane (✅).
 
 ### 02 — Horizontal scaling ⚙️
 **Incident:** a single node is both a single point of failure and a capacity wall.
@@ -603,7 +604,7 @@ impact moments to do *live* rather than via the incident script:
 - **09:** `kvkill 2`, wait, `kvstatus` — the cluster respawns and catches up the follower itself.
 
 Mouse mode is on, so you can click/scroll panes without teaching tmux keybindings. Tear down
-between stages with `bash tools/tmux_lab.sh down`.
+between stages with `make lab-down`.
 
 ---
 
@@ -622,7 +623,7 @@ between stages with `bash tools/tmux_lab.sh down`.
 | `make lab` edits don't take effect (code stage) | the service pane is still running your old code | in the relevant service pane (e.g. `coordinator`): `Ctrl-C`, then `↑ Enter` to relaunch |
 | `make lab STAGE=05/08` boots the solution, not the gap | `make lab` is non-destructive on code stages and reused existing `kvstore/` | run `make gap STAGE=NN` first, then `make lab STAGE=NN` |
 | `tmux not found` | rare; tmux missing in the container | `apt-get install -y tmux` (or use the two-shell model) |
-| Stuck inside tmux | — | detach with `Ctrl-b` then `d`; re-attach `tmux attach -t kvlab`; kill all `bash tools/tmux_lab.sh down` |
+| Stuck inside tmux | — | detach with `Ctrl-b` then `d`; re-attach `tmux attach -t kvlab`; kill all `make lab-down` |
 | Container slow / `fork`/exec hangs after many runs | (only on a container created *without* `init: true`) zombie buildup | `docker-compose up -d` to recreate with the init, or `docker-compose restart workshop` |
 
 ---

@@ -1,7 +1,7 @@
 STAGE ?= 00
 CP := $(shell ls -d checkpoints/$(STAGE)-* 2>/dev/null | head -1)
 
-.PHONY: help start gap up lab down incident reset status validate snapshot
+.PHONY: help start gap up lab lab-down down incident reset status validate snapshot
 
 help:
 	@echo "Build-a-KVStore — workshop commands"
@@ -12,7 +12,7 @@ help:
 	@echo "  make lab STAGE=NN       tmux dashboard for ANY stage (00-10): every process in its"
 	@echo "                          own pane + a control pane to drive it by hand (write/read on"
 	@echo "                          00-04; kill/spawn nodes on 05-10)"
-	@echo "                          (tear down: bash tools/tmux_lab.sh down)"
+	@echo "  make lab-down           tear down the tmux dashboard + its processes"
 	@echo "  make down               stop all workshop processes"
 	@echo "  make incident STAGE=NN  run this stage's red->green check"
 	@echo "  make reset STAGE=NN     reset kvstore/ to a known-good checkpoint"
@@ -31,6 +31,9 @@ up:
 
 lab:
 	WORKERS=$(WORKERS) bash tools/tmux_lab.sh $(STAGE)
+
+lab-down:
+	bash tools/tmux_lab.sh down
 
 down:
 	bash tools/down.sh
