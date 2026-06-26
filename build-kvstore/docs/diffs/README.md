@@ -24,11 +24,13 @@ solution code at all* — they're a config flip plus a new thing to observe.
 ```
 
 A through-line worth noticing before you start: **the load balancer and rate limiter appear in
-Chapter 1 (stages 03–04), disappear at stage 05, and come back at stage 10.** That's not churn —
+Chapter 1 (stages 03–04), then disappear at stage 05 as the cluster forms.** That's not churn —
 it's the architecture talking. In the single-node era those concerns live *on the node*; once we
-become a replicated cluster the interesting problem moves inside (replication, quorum), and the
-edge concerns return at the very end where they belong in a real system: on a **gateway** in
-front of everything. See [04→05](#0405--chapter-1-from-one-node-to-a-replicated-cluster) and
+become a replicated cluster the interesting problem moves inside (replication, quorum). At stage 10
+the **rate limiter returns to the edge** (on a **gateway** in front of everything), while the
+**load-balancing responsibility moves server-side into the coordinator** (it routes reads/writes
+across followers) rather than back onto a client. See
+[04→05](#0405--chapter-1-from-one-node-to-a-replicated-cluster) and
 [09→10](#0910--an-edge-and-the-capstone).
 
 ---
@@ -169,19 +171,29 @@ The second big jump, with its own deep-dive: **[07-to-08-discovery.md](07-to-08-
 
 ## 09 → 10 — an edge, and the capstone
 
-- **Diff:** the biggest additive stage. Adds **`gateway.py`** (the public edge) and — returning from
-  Chapter 1 — **`load_balancer.py`** and **`rate_limiter.py`**, now applied at the gateway instead of
-  on the node. Also adds `assessment.py`, the `*_config.json` files, and `scenario_brief.md`.
+- **Diff:** the biggest additive stage. Adds **`gateway.py`** (the public edge), which brings back the
+  **`rate_limiter.py`** you wrote at stage 04 — now applied at the **edge** instead of on the node.
+  Also adds `assessment.py`, the `*_config.json` files, and `scenario_brief.md`. (`gateway.py` also
+  *imports* `load_balancer.py`, but doesn't use it — see the note below.)
 - **Why:** A real system doesn't expose its coordinator to the world. The gateway is the front door:
-  it rate-limits, then forwards to the coordinator. This is where the edge concerns from stages 03–04
-  come home — **rate limiting moved from the node to the edge**, which is why those files "left" at 05
-  and return here. The `rate_limiter.py` you wrote at stage 04 is the very one the gateway imports.
-- **The capstone:** mode switch from *builder* to *SRE*. You now own a working system and a stack of
-  incident tickets (`scenario_brief.md`, the CloudCart story). You fix them by **tuning
-  `student_config.json`** — not by editing code — and `make incident STAGE=10` grades you with
-  `assessment.py`. Every knob maps to something you built: rate-limit window (INC-1), spawn-delay
-  ghost nodes (INC-2), quorum staleness (INC-3), write-quorum fragility (INC-4), over-provisioning
-  (INC-5).
+  it rate-limits, then forwards to the coordinator. This is where the edge concern from stage 04 comes
+  home — **rate limiting moved from the node to the edge**, which is why it "left" at 05 and returns
+  here. The `rate_limiter.py` the gateway runs is the very one you wrote.
+- **What about the load balancer?** It does *not* meaningfully return here. The gateway forwards to a
+  **single** coordinator, so there's nothing to balance across — `gateway.py` imports `LoadBalancer`
+  but never instantiates it. The load-balancing *responsibility* has instead moved **server-side into
+  the coordinator**: on a read it chooses which followers answer (the read quorum), on a write it fans
+  out to followers. That's the client-side→server-side migration from stages 02–04 (see
+  [`../load-balancing-client-vs-server.md`](../load-balancing-client-vs-server.md)). In a larger
+  deployment you'd run several coordinators/leaders behind the gateway, and *that's* where a
+  gateway-side balancer would earn its keep.
+- **The capstone (now an optional take-home):** mode switch from *builder* to *SRE*. You own a working
+  system and a stack of incident tickets (`scenario_brief.md`, the CloudCart story); for each, name the
+  misconfigured knob and justify the fix, keeping `W+R>N` and the failure budget in mind. Every knob
+  maps to something you built: rate-limit window (INC-1), spawn-delay ghost nodes (INC-2), quorum
+  staleness (INC-3), write-quorum fragility (INC-4), over-provisioning (INC-5). If you want a score,
+  tune `student_config.json` and run `make incident STAGE=10` (`assessment.py`) to self-check — note
+  it uses a larger N=5 cluster than the N=3 lab, so its numbers won't line up exactly with the stages.
 
 ---
 

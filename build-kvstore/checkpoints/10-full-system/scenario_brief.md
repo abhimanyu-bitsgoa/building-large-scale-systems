@@ -81,9 +81,9 @@ The previous engineer left abruptly, and the system has been plagued with produc
 
 1. **Fix** `student_config.json` — resolve all 5 incidents
 2. **Justify** — fill in all 4 justification fields explaining what was wrong and why your fix addresses it
-3. **Validate** — run the assessment and confirm your fixes work:
+3. **Validate (optional self-check)** — run the assessment and confirm your fixes work:
    ```bash
-   python labs/distributed-kvstore/assessment.py --config student_config.json
+   make incident STAGE=10            # or, directly: python assessment.py --config student_config.json
    ```
 
 ## Grading

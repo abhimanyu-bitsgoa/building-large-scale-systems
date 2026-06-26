@@ -93,8 +93,15 @@ keep consistency, the CP corner). The general rule: **W + R > N**; tune `W` alon
 **Anchor:** replacing a failed replica + full resync (Redis `PSYNC`). This is *follower* recovery —
 not leader failover (that's Sentinel, out of scope).
 
-## 10 — Full system + capstone
-Put the **gateway** in front (rate limiting moves from the node to the edge — same
-`rate_limiter.py`). Then play SRE: misconfigure what **we** built and run `make incident STAGE=10`
-(the graded assessment) until it passes. Edit `kvstore/student_config.json`; the answer key is
-`student_config_solution.json`.
+## 10 — Full system (synthesis demo)
+Put the **gateway** in front (rate limiting returns to the edge — the same `rate_limiter.py`) and run
+a 5-minute whole-system demo: `make lab STAGE=10`, then in the control pane trace one request end to
+end (`kvwrite`/`kvread` → gateway → coordinator → leader → followers), shed load at the edge
+(`kvflood`), and survive a failure (`kvkill 1` → auto-respawn + catchup → `kvread` still fresh).
+*Note:* the gateway forwards to a single coordinator, so it doesn't load-balance — the routing
+responsibility now lives server-side in the coordinator's quorum.
+
+**Optional take-home (CloudCart SRE capstone):** read `kvstore/scenario_brief.md`, name the
+misconfigured knob for each of the 5 tickets, and justify the fix. To self-check, edit
+`kvstore/student_config.json` and run `make incident STAGE=10` (`assessment.py`; uses its own N=5
+cluster). Answer key: `student_config_solution.json` (spoiler — instructors, don't surface it).

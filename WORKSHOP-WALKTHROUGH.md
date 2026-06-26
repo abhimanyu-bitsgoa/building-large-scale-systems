@@ -23,7 +23,7 @@ The primary workshop lives in [`build-kvstore/`](build-kvstore/). The original t
 4. [Running the system: two shells, or the tmux dashboard](#4-running-the-system-two-shells-or-the-tmux-dashboard)
 5. [The stage ladder](#5-the-stage-ladder)
 6. [Attendee guide — stage by stage](#6-attendee-guide--stage-by-stage)
-7. [The capstone (stage 10)](#7-the-capstone-stage-10)
+7. [The finale (stage 10): a 5-minute whole-system demo](#7-the-finale-stage-10-a-5-minute-whole-system-demo)
 8. [Instructor guide — running the room](#8-instructor-guide--running-the-room)
 9. [Troubleshooting](#9-troubleshooting)
 10. [Appendix](#appendix)
@@ -240,7 +240,7 @@ make lab STAGE=05            # boots with the gapped code
 | 07 | quorum & fault tolerance | ⚙️ | majority quorum (`W + R > N`) & the CAP tradeoff | Dynamo/Cassandra tunable consistency; CP choice |
 | 08 | service discovery | ⌨️ | heartbeats that detect death | Redis Cluster gossip / etcd / Consul |
 | 09 | auto-recovery | ⚙️ | respawn + catchup (*follower* recovery) | Redis `PSYNC` resync |
-| 10 | full system | ⚙️ | edge gateway + the SRE capstone | the whole thing, misconfigured |
+| 10 | full system | 🖥️ demo | edge gateway + whole-system synthesis (SRE capstone = take-home) | the whole thing, working end-to-end |
 
 The two **chapter boundaries** — where the code jumps rather than nudges — are **04 → 05**
 (introduce the coordinator + leader/follower replication) and **07 → 08** (introduce the
@@ -447,6 +447,13 @@ That's the CP choice made visible — no script needed.
 *Scope caveat:* this is *follower* fault tolerance (quorum counts followers; the leader is assumed
 alive). The leader remains a single point of failure this workshop doesn't solve.
 
+*Talking point (load balancing ↔ quorum):* the coordinator reads from a fixed set of followers (the
+highest-`R` ports), which is why staleness is reproducible. In a real Dynamo-style system the
+coordinator instead reads from the `R` **fastest/closest** replicas and reconciles by version —
+load-aware read routing. We pick deterministically *on purpose* so you can watch a stale read happen;
+making it load-based would make the demo flaky. (This is also the client-side→server-side load-
+balancing shift: the routing smarts now live in the coordinator, not the client.)
+
 ### 08 — Service discovery ⌨️ **code**  *(chapter boundary: registry + heartbeats appear)*
 **Incident:** the registry never sees a node, so it can't detect the node's death — kills look
 "alive."
@@ -465,10 +472,14 @@ make incident STAGE=08   # shell B — ✅ a killed node is correctly reported "
 `coordinator` panes side by side. `kvkill 1`, then `kvstatus`: before you implement heartbeats the
 registry never marks it dead; after (restart the `coordinator` pane), the death is detected.
 
-### 09 — Auto-recovery ⚙️
+### 09 — Auto-recovery ⚙️  *(⭐ the hands-on finale — end the lab here in a 2-hour slot)*
 **Incident:** a dead follower stays dead and the cluster runs degraded.
 **Do:** enable `--auto-spawn`; the coordinator respawns the follower and **catches it up** from
 the leader's snapshot.
+
+> **This is the emotional high-note of the hands-on workshop:** the cluster *heals itself*. If you're
+> tight on time (see the [2-hour core path](#2-hour-core-path)), make this the last thing attendees do
+> with their own hands, then close with the [stage-10 demo](#7-the-finale-stage-10-a-5-minute-whole-system-demo).
 ```bash
 # fail first — stage 08 has discovery but no auto-spawn, so a killed follower stays dead:
 make reset STAGE=08 ; make up STAGE=08   # shell A — registry (no auto-spawn) + coordinator
@@ -494,32 +505,49 @@ make down        # before moving to the next stage
 
 ---
 
-## 7. The capstone (stage 10)
+## 7. The finale (stage 10): a 5-minute whole-system demo
 
-Stage 10 puts an **edge gateway** in front of the cluster (rate limiting moves from the node to
-the gateway — the *same* `rate_limiter.py` you wrote at stage 04). Then attendees play **SRE**:
-they inherit a **misconfigured version of the system they just built** and fix it by editing
-config — not code.
+By stage 09 attendees have **built the entire system** and watched it heal itself. Stage 10 is the
+**synthesis** — you run it as a short live demo (not a hands-on lab), put the **edge gateway** in
+front, and trace one request through *everything* they built. The CloudCart SRE assessment becomes an
+optional **take-home** (see below).
+
+Run it once and drive it from the control pane:
 
 ```bash
-make reset STAGE=10              # load the full system + configs into kvstore/
-make incident STAGE=10           # ❌ the graded assessment fails on the broken starter config
-cat kvstore/scenario_brief.md    # read the 5 CloudCart incident tickets
-nano kvstore/student_config.json # fix W, R, followers, rate-limit window, auto-spawn delay
-make incident STAGE=10           # ✅ re-run until the score clears the bar
+make lab STAGE=10        # registry + coordinator + gateway panes, all visible
 ```
-> `make incident STAGE=10` runs `assessment.py`, which spins up its **own** cluster from your
-> config — so don't leave `make up STAGE=10` (or `make lab STAGE=10`) running at the same time
-> (port clash). To *explore* the live full system instead, run **`make lab STAGE=10`**: you get
-> `registry` / `coordinator` / `gateway` panes and a control pane (`kvwrite`/`kvread` go through
-> the gateway on `:8000`; `kvkill`/`kvspawn`/`kvstatus` hit the coordinator). Tear it down before
-> running the graded `make incident STAGE=10`.
 
-The assessment scores out of 100 across the incident scenarios. The answer key (with written
-justifications) is `kvstore/student_config_solution.json` — **instructors should not surface
-this to attendees**; it's the spoiler.
+**The 4 beats (do these live in the `control` pane):**
 
-The five incidents map to specific config parameters:
+1. **One request through the whole stack.** `kvwrite cart shoes` → narrate it: gateway (`:8000`) →
+   coordinator (`:7000`) → leader (`:7001`) → followers replicate. Then `kvread cart` — point at
+   `served_by` and `quorum_responses` in the JSON.
+   *Say:* "The client is **dumb** now — it just hits the gateway. The smart routing it did back in
+   stages 02–04 moved **server-side**: the coordinator decides which followers serve this read (the
+   read quorum). That's the client-side→server-side load-balancing shift, made real."
+2. **Protect — the edge sheds load.** `kvflood 15` → the first ~10 succeed, the rest come back **429**.
+   *Say:* "That's the `rate_limiter.py` you wrote at stage 04 — now living on the gateway, at the edge."
+3. **Survive + self-heal (the climax).** `kvwrite order paid` → `kvkill 1` → `kvstatus` (one follower
+   dead, **writes still work** — the W=2 quorum holds) → wait ~5s → `kvstatus` again (the registry
+   **auto-respawned** it; the `coordinator` pane shows catchup) → `kvread order` still returns `paid`.
+   *Say:* "Detected the death → held quorum → respawned → caught up → never lost the write."
+4. **The closing line.** "From a `dict` behind HTTP, you built a rate-limited, replicated,
+   quorum-consistent, **self-healing** distributed key-value store."
+
+> **Honest caveat to say out loud:** the gateway forwards to a *single* coordinator, so it isn't
+> load-balancing across coordinators — in production you'd run several behind it. `gateway.py` even
+> imports `load_balancer` but doesn't use it. The point of stage 10 is the **synthesis**, not new code.
+
+### The CloudCart capstone — optional take-home
+
+The old graded "edit `student_config.json` until the score clears the bar" capstone is now a
+**take-home reasoning exercise**, not a timed lab. It's worth doing on your own afterward, but it's
+*not* the workshop's climax (the self-heal at stage 09 + this demo are).
+
+Hand attendees `kvstore/scenario_brief.md` — five CloudCart SRE incident tickets — and ask them to
+**name the misconfigured knob for each and justify the fix**, keeping `W+R>N` and the failure budget
+in mind:
 
 | Parameter | Incident | The lesson |
 |---|---|---|
@@ -528,6 +556,13 @@ The five incidents map to specific config parameters:
 | `read_quorum` (R) | INC-3 | `W + R ≤ N` → stale cart data |
 | `write_quorum` (W) | INC-4 | `W` too high → one node loss kills all writes |
 | `followers` (N) | INC-5 | over-provisioned → over budget |
+
+If they want a score, the auto-grader still exists: `make reset STAGE=10`, edit
+`kvstore/student_config.json`, then `make incident STAGE=10` (runs `assessment.py`, which spins up its
+**own** cluster — don't leave `make lab STAGE=10` running at the same time, port clash). Two caveats
+worth knowing: the grader uses a larger **N=5** cluster, so its numbers won't line up with the N=3
+lab; and the answer key `kvstore/student_config_solution.json` is the **spoiler** — instructors,
+don't surface it.
 
 ---
 
@@ -556,6 +591,22 @@ time there. The config/observe stages move fast and are where you narrate the co
 room a hard checkpoint at each **chapter boundary** (after 04, after 07): everyone runs
 `make reset STAGE=04` / `make reset STAGE=07` so the whole room re-synchronizes regardless of who
 fell behind.
+
+<a id="2-hour-core-path"></a>
+**The 2-hour core path.** You cannot run 11 stages hands-on in a 2-hour slot with a mixed-skill
+room. Triage like this — put your minutes on the four code gaps, and **end the hands-on at stage 09**
+(self-healing is the climax); close with the stage-10 demo:
+
+| Bucket | Stages | How to run it |
+|---|---|---|
+| Quick framing | `00`, `02` | show, ~2 min each |
+| Fast config "aha" | `01`, `06`, `07` | run the incident, narrate — ~5 min each |
+| **Hands-on code (the heart)** | **`03`, `04`, `05`, `08`** | the one-line gaps — most of your time |
+| Hands-on climax | `09` | self-healing — the last thing they *do* |
+| Synthesis | `10` | **5-min speaker demo** (§7) + take-home capstone |
+
+If you're even tighter, `08` (heartbeat) is the most cuttable code stage — demo it instead of having
+the room write it.
 
 ### 8.3 Framing (the talking points that make it land)
 

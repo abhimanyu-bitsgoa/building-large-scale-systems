@@ -42,6 +42,14 @@ kvread()   { curl -s "$WR_URL/read/${1:?usage: kvread <key>}"; echo; }
 kvstatus() { curl -s "$ADMIN_URL/status" | python -m json.tool; }
 kvkill()   { curl -s -X POST "$ADMIN_URL/kill/follower-${1:?usage: kvkill <n>   (e.g. kvkill 1)}"; echo; }
 kvspawn()  { curl -s -X POST "$ADMIN_URL/spawn"; echo; }
+kvflood()  {  # kvflood [n] — fire n quick writes; the edge rate limiter sheds the overflow as 429 (stage 10)
+  local n="${1:-15}" i code
+  for i in $(seq 1 "$n"); do
+    code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$WR_URL/write" \
+      -H 'Content-Type: application/json' -d "{\"key\":\"flood-$i\",\"value\":\"x\"}")
+    echo "req $i -> $code$([ "$code" = 429 ] && echo '   <- RATE LIMITED')"
+  done
+}
 
 kvhelp() {
   if [ "${TIER:-cluster}" = node ]; then
@@ -82,6 +90,7 @@ EOF
     kvstatus                show leader + followers (alive/dead)
     kvkill  <n>             CRASH follower-<n>   e.g.  kvkill 1
     kvspawn                 respawn a follower   (auto-catchup on stages 09/10)
+    kvflood [n]             fire n quick writes; the edge sheds overflow as 429 (stage 10 gateway)
 
   Try it: kvwrite cart shoes → kvstatus → kvkill 1 → kvstatus → kvspawn → kvstatus
   Run the graded check any time:  make incident STAGE=NN

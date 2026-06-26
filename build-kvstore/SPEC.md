@@ -58,8 +58,12 @@ Ports: **00–04 → `5001+`** (single service tier); **05–10 → `registry 90
 | 10 | full-system | + `gateway.py`, `assessment.py`, configs | edge gateway + capstone | config-tune capstone | — |
 
 4 code-gap stages (03 adaptive LB, 04 rate limiter, 05 replication, 08 heartbeat); the rest are
-config/observe (06 became config — tune R; it shares code with 05/07). The rate limiter written at
-04 is promoted to the gateway at 10 (gateway imports `load_balancer`/`rate_limiter` locally).
+config/observe (06/07 are config — tune W/R; they share code with 05). The rate limiter written at
+04 is promoted to the **gateway** at 10. The load balancer does **not** return at the gateway: it
+forwards to a single coordinator, so `gateway.py` imports `load_balancer` but leaves it unused —
+the load-balancing responsibility now lives server-side in the coordinator's quorum routing. Stage 10
+is a 5-min whole-system demo; the CloudCart `assessment.py` capstone is an optional take-home
+(it spins up its own N=5 cluster).
 
 **Two chapter boundaries (chunky diffs, documented in `docs/diffs/`):** 04→05 (introduce
 coordinator + leader/follower replication) and 07→08 (introduce registry + heartbeats).
