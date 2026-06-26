@@ -13,7 +13,6 @@ import threading
 import time
 import os
 import sys
-import signal
 import requests
 from typing import Dict, List, Optional
 import argparse
@@ -29,7 +28,7 @@ class EventLogger:
     def __init__(self):
         self.lock = threading.Lock()
     
-    def log(self, icon: str, message: str, details: List[str] = None, indent: int = 0):
+    def log(self, icon: str, message: str, details: Optional[List[str]] = None, indent: int = 0):
         """Log an event with optional details."""
         with self.lock:
             timestamp = datetime.now().strftime("%H:%M:%S")
@@ -37,6 +36,7 @@ class EventLogger:
             print(f"[{timestamp}] {prefix}{icon} {message}")
             if details:
                 for detail in details:
+                    # 11 spaces aligns the detail under the message, past the "[HH:MM:SS] " stamp.
                     print(f"           {prefix}   {detail}")
             sys.stdout.flush()
     
@@ -52,10 +52,6 @@ BASE_PORT = 7000
 NODE_SCRIPT = os.path.join(os.path.dirname(__file__), "node.py")
 REGISTRY_URL = "http://localhost:9000"
 HEARTBEAT_TIMEOUT = 5
-
-# Quorum settings
-WRITE_QUORUM = 2
-READ_QUORUM = 1
 
 # Replication delays (consistent with node.py)
 ASYNC_REPLICATION_DELAY = 5.0
@@ -265,13 +261,14 @@ def root():
 @app.get("/status")
 def get_status():
     alive_count = len(cluster.get_alive_nodes())
-    
+    leader = cluster.leader
+
     return {
         "leader": {
-            "node_id": cluster.leader["node_id"] if cluster.leader else None,
-            "url": cluster.leader["url"] if cluster.leader else None,
-            "status": cluster.leader["status"] if cluster.leader else None
-        } if cluster.leader else None,
+            "node_id": leader["node_id"],
+            "url": leader["url"],
+            "status": leader["status"]
+        } if leader else None,
         "followers": [
             {"node_id": f["node_id"], "url": f["url"], "status": f["status"]}
             for f in cluster.followers.values()
@@ -284,6 +281,12 @@ def get_status():
             "can_read": cluster.can_read()
         }
     }
+
+def _log_async_completion(follower_ids: List[str]):
+    """Background log line emitted once async replication has had time to land."""
+    time.sleep(ASYNC_REPLICATION_DELAY + 0.5)
+    logger.log("✅", f"ASYNC REPLICATION COMPLETE: Replicated to {follower_ids}")
+
 
 @app.post("/write")
 def write_data(request: WriteRequest):
@@ -322,60 +325,53 @@ def write_data(request: WriteRequest):
         resp = requests.post(
             f"{cluster.leader['url']}/data",
             json={
-                "key": request.key, 
+                "key": request.key,
                 "value": request.value,
                 "sync_followers": sync_urls,
                 "async_followers": async_urls
             },
             timeout=30
         )
-        
-        if resp.status_code == 200:
-            result = resp.json()
-            replication = result.get("replication", {})
-            sync_acks = replication.get("sync_acks", 0)
-            sync_acked_by = replication.get("sync_acked_by", [])
-            
-            logger.log("✅", f"Leader: written (v{result.get('version')})")
-            
-            for node_url in sync_acked_by:
-                node_id = next((f["node_id"] for f in sync_followers if f["url"] == node_url), "unknown")
-                logger.log("✅", f"{node_id}: sync ack received")
-            
-            # Check if we met write quorum (sync_acks >= W)
-            if sync_acks >= cluster.write_quorum:
-                logger.log("✅", f"QUORUM MET: {sync_acks}/{cluster.write_quorum} sync acks (leader + {sync_acks} followers)")
-                
-                if async_followers:
-                   logger.log("🔄", f"Async replication queued for {len(async_followers)} followers")
-                   
-                   # Background thread to log when async replication is done
-                   def log_async_completion(follower_ids: List[str]):
-                       time.sleep(ASYNC_REPLICATION_DELAY + 0.5)
-                       logger.log("✅", f"ASYNC REPLICATION COMPLETE: Replicated to {follower_ids}")
-                       
-                   async_ids = [f["node_id"] for f in async_followers]
-                   threading.Thread(target=log_async_completion, args=(async_ids,), daemon=True).start()
-                
-                return {
-                    "status": "success",
-                    "key": request.key,
-                    "value": request.value,
-                    "version": result.get("version"),
-                    "sync_acks": sync_acks,
-                    "quorum": cluster.write_quorum,
-                    "sync_replicated_to": sync_acked_by
-                }
-            else:
-                logger.log("❌", f"QUORUM FAILED: Only {sync_acks}/{cluster.write_quorum} acks")
-                raise HTTPException(status_code=503, detail={"error": "Write quorum not met", "sync_acks": sync_acks})
-        else:
-            logger.log("❌", f"Leader error: {resp.status_code}")
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-    
     except requests.exceptions.RequestException as e:
         logger.log("❌", f"Leader unreachable: {e}")
         raise HTTPException(status_code=503, detail=f"Leader unreachable: {e}")
+
+    if resp.status_code != 200:
+        logger.log("❌", f"Leader error: {resp.status_code}")
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+    result = resp.json()
+    replication = result.get("replication", {})
+    sync_acks = replication.get("sync_acks", 0)
+    sync_acked_by = replication.get("sync_acked_by", [])
+
+    logger.log("✅", f"Leader: written (v{result.get('version')})")
+
+    for node_url in sync_acked_by:
+        node_id = next((f["node_id"] for f in sync_followers if f["url"] == node_url), "unknown")
+        logger.log("✅", f"{node_id}: sync ack received")
+
+    # Did we meet the write quorum (sync_acks >= W)?
+    if sync_acks < cluster.write_quorum:
+        logger.log("❌", f"QUORUM FAILED: Only {sync_acks}/{cluster.write_quorum} acks")
+        raise HTTPException(status_code=503, detail={"error": "Write quorum not met", "sync_acks": sync_acks})
+
+    logger.log("✅", f"QUORUM MET: {sync_acks}/{cluster.write_quorum} sync acks (leader + {sync_acks} followers)")
+
+    if async_followers:
+        logger.log("🔄", f"Async replication queued for {len(async_followers)} followers")
+        async_ids = [f["node_id"] for f in async_followers]
+        threading.Thread(target=_log_async_completion, args=(async_ids,), daemon=True).start()
+
+    return {
+        "status": "success",
+        "key": request.key,
+        "value": request.value,
+        "version": result.get("version"),
+        "sync_acks": sync_acks,
+        "quorum": cluster.write_quorum,
+        "sync_replicated_to": sync_acked_by
+    }
 
 @app.get("/read/{key}")
 def read_data(key: str):
@@ -587,7 +583,7 @@ def initialize_cluster(num_followers: int):
         port=leader_port,
         role="leader",
         registry_url=REGISTRY_URL,
-        replication_delay=1.0  # Will be overridden by args in real implementation, but here we access global
+        replication_delay=1.0
     )
     
     cluster.leader = {
@@ -663,7 +659,7 @@ def initialize_cluster(num_followers: int):
     print()
 
 def start_cluster(num_followers: int, write_quorum: int, read_quorum: int,
-                  registry_url: str, replication_delay: float):
+                  registry_url: str):
     global cluster, REGISTRY_URL
     
     REGISTRY_URL = registry_url
@@ -691,8 +687,7 @@ if __name__ == "__main__":
     parser.add_argument("--write-quorum", "-W", type=int, default=2)
     parser.add_argument("--read-quorum", "-R", type=int, default=1)
     parser.add_argument("--registry", type=str, default="http://localhost:9000")
-    parser.add_argument("--replication-delay", type=float, default=1.0)
-    
+
     args = parser.parse_args()
     
     try:
@@ -700,8 +695,7 @@ if __name__ == "__main__":
             num_followers=args.followers,
             write_quorum=args.write_quorum,
             read_quorum=args.read_quorum,
-            registry_url=args.registry,
-            replication_delay=args.replication_delay
+            registry_url=args.registry
         )
     except KeyboardInterrupt:
         print("\n👋 Shutting down...")

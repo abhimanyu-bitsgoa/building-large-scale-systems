@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Start the running system for a given stage. Operates on the working dir kvstore/.
 # Later stages add processes; this hides the multi-terminal startup behind one command.
+#
+# This case block is the canonical "what runs at stage NN". tools/tmux_lab.sh rebuilds the same
+# per-stage commands for the dashboard view — keep the two in sync if you change a stage's launch.
 set -e
 STAGE="$1"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"

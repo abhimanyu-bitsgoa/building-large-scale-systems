@@ -162,7 +162,8 @@ def get_gateway_stats(gateway_url: str, verbose: bool = True):
                 
                 rl = data.get("rate_limiter")
                 if rl:
-                    print(f"   Rate Limiter: {rl.get('allowed_requests')} allowed, {rl.get('rejected_requests')} rejected")
+                    clients = rl.get("clients") or {}
+                    print(f"   Rate Limiter: {rl.get('strategy')}, limit {rl.get('max_requests')}/{rl.get('window_seconds')}s, {len(clients)} client(s) tracked")
             
             return True, data
         else:
@@ -194,6 +195,7 @@ def interactive_mode(gateway_url: str):
     print("   read <key>          - Read data")
     print("   status              - Cluster status")
     print("   stats               - Gateway stats")
+    print("   graduate            - Celebrate 🎓")
     print("   quit                - Exit")
     print()
     

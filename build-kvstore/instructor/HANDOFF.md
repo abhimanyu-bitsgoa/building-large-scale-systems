@@ -9,8 +9,8 @@ I'm building an incremental, narrative distributed-KV-store workshop for a EuroP
 tutorial, living in `build-kvstore/` of this repo (a distributed-systems teaching workshop;
 read `CLAUDE.md` first). Previous sessions built and verified the core **and** the regression
 suite. Read these before doing anything:
-- `build-kvstore/SPEC.md` — the full design + phase status (source of truth); start at §10.
-- `build-kvstore/docs/bugs-fixed.md` — running bug log (4 bugs fixed so far).
+- `build-kvstore/instructor/SPEC.md` — the full design + phase status (source of truth); start at §10.
+- `build-kvstore/instructor/bugs-fixed.md` — running bug log (4 bugs fixed so far).
 - `wiki/decisions/2026-06-14_build-kvstore-incremental-restructure.md`,
   `wiki/decisions/2026-06-14_build-kvstore-checkpoint-build-approach.md`, and
   `wiki/decisions/2026-06-15_build-kvstore-validate-ladder.md` — the decisions.
@@ -48,7 +48,7 @@ suite. Read these before doing anything:
 - Verification invariant: `incident_N` must be GREEN on `checkpoints/N` and RED on the gapped /
   previous state. `make validate` enforces the whole ladder; use it as the regression gate.
 - Conventions (CLAUDE.md): log every non-trivial change in `wiki/decisions/` (+ update INDEX);
-  document every bug you fix in `build-kvstore/docs/bugs-fixed.md`. Don't touch `labs/` (it's
+  document every bug you fix in `build-kvstore/instructor/bugs-fixed.md`. Don't touch `labs/` (it's
   the untouched reference the checkpoints were derived from).
 
 ## Remaining work (priority order)

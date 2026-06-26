@@ -28,13 +28,15 @@ faithful/random quorum rewrite (v1 keeps the deterministic port-pinned model).
 
 ```
 build-kvstore/
-  README.md  SPEC.md  Makefile  .gitignore
+  README.md  LAB-MANUAL.md  Makefile  .gitignore   # attendee-facing
   kvstore/                 # evolving working dir (gitignored; seeded from checkpoints/00)
   checkpoints/00-…/ … /10-full-system/   # frozen, complete, known-good snapshots
   stages/                  # gapped starting points — only the 5 code stages (03,04,05,06,08)
   incidents/_harness.py + incident_01…09  (stage 10 is a demo, no incident)
   tools/up.sh down.sh status.py validate_ladder.sh snapshot.sh
   docs/diffs/              # per-stage "what changed & why" (esp. the two chapter boundaries)
+  instructor/             # instructor-only (SPEC.md, INSTRUCTOR-GUIDE.md, HANDOFF.md, bugs-fixed.md)
+                          #   — EXCLUDED from the attendee template
   progress.json            # local scoreboard (gitignored)
 ```
 
@@ -60,8 +62,9 @@ Port shifts coincide with the two architecture jumps.
 4 code-gap stages (03 adaptive LB, 04 rate limiter, 05 replication, 08 heartbeat); the rest are
 config/observe (06/07 are config — tune W/R; they share code with 05). The rate limiter written at
 04 is promoted to the **gateway** at 10. The load balancer does **not** return at the gateway: it
-forwards to a single coordinator, so `gateway.py` imports `load_balancer` but leaves it unused —
-the load-balancing responsibility now lives server-side in the coordinator's quorum routing. Stage 10
+forwards to a single coordinator, so `load_balancer.py` ships in the checkpoint but the gateway
+doesn't use it — the load-balancing responsibility now lives server-side in the coordinator's quorum
+routing. Stage 10
 is a 5-min whole-system demo (gateway in front of the cluster) with no incident — it's the synthesis
 of everything built in 00–09, driven by hand.
 

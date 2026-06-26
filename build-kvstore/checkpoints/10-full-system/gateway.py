@@ -1,13 +1,13 @@
 """
 Distributed KV Store Lab - Gateway
 
-Entry point for all client requests. Demonstrates:
-- Integration of load balancing from Lab 1 (Scalability)
-- Integration of rate limiting from Lab 1 (Scalability)
-- Forwarding requests to the coordinator
+The public entry point for all client requests. It:
+- applies rate limiting at the edge (the same rate_limiter.py written in the scalability stages)
+- forwards reads and writes to the coordinator
 
-This module imports directly from labs.scalability to show students
-that the code they wrote earlier is production-ready.
+Note: load balancing does NOT live here. The gateway forwards to a single coordinator, so there is
+nothing to balance across; the load-balancing responsibility now lives server-side in the
+coordinator's quorum routing.
 """
 
 import uvicorn
@@ -17,15 +17,10 @@ from pydantic import BaseModel
 import requests
 import argparse
 import os
-import sys
-import time
-from collections import defaultdict
-
-# The rate limiter + load balancer modules live alongside this file in the
-# checkpoint (they are the same modules students wrote back in the scalability
-# stages — the code "graduates" from the node to the gateway here).
-from load_balancer import LoadBalancer, node_stats
-from rate_limiter import RateLimiter, FixedWindowStrategy
+# The rate limiter module lives alongside this file in the checkpoint — it's the same module
+# students wrote back in the scalability stages, now applied at the edge (it "graduates" from the
+# node to the gateway here).
+from rate_limiter import RateLimiter
 
 # ========================
 # Configuration
@@ -46,11 +41,8 @@ gateway_metrics = {
 # Gateway Components
 # ========================
 
-# Rate limiter (from Lab 1)
+# Rate limiter (the rate_limiter.py written in the scalability stages), applied at the edge.
 rate_limiter = None
-
-# Load balancer for backend nodes (from Lab 1)  
-load_balancer = None
 
 app = FastAPI(title="Distributed KV Store - Gateway")
 
@@ -125,14 +117,10 @@ def health():
 
 @app.get("/stats")
 def stats():
-    """Gateway statistics including rate limiter and load balancer metrics."""
+    """Gateway statistics including rate limiter metrics."""
     result = {
         "gateway": gateway_metrics,
         "rate_limiter": rate_limiter.get_stats() if rate_limiter else None,
-        "load_balancer": {
-            "strategy": load_balancer.strategy_name if load_balancer else None,
-            "node_stats": load_balancer.get_stats() if load_balancer else None
-        } if load_balancer else None
     }
     return result
 

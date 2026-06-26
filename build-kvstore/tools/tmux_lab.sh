@@ -76,6 +76,8 @@ bash "$HERE/tools/down.sh" >/dev/null 2>&1 || true
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 
 # ---- which processes this stage runs, in dependency order ------------------
+# These per-stage commands mirror tools/up.sh (one pane per process here, vs. one shell there).
+# Keep the two in sync if you change how a stage launches.
 S_TITLE=(); S_CMD=(); TIER=cluster
 case "$N" in
   0)

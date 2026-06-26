@@ -52,10 +52,10 @@ The coordinator becomes registry-aware:
 - **`initialize_cluster`** + `SpawnRequest`/`NodeRequest` — spawn the leader and followers wired to
   the registry, and accept structured spawn/kill requests (used by auto-spawn at stage 09).
 
-> Design note from the bug log: catchup is driven by the **coordinator's `/spawn`**, not by the
-> registry, because a SIGKILL'd node is never deregistered — it lingers as `dead` and its same-id
-> respawn isn't "new," so a registry-triggered catchup would never fire. The coordinator owns the
-> leader and orchestrates membership, so it's the right place. See `docs/bugs-fixed.md` (BUG-2).
+> Design note: catchup is driven by the **coordinator's `/spawn`**, not by the registry, because a
+> SIGKILL'd node is never deregistered — it lingers as `dead` and its same-id respawn isn't "new," so
+> a registry-triggered catchup would never fire. The coordinator owns the leader and orchestrates
+> membership, so it's the right place.
 
 ## The one line you write
 

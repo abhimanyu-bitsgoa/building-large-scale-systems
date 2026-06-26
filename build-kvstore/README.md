@@ -6,37 +6,15 @@ failures we inject ourselves. You start with a single in-memory dict behind HTTP
 one earned step at a time, into a fault-tolerant cluster with a gateway, service discovery,
 heartbeats, and automatic recovery.
 
-> See [`SPEC.md`](SPEC.md) for the full design. Everything runs **inside the Docker container**
-> (`docker-compose exec workshop bash`).
+## Start here
 
-## How a stage works
+👉 **[`LAB-MANUAL.md`](LAB-MANUAL.md)** is your step-by-step guide — setup, the per-stage loop, and
+every command to copy. Everything runs **inside the Docker container**.
 
-Every stage is motivated by an **incident** — a script that breaks the system you have and
-only passes once you've added the next feature.
-
-```bash
-make start              # seed kvstore/ from checkpoint 00 (do this once)
-make up STAGE=03        # start the system for this stage
-make incident STAGE=03  # ❌ reproduce the incident…
-#   …you add the feature in kvstore/ (or change config)…
-make incident STAGE=03  # ✅ until it passes
-make status             # see the ladder of resolved incidents
-```
-
-Fell behind or broke something? Jump straight to a known-good state:
-
-```bash
-make reset STAGE=03     # kvstore/ becomes the correct, working stage-03 code
-```
-
-For **any** stage, **play with the running system** instead of only checking it — every process
-gets its own tmux pane and a control pane lets you drive it by hand (one window, mouse mode on):
-
-```bash
-make lab STAGE=02       # 3 node panes + control: nwrite/nread, nload (naive round-robin, no LB yet)
-make lab STAGE=09       # registry/coordinator panes + control: kvwrite, kvkill 1, kvspawn
-make lab-down           # tear it all down
-```
+Each stage is motivated by an **incident**: a script that breaks the system you have and only passes
+once you've added the next feature. You run it (it fails), make one change, and run it again (it
+passes). For any stage you can also launch a **dashboard** (`make lab STAGE=NN`) — every process in
+its own pane plus a control pane to drive the system by hand.
 
 Curious *why* the system grows the way it does? [`docs/diffs/README.md`](docs/diffs/README.md)
 tells the whole build as one narrative arc — what each stage adds and the problem it solves.

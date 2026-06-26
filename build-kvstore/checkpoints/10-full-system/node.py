@@ -110,8 +110,6 @@ def heartbeat_loop():
                 },
                 timeout=2
             )
-            if resp.status_code == 200:
-                pass  # Silent success
         except Exception as e:
             print(f"[{NODE_ID}] ⚠️ Heartbeat failed: {e}")
         
@@ -276,10 +274,6 @@ def store_data(payload: DataPayload):
     # Get follower lists from payload (coordinator specifies sync/async)
     sync_followers = payload.sync_followers or []
     async_followers = payload.async_followers or []
-    
-    # If no explicit lists, use legacy behavior (all followers sync)
-    if not sync_followers and not async_followers and followers:
-        sync_followers = followers
     
     # Replicate to sync followers (wait for acks)
     sync_result = replicate_sync(sync_followers, payload.key, payload.value, new_version)

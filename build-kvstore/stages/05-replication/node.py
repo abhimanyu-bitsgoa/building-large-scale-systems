@@ -269,10 +269,6 @@ def store_data(payload: DataPayload):
     sync_followers = payload.sync_followers or []
     async_followers = payload.async_followers or []
     
-    # If no explicit lists, use legacy behavior (all followers sync)
-    if not sync_followers and not async_followers and followers:
-        sync_followers = followers
-    
     # Replicate to sync followers (wait for acks)
     sync_result = replicate_sync(sync_followers, payload.key, payload.value, new_version)
     

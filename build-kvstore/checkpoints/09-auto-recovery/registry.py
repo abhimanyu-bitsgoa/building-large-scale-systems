@@ -140,10 +140,12 @@ def receive_heartbeat(payload: HeartbeatPayload):
     """Receive heartbeat from a node."""
     is_new_node = payload.node_id not in nodes
     
+    # Record the heartbeat and read back the alive set under a single lock.
+    # (Catchup is handled by the coordinator on /spawn — the registry is pure discovery.)
     with lock:
         if is_new_node:
             print(f"✅ [Registry] New node '{payload.node_id}' ({payload.role}) at {payload.url}")
-        
+
         nodes[payload.node_id] = {
             "node_id": payload.node_id,
             "url": payload.url,
@@ -152,17 +154,13 @@ def receive_heartbeat(payload: HeartbeatPayload):
             "last_heartbeat": time.time(),
             "status": "alive"
         }
-    
-    # (Catchup is handled by the coordinator on /spawn — the registry is pure discovery.)
 
-    # Return list of alive nodes
-    with lock:
         alive_nodes = [
             {"node_id": n["node_id"], "url": n["url"], "role": n["role"]}
             for n in nodes.values()
             if n["status"] == "alive"
         ]
-    
+
     return {"status": "ok", "nodes": alive_nodes}
 
 @app.post("/deregister")

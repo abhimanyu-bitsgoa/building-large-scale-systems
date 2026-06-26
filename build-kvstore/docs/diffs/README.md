@@ -171,15 +171,15 @@ The second big jump, with its own deep-dive: **[07-to-08-discovery.md](07-to-08-
 ## 09 → 10 — an edge (the gateway)
 
 - **Diff:** Adds **`gateway.py`** (the public edge), which brings back the **`rate_limiter.py`** you
-  wrote at stage 04 — now applied at the **edge** instead of on the node. (`gateway.py` also *imports*
-  `load_balancer.py`, but doesn't use it — see the note below.)
+  wrote at stage 04 — now applied at the **edge** instead of on the node. (`load_balancer.py` still
+  ships in this checkpoint as the code you wrote, but the gateway doesn't use it — see the note below.)
 - **Why:** A real system doesn't expose its coordinator to the world. The gateway is the front door:
   it rate-limits, then forwards to the coordinator. This is where the edge concern from stage 04 comes
   home — **rate limiting moved from the node to the edge**, which is why it "left" at 05 and returns
   here. The `rate_limiter.py` the gateway runs is the very one you wrote.
 - **What about the load balancer?** It does *not* meaningfully return here. The gateway forwards to a
-  **single** coordinator, so there's nothing to balance across — `gateway.py` imports `LoadBalancer`
-  but never instantiates it. The load-balancing *responsibility* has instead moved **server-side into
+  **single** coordinator, so there's nothing to balance across — `load_balancer.py` ships alongside the
+  gateway but the gateway doesn't use it. The load-balancing *responsibility* has instead moved **server-side into
   the coordinator**: on a read it chooses which followers answer (the read quorum), on a write it fans
   out to followers. That's the client-side→server-side migration from stages 02–04 (see
   [`../load-balancing-client-vs-server.md`](../load-balancing-client-vs-server.md)). In a larger

@@ -36,7 +36,7 @@ class EventLogger:
     def __init__(self):
         self.lock = threading.Lock()
     
-    def log(self, icon: str, message: str, details: List[str] = None, indent: int = 0):
+    def log(self, icon: str, message: str, details: Optional[List[str]] = None, indent: int = 0):
         """Log an event with optional details."""
         with self.lock:
             timestamp = datetime.now().strftime("%H:%M:%S")
@@ -44,6 +44,7 @@ class EventLogger:
             print(f"[{timestamp}] {prefix}{icon} {message}")
             if details:
                 for detail in details:
+                    # 11 spaces aligns the detail under the message, past the "[HH:MM:SS] " stamp.
                     print(f"           {prefix}   {detail}")
             sys.stdout.flush()
     
@@ -282,13 +283,14 @@ def get_status():
     sync_followers = cluster.get_sync_followers()
     async_followers = cluster.get_async_followers()
     read_followers = cluster.get_read_followers()
-    
+    leader = cluster.leader
+
     return {
         "leader": {
-            "node_id": cluster.leader["node_id"] if cluster.leader else None,
-            "url": cluster.leader["url"] if cluster.leader else None,
-            "status": cluster.leader["status"] if cluster.leader else None
-        } if cluster.leader else None,
+            "node_id": leader["node_id"],
+            "url": leader["url"],
+            "status": leader["status"]
+        } if leader else None,
         "followers": [
             {
                 "node_id": f["node_id"],
