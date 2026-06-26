@@ -32,7 +32,7 @@ build-kvstore/
   kvstore/                 # evolving working dir (gitignored; seeded from checkpoints/00)
   checkpoints/00-…/ … /10-full-system/   # frozen, complete, known-good snapshots
   stages/                  # gapped starting points — only the 5 code stages (03,04,05,06,08)
-  incidents/_harness.py + incident_01…10
+  incidents/_harness.py + incident_01…09  (stage 10 is a demo, no incident)
   tools/up.sh down.sh status.py validate_ladder.sh snapshot.sh
   docs/diffs/              # per-stage "what changed & why" (esp. the two chapter boundaries)
   progress.json            # local scoreboard (gitignored)
@@ -40,8 +40,8 @@ build-kvstore/
 
 ## 4. Stage ladder
 
-Ports: **00–04 → `5001+`** (single service tier); **05–10 → `registry 9000 / coordinator 7000 / gateway 8000`**
-(so the final `assessment.py` runs unchanged). Port shifts coincide with the two architecture jumps.
+Ports: **00–04 → `5001+`** (single service tier); **05–10 → `registry 9000 / coordinator 7000 / gateway 8000`**.
+Port shifts coincide with the two architecture jumps.
 
 | # | Checkpoint | Reuse source | Feature | Attendee action | Code gap |
 |---|---|---|---|---|---|
@@ -55,15 +55,15 @@ Ports: **00–04 → `5001+`** (single service tier); **05–10 → `registry 90
 | 07 | quorum + fault-tolerance | *same code as 05* | majority quorum (W+R>N) + CAP | config (W=2,R=2) | — |
 | 08 | discovery | KV `registry.py` + node `heartbeat_loop` | heartbeats detect death | write `heartbeat_loop` | ✅ |
 | 09 | auto-recovery | + auto-spawn + `catchup.py` | respawn + catchup | config + read | — |
-| 10 | full-system | + `gateway.py`, `assessment.py`, configs | edge gateway + capstone | config-tune capstone | — |
+| 10 | full-system | + `gateway.py` | edge gateway + whole-system demo | drive the demo (no incident) | — |
 
 4 code-gap stages (03 adaptive LB, 04 rate limiter, 05 replication, 08 heartbeat); the rest are
 config/observe (06/07 are config — tune W/R; they share code with 05). The rate limiter written at
 04 is promoted to the **gateway** at 10. The load balancer does **not** return at the gateway: it
 forwards to a single coordinator, so `gateway.py` imports `load_balancer` but leaves it unused —
 the load-balancing responsibility now lives server-side in the coordinator's quorum routing. Stage 10
-is a 5-min whole-system demo; the CloudCart `assessment.py` capstone is an optional take-home
-(it spins up its own N=5 cluster).
+is a 5-min whole-system demo (gateway in front of the cluster) with no incident — it's the synthesis
+of everything built in 00–09, driven by hand.
 
 **Two chapter boundaries (chunky diffs, documented in `docs/diffs/`):** 04→05 (introduce
 coordinator + leader/follower replication) and 07→08 (introduce registry + heartbeats).
@@ -73,10 +73,12 @@ coordinator + leader/follower replication) and 07→08 (introduce registry + hea
 `incidents/_harness.py` exposes `report(stage, name, resolved, detail)` → prints a banner,
 records into `progress.json`, exits `0` (green) / `1` (red). Each `incident_N.py` is black-box.
 
-> Incidents **01–10** are red→green (table below). Stage **00** additionally has
+> Incidents **01–09** are red→green (table below). Stage **00** additionally has
 > `incident_00_smoke.py`, a *baseline smoke test* (write+read round-trip on the single node)
 > with **no RED counterpart** — nothing precedes it — so it is intentionally **not** part of
-> `validate_ladder.sh` (which checks the 01–10 invariant). It just confirms the foundation works.
+> `validate_ladder.sh` (which checks the 01–09 invariant). It just confirms the foundation works.
+> Stage **10** is a whole-system demo with **no incident** — nothing to discriminate, so it is not
+> in the validator either.
 
 | Incident | Does | RED (prev) | GREEN (this) | Reuses |
 |---|---|---|---|---|
@@ -89,7 +91,6 @@ records into `progress.json`, exits `0` (green) / `1` (red). Each `incident_N.py
 | 07 outage | kill floor(N/2), write | 503 | succeeds | `run_kill_nodes_test` |
 | 08 blind | kill node, poll status | "alive" | "dead" | `/status` |
 | 09 degraded | kill follower, wait | stays dead | respawned+data | spawn+read |
-| 10 capstone | run assessment | n/a | score ≥ threshold | `assessment.py` |
 
 `tools/status.py` renders the ladder from `progress.json`.
 
@@ -104,11 +105,11 @@ existing Docker container (no host ports — `7000` collides with macOS Control 
 
 1. Scaffold skeleton. ✅
 2. `checkpoints/10` from `labs/distributed-kvstore` + local `load_balancer.py`/`rate_limiter.py`;
-   gateway imports made local. Verify `assessment.py` = 100. ✅
+   gateway imports made local. Verify the full stack boots. ✅
 3. Subtract backward 09→05: remove gateway → 09; remove auto-spawn+catchup → 08;
    remove registry+heartbeats → 07; 07≡06 (config-only); remove quorum → 05. Verify each boots.
 4. `checkpoints/04…00` from `labs/scalability` (node grows down to a bare dict). Verify each boots.
-5. `incidents/01…10` (reuse `assessment.py` functions). 
+5. `incidents/01…09`. 
 6. Gapped `stages/` (03,04,05,06,08) with `raise NotImplementedError("STAGE N: …")` + per-stage README.
 7. Flesh `up.sh`/tmux/`status.py`; rehearse twice.
 
@@ -133,18 +134,19 @@ existing Docker container (no host ports — `7000` collides with macOS Control 
 | Phase | Deliverable | Status |
 |---|---|---|
 | 0 | scaffold + spec + harness + Makefile | ✅ |
-| 1 | `checkpoints/10` (verified 100) | ✅ |
+| 1 | `checkpoints/10` (full stack boots) | ✅ |
 | 2 | `checkpoints/09…05` (subtraction) | ✅ — 10/09/08/07/06/05 all built & verified |
 | 3 | `checkpoints/04…00` | ✅ — built & verified (00 bare RW, 01 load-sim, 03 adaptive<RR, 04 429s) |
-| 4 | `incidents/01…10` | ✅ — all 10 validated green on checkpoints, red on gaps |
+| 4 | `incidents/01…09` | ✅ — all 9 validated green on checkpoints, red on gaps |
 | 5 | `stages/` gaps + per-stage guide | ✅ — 4 gaps (03/04/05/08) + `docs/stages.md` |
 | 6 | Makefile/tools + end-to-end smoke | ✅ — start/gap/up/down/incident/reset/status all work |
 
-**The build is complete:** 11 checkpoints, 10 incidents, 4 code gaps, the Makefile toolchain,
-the per-stage guide, and the bug log — all verified inside the container. As of 2026-06-15,
-`tools/validate_ladder.sh` is a **working regression suite** (`make validate`): it boots each
-checkpoint via its own `up.sh`, asserts `incident_N` GREEN on `checkpoints/N` and RED on a
-per-stage "before" state, and confirms ports free between cases — 20/20 cases pass. See
+**The build is complete:** 11 checkpoints, 9 incidents (stages 01–09; stage 10 is a demo), 4 code
+gaps, the Makefile toolchain, the per-stage guide, and the bug log — all verified inside the
+container. As of 2026-06-15, `tools/validate_ladder.sh` is a **working regression suite**
+(`make validate`): it boots each checkpoint via its own `up.sh`, asserts `incident_N` GREEN on
+`checkpoints/N` and RED on a per-stage "before" state, and confirms ports free between cases —
+18/18 cases pass. See
 [`wiki/decisions/2026-06-15_build-kvstore-validate-ladder.md`].
 
 As of 2026-06-25 the former "optional polish" is **done**: `docs/diffs/` now holds the full

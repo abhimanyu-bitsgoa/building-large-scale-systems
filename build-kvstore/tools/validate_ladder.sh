@@ -12,8 +12,10 @@
 #   • code-gap stages (03,04,05,08) → the gapped `stages/N` (NotImplementedError),
 #     launched on the *same* topology as the checkpoint — proves the gap matters.
 #   • config/observe stages → the previous checkpoint or a tightened/loosened config
-#     (e.g. 06 red = W=1,R=1; 07 red = all-sync W=3 [stage 06]; 09 red = no auto-spawn; 10 red = broken
-#     student_config.json). 01 red = the single-worker node (GIL ceiling).
+#     (e.g. 06 red = W=1,R=1; 07 red = all-sync W=3 [stage 06]; 09 red = no auto-spawn).
+#     01 red = the single-worker node (GIL ceiling).
+# Stage 10 is a whole-system *demo* (gateway integration) with no incident, so it is not
+# validated here — it has no red→green discriminator to check.
 #
 # Everything runs inside the Docker container. Cleanup uses tools/down.sh (kills by
 # script name AND by workshop port — catches orphaned uvicorn --workers); see SPEC §12
@@ -87,7 +89,7 @@ PY
 }
 
 # run_case STAGE EXPECT SEED LAUNCH READY ENV
-#   STAGE  : two-digit incident number (01..10)
+#   STAGE  : two-digit incident number (01..09)
 #   EXPECT : green | red
 #   SEED   : directory to copy into kvstore/  (checkpoints/.. or stages/..)
 #   LAUNCH : "up:NN" | "cmd:<shell>" | "none"
@@ -145,7 +147,7 @@ run_case() {
 declare -A WANT
 add() { WANT["$1"]=1; }
 if [ "$#" -gt 0 ]; then for s in "$@"; do add "$(printf '%02d' "$((10#$s))")"; done
-else for s in 01 02 03 04 05 06 07 08 09 10; do add "$s"; done; fi
+else for s in 01 02 03 04 05 06 07 08 09; do add "$s"; done; fi
 run() { [ -n "${WANT[$1]:-}" ] && run_case "$@"; }
 
 echo "Validating the build-kvstore ladder (GREEN on checkpoint N, RED on the before-state)"
@@ -187,9 +189,7 @@ run 08 red   stages/08-discovery                "up:08" "followers:http://localh
 run 09 green checkpoints/09-auto-recovery       "up:09" "followers:http://localhost:7000/status:3" ""
 run 09 red   checkpoints/08-discovery           "up:08" "followers:http://localhost:7000/status:3" ""
 
-# 10 capstone — green: solution config (100); red: broken starter config
-run 10 green checkpoints/10-full-system         "none" "none" "CONFIG=student_config_solution.json"
-run 10 red   checkpoints/10-full-system         "none" "none" "CONFIG=student_config.json"
+# Stage 10 (full-system gateway demo) has no incident — not validated here.
 
 # ----------------------------------------------------------------------------- summary
 echo

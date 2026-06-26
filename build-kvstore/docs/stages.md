@@ -99,9 +99,5 @@ a 5-minute whole-system demo: `make lab STAGE=10`, then in the control pane trac
 end (`kvwrite`/`kvread` → gateway → coordinator → leader → followers), shed load at the edge
 (`kvflood`), and survive a failure (`kvkill 1` → auto-respawn + catchup → `kvread` still fresh).
 *Note:* the gateway forwards to a single coordinator, so it doesn't load-balance — the routing
-responsibility now lives server-side in the coordinator's quorum.
-
-**Optional take-home (CloudCart SRE capstone):** read `kvstore/scenario_brief.md`, name the
-misconfigured knob for each of the 5 tickets, and justify the fix. To self-check, edit
-`kvstore/student_config.json` and run `make incident STAGE=10` (`assessment.py`; uses its own N=5
-cluster). Answer key: `student_config_solution.json` (spoiler — instructors, don't surface it).
+responsibility now lives server-side in the coordinator's quorum. There is **no incident** for this
+stage: it's the synthesis of everything from 00–09, driven by hand.

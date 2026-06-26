@@ -42,8 +42,9 @@ fi
 
 STAGE="${1:-}"
 case "$STAGE" in
-  0[0-9]|10) : ;;
-  *) echo "Usage: bash tools/tmux_incident.sh <NN>   (NN = 00..10)   |   bash tools/tmux_incident.sh down"; exit 1 ;;
+  0[0-9]) : ;;
+  10) echo "Stage 10 is a whole-system demo with no incident — use 'make lab STAGE=10' instead."; exit 1 ;;
+  *) echo "Usage: bash tools/tmux_incident.sh <NN>   (NN = 00..09)   |   bash tools/tmux_incident.sh down"; exit 1 ;;
 esac
 
 command -v tmux >/dev/null 2>&1 || { echo "tmux not found (try: apt-get install -y tmux)"; exit 1; }

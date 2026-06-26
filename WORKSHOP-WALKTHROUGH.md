@@ -2,7 +2,7 @@
 
 The complete guide to running the **Building Large Scale Systems** tutorial, for both the
 **instructor** (you, running the room) and the **attendees** (following along). It covers
-setup, the run model, every stage, the capstone, and what to do when things go wrong.
+setup, the run model, every stage, the finale demo, and what to do when things go wrong.
 
 > **What attendees build:** starting from a single in-memory dict behind HTTP, they grow a
 > distributed key-value store — single-leader replication and snapshot resync *like Redis*,
@@ -240,7 +240,7 @@ make lab STAGE=05            # boots with the gapped code
 | 07 | quorum & fault tolerance | ⚙️ | majority quorum (`W + R > N`) & the CAP tradeoff | Dynamo/Cassandra tunable consistency; CP choice |
 | 08 | service discovery | ⌨️ | heartbeats that detect death | Redis Cluster gossip / etcd / Consul |
 | 09 | auto-recovery | ⚙️ | respawn + catchup (*follower* recovery) | Redis `PSYNC` resync |
-| 10 | full system | 🖥️ demo | edge gateway + whole-system synthesis (SRE capstone = take-home) | the whole thing, working end-to-end |
+| 10 | full system | 🖥️ demo | edge gateway + whole-system synthesis (no incident) | the whole thing, working end-to-end |
 
 The two **chapter boundaries** — where the code jumps rather than nudges — are **04 → 05**
 (introduce the coordinator + leader/follower replication) and **07 → 08** (introduce the
@@ -509,8 +509,8 @@ make down        # before moving to the next stage
 
 By stage 09 attendees have **built the entire system** and watched it heal itself. Stage 10 is the
 **synthesis** — you run it as a short live demo (not a hands-on lab), put the **edge gateway** in
-front, and trace one request through *everything* they built. The CloudCart SRE assessment becomes an
-optional **take-home** (see below).
+front, and trace one request through *everything* they built. There is **no incident** for this
+stage and nothing to grade: it's purely the working whole, driven by hand.
 
 Run it once and drive it from the control pane:
 
@@ -539,31 +539,6 @@ make lab STAGE=10        # registry + coordinator + gateway panes, all visible
 > load-balancing across coordinators — in production you'd run several behind it. `gateway.py` even
 > imports `load_balancer` but doesn't use it. The point of stage 10 is the **synthesis**, not new code.
 
-### The CloudCart capstone — optional take-home
-
-The old graded "edit `student_config.json` until the score clears the bar" capstone is now a
-**take-home reasoning exercise**, not a timed lab. It's worth doing on your own afterward, but it's
-*not* the workshop's climax (the self-heal at stage 09 + this demo are).
-
-Hand attendees `kvstore/scenario_brief.md` — five CloudCart SRE incident tickets — and ask them to
-**name the misconfigured knob for each and justify the fix**, keeping `W+R>N` and the failure budget
-in mind:
-
-| Parameter | Incident | The lesson |
-|---|---|---|
-| `rate_limit_window` | INC-1 | window so short it resets between bursts → sustained floods get through |
-| `auto_spawn_delay` | INC-2 | respawn so aggressive a network blip spawns a "ghost" duplicate node |
-| `read_quorum` (R) | INC-3 | `W + R ≤ N` → stale cart data |
-| `write_quorum` (W) | INC-4 | `W` too high → one node loss kills all writes |
-| `followers` (N) | INC-5 | over-provisioned → over budget |
-
-If they want a score, the auto-grader still exists: `make reset STAGE=10`, edit
-`kvstore/student_config.json`, then `make incident STAGE=10` (runs `assessment.py`, which spins up its
-**own** cluster — don't leave `make lab STAGE=10` running at the same time, port clash). Two caveats
-worth knowing: the grader uses a larger **N=5** cluster, so its numbers won't line up with the N=3
-lab; and the answer key `kvstore/student_config_solution.json` is the **spoiler** — instructors,
-don't surface it.
-
 ---
 
 ## 8. Instructor guide — running the room
@@ -577,12 +552,13 @@ don't surface it.
    docker-compose exec workshop bash -c 'cd build-kvstore && make validate'
    ```
    This boots every checkpoint, asserts each incident is **GREEN on its stage** and **RED on the
-   "before" state**, and confirms ports are free between cases. Expect **20/20 cases pass**
-   (~3.5 min). Re-run it after *any* edit to a coordinator/registry/node/incident/assessment or
+   "before" state**, and confirms ports are free between cases. Expect **18/18 cases pass**
+   (~3.5 min). Re-run it after *any* edit to a coordinator/registry/node/incident or
    to `tools/up.sh`/`down.sh` — it is your correctness gate.
-3. **Rehearse the human flow** end-to-end: `make start`, then walk `00 → 10` using
-   gap/up/incident/reset. The regression suite proves correctness mechanically; the rehearsal is
-   about *pacing* and the couple of machine-dependent thresholds (see 8.4).
+3. **Rehearse the human flow** end-to-end: `make start`, then walk `00 → 09` using
+   gap/up/incident/reset, and finish with the stage-10 demo (§7). The regression suite proves
+   correctness mechanically; the rehearsal is about *pacing* and the couple of machine-dependent
+   thresholds (see 8.4).
 
 ### 8.2 Pacing
 
@@ -603,7 +579,7 @@ room. Triage like this — put your minutes on the four code gaps, and **end the
 | Fast config "aha" | `01`, `06`, `07` | run the incident, narrate — ~5 min each |
 | **Hands-on code (the heart)** | **`03`, `04`, `05`, `08`** | the one-line gaps — most of your time |
 | Hands-on climax | `09` | self-healing — the last thing they *do* |
-| Synthesis | `10` | **5-min speaker demo** (§7) + take-home capstone |
+| Synthesis | `10` | **5-min speaker demo** (§7) — no incident |
 
 If you're even tighter, `08` (heartbeat) is the most cuttable code stage — demo it instead of having
 the room write it.

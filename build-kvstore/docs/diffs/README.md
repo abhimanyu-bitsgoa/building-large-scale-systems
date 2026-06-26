@@ -18,7 +18,7 @@ solution code at all* — they're a config flip plus a new thing to observe.
 00 ─ 01 ─ 02 ─ 03 ─ 04 ║ 05 ─ 06 ─ 07 ║ 08 ─ 09 ─ 10
  a dict   one box, then  ║  one logical  ║  the cluster heals
  behind   many boxes     ║  store across ║  itself, then gets
- HTTP     + a balancer   ║  many boxes   ║  an edge + capstone
+ HTTP     + a balancer   ║  many boxes   ║  an edge (the gateway)
                          ║  (replication)║  (discovery)
         CHAPTER 1 boundary ↑           CHAPTER 2 boundary ↑
 ```
@@ -31,7 +31,7 @@ the **rate limiter returns to the edge** (on a **gateway** in front of everythin
 **load-balancing responsibility moves server-side into the coordinator** (it routes reads/writes
 across followers) rather than back onto a client. See
 [04→05](#0405--chapter-1-from-one-node-to-a-replicated-cluster) and
-[09→10](#0910--an-edge-and-the-capstone).
+[09→10](#0910--an-edge-the-gateway).
 
 ---
 
@@ -86,8 +86,7 @@ across followers) rather than back onto a client. See
   the window rolls over, allow while under the limit, reject once it's hit.
 - **Why:** Load balancing shares load; it doesn't *cap* it. A burst still overwhelms a node. A rate
   limiter sheds excess traffic so the node survives. Fixed-window is the simplest such algorithm —
-  and its boundary-burst weakness is a teaching point that pays off in the stage-10 capstone
-  (incident INC-1).
+  and the same limiter returns at the edge on the gateway in stage 10.
 - **Anchor:** the classic Redis `INCR`+`EXPIRE` fixed-window limiter.
 
 ---
@@ -164,17 +163,16 @@ The second big jump, with its own deep-dive: **[07-to-08-discovery.md](07-to-08-
   runs degraded. With auto-spawn, a follower that stops heartbeating past the delay is **respawned**,
   and the coordinator **catches it up** from the leader's snapshot so it rejoins with the full
   dataset. Detection + recovery = a cluster that heals itself.
-- **The footgun (capstone INC-2):** too *aggressive* a spawn-delay respawns a node that was only
-  briefly slow, creating a duplicate "ghost." The delay is a real tuning decision.
+- **The footgun:** too *aggressive* a spawn-delay respawns a node that was only briefly slow, creating
+  a duplicate "ghost." The delay is a real tuning decision.
 - **Anchor:** replacing a failed replica + full resync (Redis `PSYNC`). Note this is *follower*
   recovery — not leader failover (that's Sentinel/Raft, deliberately out of scope).
 
-## 09 → 10 — an edge, and the capstone
+## 09 → 10 — an edge (the gateway)
 
-- **Diff:** the biggest additive stage. Adds **`gateway.py`** (the public edge), which brings back the
-  **`rate_limiter.py`** you wrote at stage 04 — now applied at the **edge** instead of on the node.
-  Also adds `assessment.py`, the `*_config.json` files, and `scenario_brief.md`. (`gateway.py` also
-  *imports* `load_balancer.py`, but doesn't use it — see the note below.)
+- **Diff:** Adds **`gateway.py`** (the public edge), which brings back the **`rate_limiter.py`** you
+  wrote at stage 04 — now applied at the **edge** instead of on the node. (`gateway.py` also *imports*
+  `load_balancer.py`, but doesn't use it — see the note below.)
 - **Why:** A real system doesn't expose its coordinator to the world. The gateway is the front door:
   it rate-limits, then forwards to the coordinator. This is where the edge concern from stage 04 comes
   home — **rate limiting moved from the node to the edge**, which is why it "left" at 05 and returns
@@ -187,13 +185,11 @@ The second big jump, with its own deep-dive: **[07-to-08-discovery.md](07-to-08-
   [`../load-balancing-client-vs-server.md`](../load-balancing-client-vs-server.md)). In a larger
   deployment you'd run several coordinators/leaders behind the gateway, and *that's* where a
   gateway-side balancer would earn its keep.
-- **The capstone (now an optional take-home):** mode switch from *builder* to *SRE*. You own a working
-  system and a stack of incident tickets (`scenario_brief.md`, the CloudCart story); for each, name the
-  misconfigured knob and justify the fix, keeping `W+R>N` and the failure budget in mind. Every knob
-  maps to something you built: rate-limit window (INC-1), spawn-delay ghost nodes (INC-2), quorum
-  staleness (INC-3), write-quorum fragility (INC-4), over-provisioning (INC-5). If you want a score,
-  tune `student_config.json` and run `make incident STAGE=10` (`assessment.py`) to self-check — note
-  it uses a larger N=5 cluster than the N=3 lab, so its numbers won't line up exactly with the stages.
+- **No incident — this is a demo.** Stage 10 is the synthesis of everything built in 00–09, driven by
+  hand: `make lab STAGE=10`, then trace one request through the whole stack (gateway → coordinator →
+  leader → followers), shed load at the edge, and kill a follower to watch the cluster self-heal while
+  reads stay fresh. There's nothing new to *implement* and nothing to discriminate, so there's no
+  red→green check here.
 
 ---
 

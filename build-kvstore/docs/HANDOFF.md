@@ -18,16 +18,17 @@ suite. Read these before doing anything:
 ## What already exists & is verified (do NOT redo)
 
 - 11 checkpoints `build-kvstore/checkpoints/00…10` (single node → full Redis/Dynamo-like KV
-  store), each runnable. Checkpoint 10 scores 100/100 on the assessment.
-- 10 incident scripts `build-kvstore/incidents/incident_01…10.py` (black-box red→green checks).
+  store), each runnable. Checkpoint 10 is the full-system gateway demo (no incident/grader).
+- 9 incident scripts `build-kvstore/incidents/incident_01…09.py` (black-box red→green checks);
+  stage 10 has no incident (it's a demo).
 - 4 code gaps `build-kvstore/stages/{03,04,05,08}` (NotImplementedError + guidance).
 - Makefile toolchain: `make start|gap|up|down|incident|reset|status` (all work).
 - **`tools/validate_ladder.sh` is a working regression suite** (`make validate`): for each
   incident N it asserts GREEN on `checkpoints/N` (launched via that stage's own `up.sh`) and RED
   on a per-stage "before" state (gapped `stages/N` for code stages; deterministic config-flips
-  otherwise). 20/20 cases pass (~3.5 min in-container). Subset runs:
+  otherwise). 18/18 cases pass (~3.5 min in-container). Subset runs:
   `bash tools/validate_ladder.sh 05 06`. **Re-run `make validate` after ANY edit to a
-  coordinator/registry/node/incident/assessment, or to `tools/up.sh`/`down.sh`.**
+  coordinator/registry/node/incident, or to `tools/up.sh`/`down.sh`.**
 - `build-kvstore/docs/stages.md` (per-stage guide), README, SPEC.
 
 ## CRITICAL operational rules (these cost earlier sessions hours — honor them)

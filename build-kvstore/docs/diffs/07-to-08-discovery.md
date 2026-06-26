@@ -70,7 +70,7 @@ recovery on top of it.
 
 With discovery in place the system can finally close its own loop: detect a failure (08) → respawn
 and catch up the replacement (09) → and only then dress it for production with an edge gateway and
-the capstone (10). Everything after this is either a config flip you observe or the SRE-chair
-finale — the hard architecture is done.
+the whole-system demo (10). Everything after this is either a config flip you observe or the
+synthesis demo — the hard architecture is done.
 
 ← Previous chapter: **[04 → 05: from one node to a replicated cluster](04-to-05-replication.md)**.

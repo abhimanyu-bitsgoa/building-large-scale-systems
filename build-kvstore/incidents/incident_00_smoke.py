@@ -1,7 +1,7 @@
 """INC-00 (smoke test): the single-node KV store works end to end.
 
 GREEN when a value written via POST /data reads back identically via GET /data/{key}.
-This is the baseline "it works" check. Unlike incidents 01-10 it has no RED counterpart
+This is the baseline "it works" check. Unlike incidents 01-09 it has no RED counterpart
 (nothing precedes stage 00 to break), so it is NOT part of tools/validate_ladder.sh — it
 simply confirms the foundation is healthy before we start building on it."""
 import os

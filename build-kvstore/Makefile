@@ -39,7 +39,12 @@ down:
 	bash tools/down.sh
 
 incident:
-	python incidents/incident_$(STAGE)_*.py
+	@f=$$(ls incidents/incident_$(STAGE)_*.py 2>/dev/null | head -1); \
+	if [ -z "$$f" ]; then \
+	  echo "Stage $(STAGE) is a demo — no incident. Run 'make lab STAGE=$(STAGE)'."; \
+	else \
+	  python "$$f"; \
+	fi
 
 reset:
 	rm -rf kvstore && cp -r $(CP) kvstore

@@ -55,4 +55,4 @@ tells the whole build as one narrative arc — what each stage adds and the prob
 | 07 | quorum & fault tolerance | majority quorum (`W + R > N`) + the CAP tradeoff |
 | 08 | service discovery | heartbeats that detect death |
 | 09 | auto-recovery | respawn + catchup (follower recovery) |
-| 10 | full system | gateway + whole-system synthesis demo (SRE capstone = take-home) |
+| 10 | full system | gateway + whole-system synthesis demo (no incident) |

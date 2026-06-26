@@ -43,8 +43,8 @@ This lab demonstrates:
 | `node.py`           | Leader or follower node                 |
 | `catchup.py`        | Data synchronization for new followers  |
 | `client.py`         | Interactive client                      |
-| `assessment.py`     | Automated assessment script             |
-| `scenario_brief.md` | Student mini-project business brief     |
+| `load_balancer.py`  | Strategies (imported by the gateway, unused — single coordinator) |
+| `rate_limiter.py`   | Fixed-window limiter (runs at the gateway edge) |
 
 ---
 
@@ -200,53 +200,9 @@ Observe that the follower-3 has gotten the value.
 
 ---
 
-## Student Mini-Project: CloudCart Incident Investigation
+## This is a demo stage
 
-Investigate production incidents in a misconfigured distributed KV store and fix the system!
-
-### Step 1: Read the incident brief
-
-```bash
-# Review the 5 open incident tickets
-cat labs/distributed-kvstore/scenario_brief.md
-```
-
-Or open [scenario_brief.md](scenario_brief.md) — you'll play an SRE who inherited a broken system with 5 production incidents to investigate and fix.
-
-### Step 2: Diagnose and fix the configuration
-
-The current `student_config.json` contains the bugs. Investigate each incident, find the root cause, and fix it:
-
-```bash
-# Edit the config file
-nano labs/distributed-kvstore/student_config.json
-```
-
-| Parameter             | Incident | What to investigate                          |
-| --------------------- | -------- | -------------------------------------------- |
-| `rate_limit_window` | INC-1    | Why does the rate limiter fail to block sustained bursts? |
-| `auto_spawn_delay`  | INC-2    | Why do ghost nodes appear after network blips?|
-| `read_quorum` (R)   | INC-3    | Why are customers seeing stale cart data?     |
-| `write_quorum` (W)  | INC-4    | Why does one node failure kill all writes?    |
-| `followers`          | INC-5    | Why is the cluster over budget?               |
-
-**Don't forget** to fill in all 4 justification fields explaining *what was wrong* and *why your fix resolves it*!
-
-### Step 3: Run the assessment
-
-```bash
-python labs/distributed-kvstore/assessment.py --config student_config.json
-```
-
-The assessment tests 4 scenarios (100 points total):
-
-| Scenario                                 | Points | Validates fix for |
-| ---------------------------------------- | ------ | ----------------- |
-| INC-0: Basic Operations                  | 20     | System works      |
-| INC-1: Gateway Flood (Rate Limiting)     | 20     | INC-1             |
-| INC-3: Stale Cart Data (Consistency)     | 30     | INC-3             |
-| INC-4: Write Outage (Fault Tolerance)    | 30     | INC-4             |
-
-### Step 4: Iterate!
-
-Adjust your config and re-run until all incidents are resolved.
+Stage 10 has **no incident and no grader** — it's the synthesis of everything built in stages 00–09.
+Drive it by hand with `make lab STAGE=10`: trace one request through the whole stack
+(gateway → coordinator → leader → followers), shed load at the edge, and kill a follower to watch the
+cluster self-heal while reads stay fresh.
