@@ -81,6 +81,30 @@ gaps** (the gapped functions were never touched).
 - All 65 Python files under `build-kvstore/` parse.
 - Exercise gaps in `stages/{03,04,05,08}` confirmed intact after node.py propagation.
 
+## Addendum (2026-06-27) — LAB-MANUAL rewrite
+
+Reworked `LAB-MANUAL.md` after review, on user direction. Three changes, two of which revise Phase 2:
+
+1. **Reversed the "single command per fenced block" rule.** The one-command-per-block style (chosen
+   in Phase 2 for clean GitHub copy) read as visually fragmented. The manual now uses **grouped
+   logical command blocks with `#` comments** (the `WORKSHOP-WALKTHROUGH.md` style).
+2. **`make lab` is now the primary mode for every stage.** Each stage leads with `make lab STAGE=NN`
+   (explore by hand in the dashboard's control pane) and positions the **incident pane / `make up` +
+   `make incident`** at the end purely as the pass/fail check. Rationale: attendees learn more by
+   poking the running system than by running the checker.
+3. **gap/reset described explicitly per stage.** Surfaced after finding that **`make up STAGE=NN`
+   does not seed** `kvstore/` — `up.sh` runs against whatever is already there, so e.g.
+   `make start` (checkpoint 00) then `make up STAGE=01` fails (`node.py` rejects `--load-factor`/
+   `--workers`). The manual now states the load step for every stage: `make gap STAGE=NN` for the
+   ✏️ code stages (03/04/05/08), and notes `make lab` auto-seeds the run-and-explore stages
+   (equivalent to `make reset STAGE=NN`, which is also given as the manual reload/rescue).
+
+Accuracy checks done: every control-pane helper used in the manual exists in `kvplay.sh`; `nload` is
+only used on stages 02/03 (stages 00/01 have no `client.py`, so stage 01's load demo runs via the
+incident pane instead); `nload` strategy-arg form used only where `HAS_LB` is set (03), bare form on
+02. `README.md` still points at `LAB-MANUAL.md`; no behavior/code changed, so `make validate` is
+unaffected (still 18/18).
+
 ## Lesson recorded
 
 Never run `make validate` in the foreground — the harness's 2-minute Bash timeout kills the host-side

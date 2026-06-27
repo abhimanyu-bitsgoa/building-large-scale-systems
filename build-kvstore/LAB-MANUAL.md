@@ -3,436 +3,374 @@
 Welcome! Over this workshop you'll build a distributed key-value store from scratch — starting from a
 single Python `dict` behind HTTP and growing it, one step at a time, into a fault-tolerant cluster
 with replication, tunable read/write quorums, a rate-limited gateway, service discovery, and
-automatic recovery. You'll break it on purpose at every step and watch how each new feature fixes it.
+automatic recovery. At every stage you get a **live dashboard** to poke the system by hand and watch
+it react.
 
-No prior distributed-systems experience is needed. You only need to be comfortable reading Python and
-running commands in a terminal.
+No prior distributed-systems experience is needed — just comfort reading Python and running commands.
 
 ## The ladder
 
 Each stage adds one idea. You don't have to finish all of them — every stage stands on its own.
 
-| # | Stage | What you learn |
-|---|---|---|
-| 00 | single node | a KV store is a dict behind HTTP |
-| 01 | vertical scaling | one process has a hard ceiling (the GIL) |
-| 02 | horizontal scaling | many nodes, and why naive copies diverge |
-| 03 | load balancing | round-robin vs. capacity-aware routing |
-| 04 | rate limiting | protecting a node from floods |
-| 05 | replication | single-leader replication |
-| 06 | synchronous replication | all followers sync → no stale reads |
-| 07 | quorum & fault tolerance | majority quorum (`W + R > N`) + the CAP trade-off |
-| 08 | service discovery | heartbeats that detect death |
-| 09 | auto-recovery | respawn + catch-up |
-| 10 | full system | the whole thing, with an edge gateway (demo) |
+| # | Stage | What you learn | You write code? |
+|---|---|---|---|
+| 00 | single node | a KV store is a dict behind HTTP | — |
+| 01 | vertical scaling | one process has a hard ceiling (the GIL) | — |
+| 02 | horizontal scaling | many nodes, and why naive copies diverge | — |
+| 03 | load balancing | round-robin vs. capacity-aware routing | ✏️ |
+| 04 | rate limiting | protecting a node from floods | ✏️ |
+| 05 | replication | single-leader replication | ✏️ |
+| 06 | synchronous replication | all followers sync → no stale reads | — |
+| 07 | quorum & fault tolerance | majority quorum (`W + R > N`) + CAP | — |
+| 08 | service discovery | heartbeats that detect death | ✏️ |
+| 09 | auto-recovery | respawn + catch-up | — |
+| 10 | full system | the whole thing, with an edge gateway | — (demo) |
 
-Stages **03, 04, 05, 08** ask you to write one line of code. The rest are run-and-observe or a small
-config change.
+The four ✏️ stages ask you to write **one line** of code. The rest are run-and-explore.
 
 ---
 
 ## Setup
 
-Everything runs inside a Docker container, so nothing touches your machine's ports. Run these from the
-workshop folder.
+Everything runs inside a Docker container, so nothing touches your machine's ports. From the workshop
+folder:
 
-Build and start the container:
-
-```
-docker compose up -d
-```
-
-Open a shell inside it:
-
-```
-docker compose exec workshop bash
-```
-
-Everything below runs **inside that shell**. Seed your working copy from the starting checkpoint (do
-this once):
-
-```
-make start
+```bash
+docker compose up -d                 # build + start the container (first run takes a few minutes)
+docker compose exec workshop bash    # open a shell inside it — everything below runs in here
+make start                           # seed your working copy (kvstore/) from the first checkpoint
 ```
 
 ---
 
 ## How a stage works
 
-Every stage follows the same loop: **start the system → run the incident and watch it fail → make
-the change → run the incident again and watch it pass.**
+Every stage is the same three beats: **load it → explore it in the dashboard → check it.**
 
-Start the system for a stage (this one keeps running, so leave it in its own shell):
+**1. Load the stage's code into your working copy (`kvstore/`).** Two commands do this:
 
-```
-make up STAGE=03
-```
-
-Open a **second** shell into the container so you can interact while the system runs:
-
-```
-docker compose exec workshop bash
+```bash
+make gap STAGE=NN      # the ✏️ code stages (03/04/05/08): loads the exercise with one blank function
+make reset STAGE=NN    # any stage: loads the complete, working code (also your "rescue" button)
 ```
 
-Run the stage's incident — a small script that checks for the problem this stage fixes:
+For the run-and-explore stages, `make lab` (below) loads the stage for you automatically — you only
+need `make gap`/`make reset` by hand on the ✏️ code stages (or to rescue a stage you broke).
 
-```
-make incident STAGE=03
-```
+**2. Explore it — this is the main way to learn.** Open the live dashboard:
 
-The first run is expected to **fail** (that's the problem). After you make the stage's change, run the
-same command again and it should **pass**.
-
-If you fall behind or want the worked solution for a stage, reset your working copy to a known-good
-version:
-
-```
-make reset STAGE=03
+```bash
+make lab STAGE=NN
 ```
 
-See your progress so far:
+This opens one window with several panes:
+- **service panes** — every process the stage runs (the node(s), or registry / coordinator / gateway), so you can watch them react;
+- a **control pane** — pre-loaded with helper commands so you drive the system by hand (it prints its own command list when it opens);
+- an **incident pane** — the automated check, pre-typed and ready;
+- a **scratch** pane — a free shell.
 
-```
-make status
-```
+Mouse mode is on: click a pane to focus it, scroll to read history. Tear the dashboard down with
+`make lab-down`.
 
-When you move to a different stage, stop the previous one first:
+**3. Check it.** In the **incident pane**, press **Enter** to run the stage's automated check — it
+goes ❌ before the stage is solved and ✅ after. (Prefer plain shells? After loading the stage, run
+`make up STAGE=NN` in one shell and `make incident STAGE=NN` in another.)
 
-```
-make down
-```
+See your overall progress any time with `make status`.
 
 ---
 
 ## Stage 00 — A single node
 
-A key-value store in its purest form: a Python `dict` behind two HTTP routes, `POST /data` and
-`GET /data/{key}`.
+A key-value store in its purest form: a Python `dict` behind two HTTP routes.
 
-Start it:
-
-```
-make up STAGE=00
+```bash
+make lab STAGE=00        # loads stage 00 automatically + opens the dashboard
 ```
 
-In your second shell, confirm a write-then-read round-trip works:
+In the **control pane**, write and read a key:
 
+```bash
+nwrite cart shoes        # POST /data
+nread cart               # GET /data/cart  → "shoes"
 ```
-make incident STAGE=00
-```
+
+When you're ready, press **Enter** in the **incident pane** to confirm the round-trip works (✅).
+Reload this stage by hand any time with `make reset STAGE=00`.
 
 ## Stage 01 — Vertical scaling
 
-One process can only do so much. Python runs your handler on a single thread (the GIL), so under
-concurrent load latency climbs. The fix is to run more worker processes.
+One process can only do so much: Python runs your handler on a single thread (the GIL), so under
+concurrent load latency climbs. The fix is more worker processes.
 
-Start the node with multiple workers:
-
-```
-make up STAGE=01
+```bash
+make lab STAGE=01        # loads stage 01: a node with a CPU-load simulator, running 4 workers
 ```
 
-Run the incident — with enough workers, latency stays low:
+The **incident pane** drives concurrent load and measures latency — press **Enter** there and note
+the p95 with 4 workers (✅). To *feel* the single-thread ceiling, restart pinned to one worker and run
+the check again:
 
-```
-make incident STAGE=01
+```bash
+make lab-down
+WORKERS=1 make lab STAGE=01     # same check, one worker → latency spikes
 ```
 
-To *feel* the single-thread ceiling, stop it, then start it again pinned to one worker and re-run the
-incident — latency spikes:
-
-```
-WORKERS=1 make up STAGE=01
-```
+(The control pane's `nwrite` / `nread` / `nhealth` confirm the node serves. Reload by hand:
+`make reset STAGE=01`.)
 
 ## Stage 02 — Horizontal scaling
 
-One box is a single point of failure and a capacity wall. So we run three nodes and have the client
+One box is a single point of failure and a capacity wall, so we run three nodes and have the client
 spread requests across them — by **naive round-robin**, with no load balancer yet.
 
-Start three nodes:
-
-```
-make up STAGE=02
+```bash
+make lab STAGE=02        # loads stage 02: 3 nodes (1 weak, 2 strong) + a control pane
 ```
 
-Run the incident — load is now served across the cluster:
+In the control pane, push load across the cluster and watch the weak node drag the tail latency:
 
-```
-make incident STAGE=02
-```
-
-Note the catch: the three nodes have **separate** dicts, so the data is split across them. That's what
-motivates replication later. And round-robin is blind to how busy each node is — which motivates the
-load balancer next.
-
-## Stage 03 — Load balancing ⌨️
-
-Round-robin sends an equal share to every node, even a slow one, so the slow node drags your
-tail latency. You'll implement a **capacity-aware** strategy that prefers the least-loaded node.
-
-Load the starting point for this code stage:
-
-```
-make gap STAGE=03
+```bash
+nload 40 10              # 40 requests, 10 concurrent, naive round-robin
+nwrite a 1              # note: writes land on different nodes — the data is SPLIT across them
+nread a                 # may miss, depending on which node served it
 ```
 
-Open `kvstore/load_balancer.py` and complete `AdaptiveStrategy.get_node` — return the node with the
-lowest load score (one line). Then start the system:
+Two lessons to notice: the nodes have **separate** dicts (which motivates replication), and
+round-robin is **blind to capacity** (which motivates the load balancer next). Press **Enter** in the
+incident pane to confirm load is served across the cluster (✅). Reload: `make reset STAGE=02`.
 
-```
-make up STAGE=03
+## Stage 03 — Load balancing ✏️
+
+Round-robin sends an equal share to every node, even a slow one, so the slow node drags your tail
+latency. You'll implement a **capacity-aware** strategy that prefers the least-loaded node.
+
+```bash
+make gap STAGE=03        # load the exercise: AdaptiveStrategy.get_node is left blank
+make lab STAGE=03        # dashboard: 3 node panes + control + incident pane
 ```
 
-Run the incident — the adaptive strategy should beat round-robin on tail latency:
+In the control pane, compare the two strategies (adaptive errors until you implement it):
 
-```
-make incident STAGE=03
+```bash
+nload round_robin 40 10
+nload adaptive 40 10
 ```
 
-## Stage 04 — Rate limiting ⌨️
+Now implement it: open `kvstore/load_balancer.py` and complete **`AdaptiveStrategy.get_node`** —
+return the node with the lowest load score (one line). Then restart so your change loads, and check:
+
+```bash
+make lab-down            # stop the lab so the edit is picked up
+make lab STAGE=03        # your code is preserved; adaptive now beats round-robin
+```
+
+Press **Enter** in the incident pane → ✅ (adaptive p95 < round-robin p95). Stuck? `make reset STAGE=03`
+loads the worked solution.
+
+## Stage 04 — Rate limiting ✏️
 
 Load balancing shares load; it doesn't *cap* it. A burst can still overwhelm a node. You'll implement
 a fixed-window limiter that sheds excess requests.
 
-Load the starting point:
-
-```
-make gap STAGE=04
-```
-
-Open `kvstore/rate_limiter.py` and complete the core of `FixedWindowStrategy.is_allowed` — reset the
-counter when the window rolls over, allow while under the limit, reject once it's hit. Then start it:
-
-```
-make up STAGE=04
+```bash
+make gap STAGE=04        # load the exercise: FixedWindowStrategy.is_allowed is left blank
+make lab STAGE=04        # dashboard: the node + control + incident pane
 ```
 
-Run the incident — requests over the limit now come back as `429`:
+In the control pane, flood the node past its limit and watch the responses (you'll see no `429`s
+until you implement the limiter).
 
-```
-make incident STAGE=04
+Now implement it: open `kvstore/rate_limiter.py` and complete the core of
+**`FixedWindowStrategy.is_allowed`** — reset the counter when the window rolls over, allow while under
+the limit, reject once it's hit. Then restart and check:
+
+```bash
+make lab-down
+make lab STAGE=04        # requests over the limit now come back as 429
 ```
 
-## Stage 05 — Replication ⌨️
+Press **Enter** in the incident pane → ✅. Rescue: `make reset STAGE=04`.
+
+## Stage 05 — Replication ✏️
 
 From here we become a real cluster: one **leader** plus **followers**, coordinated by a `coordinator`
 service. Reads are served from the followers, so a write that never reaches them is stranded. You'll
 implement the replication call.
 
-Load the starting point:
-
-```
-make gap STAGE=05
-```
-
-Open `kvstore/node.py` and complete `replicate_to_follower` — `POST` the write to the follower's
-`/replicate` route. Then start the cluster:
-
-```
-make up STAGE=05
+```bash
+make gap STAGE=05        # load the exercise: replicate_to_follower is left blank
+make lab STAGE=05        # dashboard: coordinator pane (it spawns leader + followers) + control
 ```
 
-Run the incident — a value written via the coordinator can now be read back from the replicas:
+In the control pane, drive the cluster (writes won't reach the read replicas until you implement
+replication):
 
+```bash
+kvwrite order paid
+kvstatus                 # leader + 3 followers
+kvread order             # misses until replication works
 ```
-make incident STAGE=05
+
+Now implement it: open `kvstore/node.py` and complete **`replicate_to_follower`** — `POST` the write
+to the follower's `/replicate` route and return success on `200`. Then restart and check:
+
+```bash
+make lab-down
+make lab STAGE=05        # the write now reaches the replicas
 ```
+
+Press **Enter** in the incident pane → ✅ (data readable from a replica). Rescue: `make reset STAGE=05`.
 
 ## Stage 06 — Synchronous replication
 
-In stage 05 some followers replicate asynchronously, so a read right after a write can land on a
-follower that hasn't caught up yet — a **stale** read. The fix: make **every** follower synchronous,
-so a write reaches all of them before it returns. This stage just changes the quorum config (`W = N`).
+In stage 05 some followers replicate asynchronously, so a read right after a write can land on one
+that hasn't caught up — a **stale** read. The fix: make **every** follower synchronous (`W = N`), so
+a write reaches all of them before it returns.
 
-Start the cluster in all-sync mode:
-
-```
-make up STAGE=06
+```bash
+make lab STAGE=06        # loads stage 06 (all-sync W=3, R=1) + dashboard
 ```
 
-Run the incident — an immediate read after an update is always fresh:
+In the control pane, update a key and read it back immediately — it's always fresh now:
 
-```
-make incident STAGE=06
+```bash
+kvwrite order paid
+kvread order             # always the latest value
+kvstatus
 ```
 
-The cost: a write now needs *every* follower alive. That's the problem the next stage solves.
+Press **Enter** in the incident pane → ✅ (no stale reads). The catch: a write now needs *every*
+follower alive — which the next stage fixes. Reload by hand: `make reset STAGE=06`.
 
 ## Stage 07 — Quorum & fault tolerance
 
-All-sync gives fresh reads but tolerates **zero** failures — kill one follower and writes stop. The
-sweet spot is a **majority quorum** (`W = 2, R = 2` with `N = 3`): it survives one follower failure
-*and* keeps `W + R > N`, so reads stay fresh. When the quorum is lost, the system refuses writes to
-preserve consistency — the CAP trade-off, made visible.
+All-sync gives fresh reads but tolerates **zero** failures. The sweet spot is a **majority quorum**
+(`W = 2, R = 2` with `N = 3`): it survives one follower failure *and* keeps `W + R > N`, so reads
+stay fresh. When the quorum is lost, the system refuses writes to preserve consistency — the CAP
+trade-off, made visible.
 
-Start the cluster with a majority quorum:
-
-```
-make up STAGE=07
+```bash
+make lab STAGE=07        # loads stage 07 (majority quorum W=2, R=2) + dashboard
 ```
 
-Run the incident — writes survive a follower failure:
+In the control pane, kill a follower and confirm writes still succeed:
 
-```
-make incident STAGE=07
+```bash
+kvwrite order paid
+kvkill 1                 # crash one follower
+kvstatus                 # one dead, but the quorum holds
+kvwrite order shipped    # still works
+kvread order             # still fresh
 ```
 
-## Stage 08 — Service discovery ⌨️
+Press **Enter** in the incident pane → ✅ (writes survive a follower failure). Reload:
+`make reset STAGE=07`.
+
+## Stage 08 — Service discovery ✏️
 
 The cluster can't recover from a death it never notices. A **registry** service tracks which nodes are
 alive via heartbeats. You'll implement the heartbeat each node sends.
 
-Load the starting point:
-
-```
-make gap STAGE=08
-```
-
-Open `kvstore/node.py` and complete `heartbeat_loop` — `POST` the node's identity to the registry's
-`/heartbeat` route on each interval. Then start it:
-
-```
-make up STAGE=08
+```bash
+make gap STAGE=08        # load the exercise: heartbeat_loop is left blank
+make lab STAGE=08        # dashboard: registry + coordinator panes + control
 ```
 
-Run the incident — a killed follower is now detected as dead within the heartbeat timeout:
+In the control pane, kill a follower and check the registry — without heartbeats it never even learns
+the node existed, so it can't be marked dead:
 
+```bash
+kvkill 1
+kvstatus
 ```
-make incident STAGE=08
+
+Now implement it: open `kvstore/node.py` and complete **`heartbeat_loop`** — `POST` the node's
+identity (`node_id`, `port`, `url`, `role`) to the registry's `/heartbeat` route each interval. Then
+restart and check:
+
+```bash
+make lab-down
+make lab STAGE=08        # a killed follower is now detected as dead within the timeout
 ```
+
+Press **Enter** in the incident pane → ✅. Rescue: `make reset STAGE=08`.
 
 ## Stage 09 — Auto-recovery
 
 Detecting death just gives you an accurate map of the damage; the cluster still runs degraded. With
-auto-spawn enabled, a follower that stops heartbeating is **respawned**, and the coordinator **catches
-it up** from the leader's snapshot. This stage enables that with config.
+auto-spawn, a follower that stops heartbeating is **respawned**, and the coordinator **catches it up**
+from the leader's snapshot.
 
-Start the self-healing cluster:
-
-```
-make up STAGE=09
+```bash
+make lab STAGE=09        # loads stage 09 (auto-spawn enabled) + dashboard
 ```
 
-Run the incident — a killed follower is respawned and rejoins with the full dataset:
+In the control pane, crash a follower and watch the cluster heal itself:
 
-```
-make incident STAGE=09
+```bash
+kvwrite order paid
+kvkill 1                 # crash a follower
+kvstatus                 # degraded...
+# wait ~5s — the coordinator pane shows the respawn + catch-up
+kvstatus                 # back to full strength
+kvread order             # the revived node has the data
 ```
 
-This is the cluster healing itself — the high point of what you build by hand.
+Press **Enter** in the incident pane → ✅ (respawned and caught up). This is the cluster healing
+itself — the high point of what you build by hand. Reload: `make reset STAGE=09`.
 
 ## Stage 10 — The full system (demo)
 
 Stage 10 puts an **edge gateway** in front of everything and ties the whole system together. There's
-no exercise here — it's the synthesis of everything from stages 00–09, and the best way to experience
-it is to drive it yourself in the lab dashboard (see below).
+no exercise and no check here — it's the synthesis of stages 00–09, and the way to experience it is
+to drive it yourself.
 
----
-
-## Playing with the system
-
-For any stage, you can launch a **dashboard**: every process gets its own pane, plus a control pane
-where you type commands to drive the system by hand. Mouse mode is on — click a pane, scroll to read.
-
-Launch the dashboard for a stage:
-
-```
-make lab STAGE=10
+```bash
+make lab STAGE=10        # registry + coordinator + gateway panes + control
 ```
 
-In the control pane, list the commands available for this stage:
+In the control pane, take the whole system for a spin:
 
-```
-kvhelp
-```
-
-On the cluster stages (05–10) you can, for example, write and read a key, check cluster status, flood
-the edge to trigger rate limiting, and crash a follower to watch recovery:
-
-```
-kvwrite cart shoes
-```
-
-```
+```bash
+kvwrite cart shoes       # trace it: gateway (:8000) → coordinator (:7000) → leader → followers
 kvread cart
+kvflood 15               # hammer the edge — the rate limiter sheds the overflow as 429s
+kvwrite order paid
+kvkill 1                 # crash a follower — quorum holds, then it auto-respawns and catches up
+kvread order             # still fresh
 ```
 
-```
-kvkill 1
-```
-
-When you're done, tear the dashboard down:
-
-```
-make lab-down
-```
+Tear it down with `make lab-down`.
 
 ---
 
 ## Cheat sheet
 
-Seed your working copy once:
-
-```
-make start
-```
-
-Start a stage's system:
-
-```
-make up STAGE=NN
+```bash
+make start               # seed your working copy (once, at the very beginning)
+make gap STAGE=NN        # load a ✏️ code stage's exercise (03/04/05/08)
+make reset STAGE=NN      # load a stage's complete, working code (also the rescue button)
+make lab STAGE=NN        # the dashboard: explore the stage by hand (loads non-code stages for you)
+make lab-down            # tear the dashboard down
+make incident STAGE=NN   # run a stage's check on its own (or just press Enter in the lab's incident pane)
+make status              # show your progress across the ladder
 ```
 
-Run a stage's check:
-
-```
-make incident STAGE=NN
-```
-
-Load the starting point for a code stage (03, 04, 05, 08):
-
-```
-make gap STAGE=NN
-```
-
-Restore the worked solution for a stage:
-
-```
-make reset STAGE=NN
-```
-
-Open the dashboard for a stage:
-
-```
-make lab STAGE=NN
-```
-
-Stop everything for the current stage:
-
-```
-make down
-```
+The typical loop: **code stage** → `make gap` → `make lab` → edit the one function → `make lab-down`,
+`make lab` → press Enter in the incident pane. **Run-and-explore stage** → `make lab` → poke it →
+press Enter in the incident pane.
 
 ---
 
 ## If something breaks
 
-Stop all workshop processes and start clean:
-
-```
-make down
-```
-
-If a dashboard session is still around, tear it down too:
-
-```
-make lab-down
+```bash
+make lab-down            # tear down the dashboard + all its processes
+make down                # stop any stray workshop processes
+docker compose restart   # last resort: restart the whole container
 ```
 
 If a stage won't start because a port is busy, it's almost always a leftover process from a previous
-stage — `make down` clears it. When in doubt, restart the container:
-
-```
-docker compose restart
-```
+stage — `make lab-down` (or `make down`) clears it. If you've tangled up a stage's code, jump back to
+a known-good state with `make reset STAGE=NN`.
