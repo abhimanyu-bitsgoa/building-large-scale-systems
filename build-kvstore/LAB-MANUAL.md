@@ -374,3 +374,18 @@ docker compose restart   # last resort: restart the whole container
 If a stage won't start because a port is busy, it's almost always a leftover process from a previous
 stage — `make lab-down` (or `make down`) clears it. If you've tangled up a stage's code, jump back to
 a known-good state with `make reset STAGE=NN`.
+
+### Windows: `make lab` fails with "invalid option name: pipefail"
+
+This is a line-endings mismatch. Windows Git rewrites files with CRLF (`\r\n`) on clone; the Linux
+container's `bash` then sees a trailing `\r` on every line and rejects it as an unknown option.
+
+The repo ships a `.gitattributes` that forces LF on checkout, so this should not happen on a fresh
+clone. If you cloned before that file was in the repo (or your Git ignored it), fix it once inside
+the container:
+
+```bash
+find /workspace -name '*.sh' | xargs dos2unix
+```
+
+Then re-run your `make` command — it will work.
