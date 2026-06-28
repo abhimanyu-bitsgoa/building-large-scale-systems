@@ -28,6 +28,12 @@ across Open → The Tenets [theory] → the 00–10 ladder → Close), with:
 - **Design rules** enforcing the speaker's intent: ≤6-word headlines, one idea/visual per slide,
   scar-before-concept, the architecture diagram growing one box per stage, and the terminal treated as
   a slide on `[LIVE]` cues.
+- **An explicit scope note up top** stating the deck targets the `build-kvstore/` ladder (stages
+  00–10, `make lab STAGE=NN`) *only*, and that the repo's legacy top-level `labs/` folder
+  (scalability/replication/distributed-kvstore, `:5000`/`:6000` ports) is **not** part of this talk —
+  verified the deck names no `labs/` path, no legacy port, and that all four code-stage file paths
+  (`load_balancer.py`, `rate_limiter.py`, `node.py`×2) and control-pane helpers exist under
+  `build-kvstore/`.
 - **A consistent per-slide template** — `Show` (visual) / `Text` (literal on-slide words) / `Say`
   (narration, quoting the incident hooks verbatim) / `Do [LIVE]` (dashboard commands) / `Caveat`.
 - **A ~175-min timing budget** with a break and a **cut list** lifted from `INSTRUCTOR-GUIDE.md` §2

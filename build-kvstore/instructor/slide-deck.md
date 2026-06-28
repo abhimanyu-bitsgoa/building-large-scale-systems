@@ -1,5 +1,12 @@
 # Slide Deck — *Deconstructing the Tenets of Planet-Scale Systems with Python*
 
+> **Scope — read first.** This deck targets the **`build-kvstore/` ladder only**: stages **00–10**,
+> driven by `make lab STAGE=NN` from inside the container. That ladder *is* the workshop the attendees
+> run. The repo's legacy top-level **`labs/`** folder (the older `scalability/` · `replication/` ·
+> `distributed-kvstore/` split, and the `:5000`/`:6000` ports in the root `CLAUDE.md`) is **not** part
+> of this talk — ignore it. Everything an attendee touches lives under `build-kvstore/`, and every
+> command, file path, port, and helper named below is from this folder.
+
 **What this is.** A slide-by-slide blueprint for the full ~175-minute EuroPython tutorial. It tells
 you *what goes on every slide* so you can build an image-heavy deck and drive the live labs from it.
 This is the visual spine; the two source docs feed it:
