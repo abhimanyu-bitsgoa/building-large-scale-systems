@@ -389,3 +389,14 @@ find /workspace -name '*.sh' | xargs dos2unix
 ```
 
 Then re-run your `make` command — it will work.
+
+If you want a permanent fix so you never have to run this again on future pulls — run these on your
+**Windows machine** (not inside the container), after pulling the `.gitattributes` commit:
+
+```bash
+git pull                   # get the .gitattributes commit if you haven't already
+git rm --cached -r .       # wipe Git's index so it re-reads every file
+git reset --hard           # re-checkout everything, now normalized to LF
+```
+
+This makes Git on Windows permanently honour the repo's LF policy for every future pull.
