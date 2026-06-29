@@ -104,7 +104,7 @@ async def request_middleware(request: Request, call_next):
         allowed, metadata = rate_limiter.check(client_ip)
         
         if not allowed:
-            print(f"❌ [Node {NODE_ID}] RATE LIMITED: {request.method} {path} from {client_ip}")
+            print(f"[ERR] [Node {NODE_ID}] RATE LIMITED: {request.method} {path} from {client_ip}")
             
             response = JSONResponse(
                 status_code=429,
@@ -120,7 +120,7 @@ async def request_middleware(request: Request, call_next):
             response.headers["X-RateLimit-Reset"] = str(metadata["reset"])
             return response
         else:
-            print(f"✅ [Node {NODE_ID}] ALLOWED: {request.method} {path} (remaining: {metadata['remaining']})")
+            print(f"[OK] [Node {NODE_ID}] ALLOWED: {request.method} {path} (remaining: {metadata['remaining']})")
     
     # Track active requests
     active_requests += 1
@@ -243,9 +243,9 @@ if __name__ == "__main__":
             max_requests=args.rate_limit_max,
             window_seconds=args.rate_limit_window
         )
-        print(f"🛡️  Rate limiting ENABLED: {args.rate_limit_max} requests per {args.rate_limit_window}s")
+        print(f"Rate limiting ENABLED: {args.rate_limit_max} requests per {args.rate_limit_window}s")
     
-    print(f"🚀 Starting Node {args.id} on port {args.port}")
+    print(f"Starting Node {args.id} on port {args.port}")
     print(f"   Load Factor: {args.load_factor}")
     print(f"   Workers: {args.workers}")
     

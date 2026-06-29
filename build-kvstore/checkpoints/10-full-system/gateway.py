@@ -76,7 +76,7 @@ async def gateway_middleware(request: Request, call_next):
         
         if not allowed:
             gateway_metrics["rate_limited_requests"] += 1
-            print(f"🚫 [Gateway] RATE LIMITED: {request.method} {request.url.path} from {client_ip}")
+            print(f"[RL] [Gateway] RATE LIMITED: {request.method} {request.url.path} from {client_ip}")
             
             response = JSONResponse(
                 status_code=429,
@@ -91,7 +91,7 @@ async def gateway_middleware(request: Request, call_next):
             response.headers["X-RateLimit-Remaining"] = str(metadata.get("remaining"))
             return response
         else:
-            print(f"✅ [Gateway] ALLOWED: {request.method} {request.url.path} (remaining: {metadata.get('remaining')})")
+            print(f"[OK] [Gateway] ALLOWED: {request.method} {request.url.path} (remaining: {metadata.get('remaining')})")
     
     response = await call_next(request)
     return response
@@ -256,9 +256,9 @@ if __name__ == "__main__":
             max_requests=args.rate_limit_max,
             window_seconds=args.rate_limit_window
         )
-        print(f"🛡️  Rate limiting ENABLED: {args.rate_limit_max} requests per {args.rate_limit_window}s")
+        print(f"Rate limiting ENABLED: {args.rate_limit_max} requests per {args.rate_limit_window}s")
     
-    print(f"🌐 Starting Gateway on port {args.port}")
+    print(f"Starting Gateway on port {args.port}")
     print(f"   Coordinator: {args.coordinator}")
     print()
     print("Endpoints:")

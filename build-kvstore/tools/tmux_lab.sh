@@ -26,7 +26,8 @@
 set -euo pipefail
 
 # Force a UTF-8 locale so the tmux server (and the shells/Python it spawns) render
-# the incident banners' ❌/✅/— instead of "_". The tmux server picks UTF-8 vs not
+# the box-drawing dashboards, — dashes, and the graduation banner instead of "_".
+# The tmux server picks UTF-8 vs not
 # from the locale present when it STARTS, so this must be exported before any tmux
 # command below — and `tmux -u` (in new-session) forces UTF-8 even if it isn't.
 export LANG="${LANG:-C.UTF-8}" LC_ALL="${LC_ALL:-C.UTF-8}"

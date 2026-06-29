@@ -44,7 +44,7 @@ cleanup() {
     [ "$(ss -ltn 2>/dev/null | grep -cE "$PORTS_RE")" = "0" ] && return 0
     sleep 1
   done
-  echo "  ⚠️  ports still busy after cleanup:"
+  echo "  [WARN] ports still busy after cleanup:"
   ss -ltn 2>/dev/null | grep -E "$PORTS_RE" || true
 }
 
@@ -196,9 +196,9 @@ echo
 echo "================ ladder validation ================"
 echo "  passed: $PASS    failed: $FAIL"
 if [ "$FAIL" -ne 0 ]; then
-  printf '  ✗ %s\n' "${FAILED_CASES[@]}"
+  printf '  [X] %s\n' "${FAILED_CASES[@]}"
   echo "==================================================="
   exit 1
 fi
-echo "  ✅ ladder invariant holds (every incident discriminates its upgrade)"
+echo "  [OK] ladder invariant holds (every incident discriminates its upgrade)"
 echo "==================================================="

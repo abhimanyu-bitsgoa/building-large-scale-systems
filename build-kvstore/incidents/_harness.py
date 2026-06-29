@@ -32,7 +32,7 @@ def record_progress(stage, resolved):
 
 def report(stage, name, resolved, detail=""):
     """Print a red/green banner, record progress, and exit with 0/1."""
-    banner = "✅ INCIDENT RESOLVED" if resolved else "❌ INCIDENT ACTIVE"
+    banner = "[PASS] INCIDENT RESOLVED" if resolved else "[FAIL] INCIDENT ACTIVE"
     print(f"\n{banner} — {name}")
     if detail:
         print(f"   {detail}")

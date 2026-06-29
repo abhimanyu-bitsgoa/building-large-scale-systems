@@ -164,9 +164,9 @@ def health_check_loop():
                 
                 if old_status and old_status != new_status:
                     if new_status == "dead":
-                        logger.log("🔴", f"LEADER DOWN: {node_id} is no longer responding")
+                        logger.log("[DOWN]", f"LEADER DOWN: {node_id} is no longer responding")
                     else:
-                        logger.log("🟢", f"LEADER RECOVERED: {node_id} is back online")
+                        logger.log("[UP]", f"LEADER RECOVERED: {node_id} is back online")
                 cluster.previous_status[node_id] = new_status
             
             # Check followers
@@ -181,12 +181,12 @@ def health_check_loop():
                     role_tag = "SYNC" if node_id in sync_ids else "ASYNC"
                     
                     if new_status == "dead":
-                        logger.log("🔴", f"NODE DOWN: {node_id} [{role_tag}]")
+                        logger.log("[DOWN]", f"NODE DOWN: {node_id} [{role_tag}]")
                         # Log quorum impact
                         if not cluster.can_write():
-                            logger.log("⚠️", f"WRITE QUORUM LOST: Only {len(cluster.get_alive_followers())} followers alive, need {cluster.write_quorum}")
+                            logger.log("[WARN]", f"WRITE QUORUM LOST: Only {len(cluster.get_alive_followers())} followers alive, need {cluster.write_quorum}")
                     else:
-                        logger.log("🟢", f"NODE RECOVERED: {node_id} [{role_tag}]")
+                        logger.log("[UP]", f"NODE RECOVERED: {node_id} [{role_tag}]")
                 
                 cluster.previous_status[node_id] = new_status
         
@@ -205,7 +205,7 @@ def send_catchup_to_follower(follower_url: str, leader_url: str) -> bool:
             # Get snapshot from leader
             resp = requests.get(f"{leader_url}/snapshot", timeout=5)
             if resp.status_code != 200:
-                print(f"[Coordinator] ⚠️ Failed to get snapshot from leader: {resp.status_code}")
+                print(f"[Coordinator] [WARN] Failed to get snapshot from leader: {resp.status_code}")
                 return False
             
             snapshot = resp.json()
@@ -219,12 +219,12 @@ def send_catchup_to_follower(follower_url: str, leader_url: str) -> bool:
             if resp.status_code == 200:
                 return True
             
-            print(f"[Coordinator] ⚠️ Catchup attempt {attempt+1} failed ({resp.status_code})")
+            print(f"[Coordinator] [WARN] Catchup attempt {attempt+1} failed ({resp.status_code})")
         except Exception as e:
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
                 continue
-            print(f"[Coordinator] ❌ Catchup failed after {max_retries} attempts: {e}")
+            print(f"[Coordinator] [ERR] Catchup failed after {max_retries} attempts: {e}")
             
     return False
 
@@ -285,7 +285,7 @@ def get_status():
 def _log_async_completion(follower_ids: List[str]):
     """Background log line emitted once async replication has had time to land."""
     time.sleep(ASYNC_REPLICATION_DELAY + 0.5)
-    logger.log("✅", f"ASYNC REPLICATION COMPLETE: Replicated to {follower_ids}")
+    logger.log("[OK]", f"ASYNC REPLICATION COMPLETE: Replicated to {follower_ids}")
 
 
 @app.post("/write")
@@ -296,11 +296,11 @@ def write_data(request: WriteRequest):
     Async followers replicate in background.
     """
     logger.log_separator()
-    logger.log("✍️", f"WRITE REQUEST: key=\"{request.key}\" value=\"{request.value}\"")
+    logger.log("[WRITE]", f"WRITE REQUEST: key=\"{request.key}\" value=\"{request.value}\"")
     
     if not cluster.can_write():
         alive = len(cluster.get_alive_followers())
-        logger.log("❌", f"WRITE REJECTED: Quorum unavailable ({alive}/{cluster.write_quorum} followers)")
+        logger.log("[ERR]", f"WRITE REJECTED: Quorum unavailable ({alive}/{cluster.write_quorum} followers)")
         raise HTTPException(
             status_code=503,
             detail={
@@ -333,11 +333,11 @@ def write_data(request: WriteRequest):
             timeout=30
         )
     except requests.exceptions.RequestException as e:
-        logger.log("❌", f"Leader unreachable: {e}")
+        logger.log("[ERR]", f"Leader unreachable: {e}")
         raise HTTPException(status_code=503, detail=f"Leader unreachable: {e}")
 
     if resp.status_code != 200:
-        logger.log("❌", f"Leader error: {resp.status_code}")
+        logger.log("[ERR]", f"Leader error: {resp.status_code}")
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
 
     result = resp.json()
@@ -345,21 +345,21 @@ def write_data(request: WriteRequest):
     sync_acks = replication.get("sync_acks", 0)
     sync_acked_by = replication.get("sync_acked_by", [])
 
-    logger.log("✅", f"Leader: written (v{result.get('version')})")
+    logger.log("[OK]", f"Leader: written (v{result.get('version')})")
 
     for node_url in sync_acked_by:
         node_id = next((f["node_id"] for f in sync_followers if f["url"] == node_url), "unknown")
-        logger.log("✅", f"{node_id}: sync ack received")
+        logger.log("[OK]", f"{node_id}: sync ack received")
 
     # Did we meet the write quorum (sync_acks >= W)?
     if sync_acks < cluster.write_quorum:
-        logger.log("❌", f"QUORUM FAILED: Only {sync_acks}/{cluster.write_quorum} acks")
+        logger.log("[ERR]", f"QUORUM FAILED: Only {sync_acks}/{cluster.write_quorum} acks")
         raise HTTPException(status_code=503, detail={"error": "Write quorum not met", "sync_acks": sync_acks})
 
-    logger.log("✅", f"QUORUM MET: {sync_acks}/{cluster.write_quorum} sync acks (leader + {sync_acks} followers)")
+    logger.log("[OK]", f"QUORUM MET: {sync_acks}/{cluster.write_quorum} sync acks (leader + {sync_acks} followers)")
 
     if async_followers:
-        logger.log("🔄", f"Async replication queued for {len(async_followers)} followers")
+        logger.log("[INFO]", f"Async replication queued for {len(async_followers)} followers")
         async_ids = [f["node_id"] for f in async_followers]
         threading.Thread(target=_log_async_completion, args=(async_ids,), daemon=True).start()
 
@@ -381,10 +381,10 @@ def read_data(key: str):
     Falls back to leader only if follower quorum not met.
     """
     logger.log_separator()
-    logger.log("📖", f"READ REQUEST: key=\"{key}\"")
+    logger.log("[READ]", f"READ REQUEST: key=\"{key}\"")
     
     if not cluster.can_read():
-        logger.log("❌", f"READ REJECTED: Quorum unavailable")
+        logger.log("[ERR]", f"READ REJECTED: Quorum unavailable")
         raise HTTPException(status_code=503, detail="Read quorum not available")
     
     results = []
@@ -411,23 +411,23 @@ def read_data(key: str):
     
     # Check if we have R quorum responses
     if len(results) < cluster.read_quorum:
-        logger.log("❌", f"QUORUM FAILED: Only {len(results)}/{cluster.read_quorum} nodes responded")
+        logger.log("[ERR]", f"QUORUM FAILED: Only {len(results)}/{cluster.read_quorum} nodes responded")
         raise HTTPException(status_code=503, detail={"error": "Read quorum not met", "responses": len(results), "required": cluster.read_quorum})
     
     # Check for version conflict (only for nodes that have the key)
     found_results = [r for r in results if r["value"] is not None]
     
     if not found_results:
-        logger.log("❌", f"KEY NOT FOUND in quorum")
+        logger.log("[ERR]", f"KEY NOT FOUND in quorum")
         raise HTTPException(status_code=404, detail=f"Key '{key}' not found in quorum")
 
     versions = set(r["version"] for r in found_results)
     if len(versions) > 1:
-        logger.log("⚠️", f"VERSION CONFLICT: Detected multiple versions: {list(versions)}")
+        logger.log("[WARN]", f"VERSION CONFLICT: Detected multiple versions: {list(versions)}")
         logger.log("→", "Selecting highest version for resolution")
     
     latest = max(found_results, key=lambda x: x["version"])
-    logger.log("✅", f"RESULT: v{latest['version']} \"{latest['value']}\" (from {latest['node_id']})")
+    logger.log("[OK]", f"RESULT: v{latest['version']} \"{latest['value']}\" (from {latest['node_id']})")
     
     return {
         "key": key,
@@ -445,7 +445,7 @@ def spawn_follower(request: Optional[SpawnRequest] = None):
         if request and request.node_id and request.port:
             node_id = request.node_id
             port = request.port
-            logger.log("🔄", f"Reviving {node_id} on port {port} (requested)")
+            logger.log("[INFO]", f"Reviving {node_id} on port {port} (requested)")
             
         # Priority 2: Reuse an existing dead follower slot
         else:
@@ -454,14 +454,14 @@ def spawn_follower(request: Optional[SpawnRequest] = None):
                 dead = dead_followers[0]
                 node_id = dead["node_id"]
                 port = dead["port"]
-                logger.log("🔄", f"Reusing dead slot: {node_id} on port {port}")
+                logger.log("[INFO]", f"Reusing dead slot: {node_id} on port {port}")
             
             # Priority 3: Create a brand new slot
             else:
                 cluster.node_counter += 1
                 node_id = f"follower-{cluster.node_counter}"
                 port = BASE_PORT + cluster.node_counter + 1
-                logger.log("🚀", f"Spawned NEW: {node_id} on port {port}")
+                logger.log("[START]", f"Spawned NEW: {node_id} on port {port}")
 
         url = f"http://localhost:{port}"
         
@@ -498,7 +498,7 @@ def spawn_follower(request: Optional[SpawnRequest] = None):
             threading.Thread(target=register_and_catchup, daemon=True).start()
         
         if not (request and request.node_id):
-            logger.log("🚀", f"Spawned {node_id} on port {port}")
+            logger.log("[START]", f"Spawned {node_id} on port {port}")
         
         return {"status": "spawned", "node_id": node_id, "url": url}
 
@@ -518,7 +518,7 @@ def kill_follower(node_id: str):
             follower["process"].kill()
 
         follower["status"] = "dead"
-        logger.log("💀", f"Killed {node_id}")
+        logger.log("[DEAD]", f"Killed {node_id}")
         
         return {
             "status": "stopped",
@@ -542,7 +542,7 @@ def trigger_catchup(request: NodeRequest):
     success = send_catchup_to_follower(node_url, cluster.leader["url"])
     
     if success:
-        logger.log("✅", f"Catchup completed for {request.node_id}")
+        logger.log("[OK]", f"Catchup completed for {request.node_id}")
         return {"status": "caught_up", "node_id": request.node_id}
     else:
         raise HTTPException(status_code=500, detail="Catchup failed")
@@ -553,7 +553,7 @@ def handle_node_died(request: NodeRequest):
     with cluster.lock:
         if request.node_id in cluster.followers:
             cluster.followers[request.node_id]["status"] = "dead"
-            logger.log("💀", f"Node {request.node_id} died")
+            logger.log("[DEAD]", f"Node {request.node_id} died")
     
     return {"status": "acknowledged"}
 
@@ -593,7 +593,7 @@ def initialize_cluster(num_followers: int):
         "status": "starting",
         "process": leader_process
     }
-    logger.log("👑", f"Leader started on port {leader_port}")
+    logger.log("[LEADER]", f"Leader started on port {leader_port}")
     
     time.sleep(1)
     
@@ -624,7 +624,7 @@ def initialize_cluster(num_followers: int):
             "status": "starting",
             "process": process
         }
-        logger.log("📋", f"{node_id} started on port {port} [{role_tag}]")
+        logger.log("[NODE]", f"{node_id} started on port {port} [{role_tag}]")
     
     # Wait for nodes to start
     time.sleep(2)
@@ -646,7 +646,7 @@ def initialize_cluster(num_followers: int):
     
     print()
     logger.log_separator()
-    logger.log("✅", f"CLUSTER READY - API: http://localhost:{BASE_PORT}")
+    logger.log("[OK]", f"CLUSTER READY - API: http://localhost:{BASE_PORT}")
     print()
     print("API Endpoints:")
     print(f"  POST http://localhost:{BASE_PORT}/write        - Write data (waits for W acks)")
@@ -667,7 +667,7 @@ def start_cluster(num_followers: int, write_quorum: int, read_quorum: int,
     
     print_banner()
     
-    logger.log("🚀", "STARTING CLUSTER", [
+    logger.log("[START]", "STARTING CLUSTER", [
         f"Registry: {registry_url}",
         f"Write Quorum: W={write_quorum} (followers must ack)",
         f"Read Quorum: R={read_quorum} (followers to query)",
@@ -698,7 +698,7 @@ if __name__ == "__main__":
             registry_url=args.registry
         )
     except KeyboardInterrupt:
-        print("\n👋 Shutting down...")
+        print("\nShutting down...")
         if cluster.leader and cluster.leader.get("process"):
             cluster.leader["process"].terminate()
         for f in cluster.followers.values():

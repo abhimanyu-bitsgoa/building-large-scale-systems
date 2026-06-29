@@ -125,7 +125,7 @@ def replicate_to_follower(follower_url: str, key: str, value: str, version: int,
     
     # Artificial delay so students can observe replication
     if actual_delay > 0:
-        print(f"[{NODE_ID}] ⏳ Replicating {key} to {follower_url} (delay: {actual_delay}s)...")
+        print(f"[{NODE_ID}] Replicating {key} to {follower_url} (delay: {actual_delay}s)...")
         time.sleep(actual_delay)
 
     try:
@@ -140,12 +140,12 @@ def replicate_to_follower(follower_url: str, key: str, value: str, version: int,
 
         if resp.status_code == 200:
             replications_sent += 1
-            print(f"[{NODE_ID}] ✅ Replicated {key}={value} (v{version}) to {follower_url}")
+            print(f"[{NODE_ID}] [OK] Replicated {key}={value} (v{version}) to {follower_url}")
             return True
-        print(f"[{NODE_ID}] ❌ Replication to {follower_url} failed: {resp.status_code}")
+        print(f"[{NODE_ID}] [ERR] Replication to {follower_url} failed: {resp.status_code}")
         return False
     except Exception as e:
-        print(f"[{NODE_ID}] ❌ Replication to {follower_url} failed: {e}")
+        print(f"[{NODE_ID}] [ERR] Replication to {follower_url} failed: {e}")
         return False
 
 def replicate_sync(sync_followers: List[str], key: str, value: str, version: int) -> dict:
@@ -177,7 +177,7 @@ def replicate_sync(sync_followers: List[str], key: str, value: str, version: int
                     results["sync_acks"] += 1
                     results["sync_acked_by"].append(follower_url)
             except Exception as e:
-                print(f"[{NODE_ID}] ❌ Sync replication error: {e}")
+                print(f"[{NODE_ID}] [ERR] Sync replication error: {e}")
     
     return results
 
@@ -197,7 +197,7 @@ def replicate_async(async_followers: List[str], key: str, value: str, version: i
     # Start background thread
     thread = threading.Thread(target=do_async_replication, daemon=True)
     thread.start()
-    print(f"[{NODE_ID}] 🔄 Queued async replication to {len(async_followers)} followers")
+    print(f"[{NODE_ID}] Queued async replication to {len(async_followers)} followers")
 
 # ========================
 # API Endpoints
@@ -263,7 +263,7 @@ def store_data(payload: DataPayload):
     data_versions[payload.key] = new_version
     total_writes += 1
     
-    print(f"[{NODE_ID}] 📝 Written {payload.key}={payload.value} (v{new_version})")
+    print(f"[{NODE_ID}] Written {payload.key}={payload.value} (v{new_version})")
     
     # Get follower lists from payload (coordinator specifies sync/async)
     sync_followers = payload.sync_followers or []
@@ -337,7 +337,7 @@ def receive_replication(payload: ReplicatePayload):
         data_versions[payload.key] = payload.version
         replications_received += 1
         
-        print(f"[{NODE_ID}] 📥 Received replication: {payload.key}={payload.value} (v{payload.version}) from {payload.source}")
+        print(f"[{NODE_ID}] Received replication: {payload.key}={payload.value} (v{payload.version}) from {payload.source}")
         
         return {
             "status": "accepted",
@@ -346,7 +346,7 @@ def receive_replication(payload: ReplicatePayload):
             "version": payload.version
         }
     else:
-        print(f"[{NODE_ID}] ⏭️ Skipped stale replication: {payload.key} v{payload.version} (current: v{current_version})")
+        print(f"[{NODE_ID}] Skipped stale replication: {payload.key} v{payload.version} (current: v{current_version})")
         return {
             "status": "rejected",
             "reason": "stale_version",
@@ -367,7 +367,7 @@ def register_follower(payload: dict):
     follower_url = payload.get("url")
     if follower_url and follower_url not in followers:
         followers.append(follower_url)
-        print(f"[{NODE_ID}] ✅ Registered follower: {follower_url}")
+        print(f"[{NODE_ID}] [OK] Registered follower: {follower_url}")
         return {"status": "registered", "followers": followers}
     
     return {"status": "already_registered", "followers": followers}
@@ -412,8 +412,7 @@ if __name__ == "__main__":
     if args.leader_url:
         os.environ["LEADER_URL"] = args.leader_url
     
-    role_emoji = "👑" if NODE_ROLE == "leader" else "📋"
-    print(f"{role_emoji} Starting {NODE_ROLE.upper()} node '{NODE_ID}' on port {NODE_PORT}")
+    print(f"Starting {NODE_ROLE.upper()} node '{NODE_ID}' on port {NODE_PORT}")
     print(f"   Sync delay: {SYNC_DELAY}s, Async delay: {ASYNC_DELAY}s")
     if NODE_ROLE == "follower" and LEADER_URL:
         print(f"   Leader: {LEADER_URL}")

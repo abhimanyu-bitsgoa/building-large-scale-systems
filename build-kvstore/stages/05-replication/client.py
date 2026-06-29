@@ -25,16 +25,16 @@ def print_error(label: str, error_data):
     if isinstance(error_data, dict) and "detail" in error_data:
         detail = error_data["detail"]
         if isinstance(detail, dict):
-            print(f"❌ {label}: {detail.get('error', 'Unknown Error')}")
+            print(f"[ERR] {label}: {detail.get('error', 'Unknown Error')}")
             for key, val in detail.items():
                 if key != "error":
                     # Title case the key for display
                     display_key = key.replace("_", " ").title()
                     print(f"   {display_key}: {val}")
         else:
-            print(f"❌ {label}: {detail}")
+            print(f"[ERR] {label}: {detail}")
     else:
-        print(f"❌ {label}: {error_data}")
+        print(f"[ERR] {label}: {error_data}")
 
 def write_data(coordinator_url: str, key: str, value: str, verbose: bool = True):
     """Write data through coordinator."""
@@ -50,7 +50,7 @@ def write_data(coordinator_url: str, key: str, value: str, verbose: bool = True)
         if resp.status_code == 200:
             data = resp.json()
             if verbose:
-                print(f"✅ Write successful: {key}={value}")
+                print(f"[OK] Write successful: {key}={value}")
                 print(f"   Version: {data.get('version')}")
                 print(f"   Acks: {data.get('sync_acks')}/{data.get('quorum')}")
                 replicated_to = data.get('sync_replicated_to', [])
@@ -65,7 +65,7 @@ def write_data(coordinator_url: str, key: str, value: str, verbose: bool = True)
     
     except requests.exceptions.RequestException as e:
         if verbose:
-            print(f"❌ Connection error: {e}")
+            print(f"[ERR] Connection error: {e}")
         return False, str(e)
 
 def read_data(coordinator_url: str, key: str, verbose: bool = True):
@@ -78,7 +78,7 @@ def read_data(coordinator_url: str, key: str, verbose: bool = True):
         if resp.status_code == 200:
             data = resp.json()
             if verbose:
-                print(f"✅ Read successful: {key}={data.get('value')}")
+                print(f"[OK] Read successful: {key}={data.get('value')}")
                 print(f"   Version: {data.get('version')}")
                 print(f"   Served by: {data.get('served_by')}")
                 print(f"   Quorum responses: {data.get('quorum_responses')}")
@@ -86,7 +86,7 @@ def read_data(coordinator_url: str, key: str, verbose: bool = True):
             return True, data
         elif resp.status_code == 404:
             if verbose:
-                print(f"❌ Key not found: {key}")
+                print(f"[ERR] Key not found: {key}")
             return False, "Not found"
         else:
             error = resp.json() if resp.headers.get("content-type") == "application/json" else resp.text
@@ -96,7 +96,7 @@ def read_data(coordinator_url: str, key: str, verbose: bool = True):
     
     except requests.exceptions.RequestException as e:
         if verbose:
-            print(f"❌ Connection error: {e}")
+            print(f"[ERR] Connection error: {e}")
         return False, str(e)
 
 def get_status(coordinator_url: str, verbose: bool = True):
@@ -107,45 +107,45 @@ def get_status(coordinator_url: str, verbose: bool = True):
         if resp.status_code == 200:
             data = resp.json()
             if verbose:
-                print(f"📊 Cluster Status:")
+                print(f"Cluster Status:")
                 
                 # Leader
                 leader = data.get("leader")
                 if leader:
-                    status_icon = "🟢" if leader["status"] == "alive" else "🔴"
-                    print(f"   👑 Leader: {status_icon} {leader['node_id']} @ {leader['url']}")
+                    status_icon = "[UP]" if leader["status"] == "alive" else "[DOWN]"
+                    print(f"   Leader: {status_icon} {leader['node_id']} @ {leader['url']}")
                 else:
-                    print(f"   👑 Leader: ❌ None")
+                    print(f"   Leader: None")
                 
                 # Followers
                 followers = data.get("followers", [])
-                print(f"   📋 Followers ({len(followers)}):")
+                print(f"   Followers ({len(followers)}):")
                 for f in followers:
-                    status_icon = "🟢" if f["status"] == "alive" else "🔴"
+                    status_icon = "[UP]" if f["status"] == "alive" else "[DOWN]"
                     print(f"      {status_icon} {f['node_id']} @ {f['url']}")
                 
                 # Quorum
                 quorum = data.get("quorum", {})
-                can_write = "✅" if quorum.get("can_write") else "❌"
-                can_read = "✅" if quorum.get("can_read") else "❌"
-                print(f"   🔢 Quorum: W={quorum.get('W')} R={quorum.get('R')}")
-                print(f"   ✏️  Can Write: {can_write}")
-                print(f"   📖 Can Read: {can_read}")
+                can_write = "[OK]" if quorum.get("can_write") else "[ERR]"
+                can_read = "[OK]" if quorum.get("can_read") else "[ERR]"
+                print(f"   Quorum: W={quorum.get('W')} R={quorum.get('R')}")
+                print(f"   Can Write: {can_write}")
+                print(f"   Can Read: {can_read}")
             
             return True, data
         else:
             if verbose:
-                print(f"❌ Failed to get status: {resp.status_code}")
+                print(f"[ERR] Failed to get status: {resp.status_code}")
             return False, None
     
     except requests.exceptions.RequestException as e:
         if verbose:
-            print(f"❌ Connection error: {e}")
+            print(f"[ERR] Connection error: {e}")
         return False, str(e)
 
 def interactive_mode(coordinator_url: str):
     """Run interactive client mode."""
-    print(f"🖥️  Interactive Client")
+    print(f"Interactive Client")
     print(f"   Coordinator: {coordinator_url}")
     print()
     print("Commands:")
@@ -177,7 +177,7 @@ def interactive_mode(coordinator_url: str):
                 get_status(coordinator_url)
             
             elif command in ["quit", "exit", "q"]:
-                print("👋 Goodbye!")
+                print("Goodbye!")
                 break
             
             else:
@@ -187,7 +187,7 @@ def interactive_mode(coordinator_url: str):
             print()
         
         except KeyboardInterrupt:
-            print("\n👋 Goodbye!")
+            print("\nGoodbye!")
             break
         except EOFError:
             break

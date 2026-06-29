@@ -147,7 +147,7 @@ if __name__ == "__main__":
     os.environ["NODE_ID"] = str(args.id)
     os.environ["LOAD_FACTOR"] = str(args.load_factor)
 
-    print(f"🚀 Starting Node {args.id} on port {args.port} "
+    print(f"Starting Node {args.id} on port {args.port} "
           f"(load-factor={args.load_factor}, workers={args.workers})")
 
     if args.workers > 1:

@@ -264,7 +264,7 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 - **Text (held):** "One box. It works. Now let's make it busy."
 - **Arc:** "One box is wonderful right up until it's busy. Let's make it busy."
 
-## Stage 01 — Vertical scaling · *the regex that froze the planet*  ·  slides 24–27  ·  ~6m
+## Stage 01 — Vertical scaling · *the ceiling is real — and scaling up is often enough*  ·  slides 24–27 (+26b)  ·  ~7m
 
 ### Slide 24 — Scar: Cloudflare, July 2 2019  ⏱ ~2m
 - **Show:** The Cloudflare status page / a CPU-pegged-at-100% graph. "Global 502s · ~30 min · one
@@ -272,6 +272,8 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 - **Text:** "One line of CPU-bound code took the web offline."
 - **Say:** Hook (verbatim): "On July 2nd 2019, a single regular expression took Cloudflare offline
   worldwide. Not a DDoS, not a bad deploy — one CPU-bound line no other request could get past."
+  *Frame it as the ceiling, not the cure:* Cloudflare's fix was to **kill the bad rule**, not add CPU —
+  this proves the single-thread ceiling is real and brutal, which is why we need a lever for it.
 
 ### Slide 25 — Concept: the single-thread ceiling (the GIL is our Redis-thread)  ⏱ ~2m
 - **Show:** 10 requests queued behind one CPU-bound task on a single thread. Note: "Python GIL ≈
@@ -286,20 +288,43 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
   `WORKERS=1 make lab STAGE=01` → Enter again → latency spikes. *Feel* the ceiling.
 - **Text (held):** "Same code. 4 workers vs 1. Watch p95."
 
-### Slide 27 — Caveat + arc  ⏱ ~0.5m
-- **Caveat (say it):** "Cloudflare's meltdown was CPU exhaustion across *many* cores; ours is 1 vs 4.
-  The shared structure — a CPU-bound task starving concurrent work — is the transferable idea, not the
-  core count."
-- **Arc:** "A bigger box has a bigger ceiling — but it's still a ceiling, and still *one box*. What
-  happens when that box just dies?"
+### Slide 26b — Payoff: scaling *up* is often the whole answer  ⏱ ~1.5m  ← the real Stage-01 motivation
+- **Show:** Stack Overflow logo + "a handful of servers." A fat single box at ~5–10% CPU with huge
+  headroom; "560M+ page views/month · never sharded the main DB." (Cite: Nick Craver, 2016.)
+- **Text:** "Scale up first. You might never need more."
+- **Say:** "Cloudflare proved the ceiling is real — but the *fix* there was removing the work, not
+  adding compute. For proof that scaling **up** works, look at Stack Overflow: one of the busiest sites
+  on earth runs on a handful of big boxes, a single SQL primary taking almost all the load, idling at
+  5–10% CPU for headroom. They scaled up, not out, and never sharded. The everyday version of our
+  `--workers` fix is exactly this — `gunicorn`/`uvicorn --workers`, Node's `cluster`, `nginx
+  worker_processes auto`: use *every core on the box* before you reach for a second box."
 
-## Stage 02 — Horizontal scaling · *the Fail Whale*  ·  slides 28–30  ·  ~4m
+### Slide 27 — Caveat + arc  ⏱ ~0.5m
+- **Caveat (say it):** "Two honest notes: Cloudflare's meltdown was CPU exhaustion across *many*
+  cores (ours is 1 vs 4), and its fix was *removing the work*, not adding compute. And Redis, being
+  single-threaded, gets nothing from more cores — its vertical lever is a faster core + more RAM. The
+  transferable idea is *a CPU-bound task starving concurrent work*, not the core count."
+- **Arc:** "Scaling up bought Stack Overflow everything — but for others, 'bigger box' eventually runs
+  out (that's Figma, next). A bigger box is still *one box*. What happens when it hits its wall, or
+  simply dies?"
+
+## Stage 02 — Horizontal scaling · *the Fail Whale — and the day vertical ran out*  ·  slides 28–30 (+28b)  ·  ~5m
 
 ### Slide 28 — Scar: Twitter's single primary  ⏱ ~1.5m
 - **Show:** The actual Fail Whale image. "One Rails app, one MySQL primary, ~2008–10."
 - **Text:** "The most famous image in tech was a capacity wall."
 - **Say:** Hook (verbatim): "For two years the most famous image in tech was a whale lifted by birds —
   Twitter's Fail Whale. It showed up every time one overloaded stack couldn't take the spike."
+
+### Slide 28b — Bridge: Figma, when the biggest box isn't big enough  ⏱ ~1m  ← the link from Stage 01
+- **Show:** "Figma: one Postgres on AWS's *largest* instance (2020)." A box with a hard ceiling line;
+  "VACUUM stalls · max RDS IOPS." Arrow → "more boxes."
+- **Text:** "Stack Overflow scaled up and won. Figma scaled up and *ran out*."
+- **Say:** "Remember Stack Overflow — scaling up was enough. But vertical has a hard edge. For years
+  *all* of Figma ran on a single Postgres — the largest box AWS would rent them. It carried them to
+  millions of users… until it hit limits money couldn't buy past: VACUUM reliability and the max IOPS
+  RDS supports. When 'buy a bigger box' has no bigger box, the only way forward is *more* boxes. That's
+  the moment Stage 02 begins."
 
 ### Slide 29 — Concept: more nodes — but now the bills come due  ⏱ ~1.5m
 - **Show:** 3 nodes appear with *3 separate dicts*. Two red flags: "split, not shared" and "round-robin
@@ -645,7 +670,9 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 | 16, 54, 69 | **W + R > N** overlap diagram (reused) | redraw — two overlapping sets |
 | 21 | antirez / early Redis | Redis history / LLOOGG |
 | 24 | Cloudflare CPU-pegged graph / status | Cloudflare Jul 2 2019 postmortem |
+| 26b | Stack Overflow logo · "a handful of servers" · big box at 5–10% CPU | Nick Craver, "SO: The Hardware/Architecture — 2016" |
 | 28 | Fail Whale | Twitter — iconic, check usage |
+| 28b | Figma single-Postgres ceiling (largest RDS box → VACUUM/IOPS wall) | Figma "Lived to Tell the Scale" (Apr 2024) |
 | 31 | Fan-out tail-latency diagram | "The Tail at Scale," Dean & Barroso |
 | 36–37 | GitHub 1.35 Tbps graph · DynamoDB retry-storm spiral | GitHub 2018 / AWS Sep 20 2015 postmortems |
 | 44 | GitLab livestream / "300 GB" | GitLab Jan 31 2017 postmortem |
@@ -660,8 +687,8 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 | Stage | Slides | Load | Live (dashboard) |
 |---|---|---|---|
 | 00 | 21–23 | (auto) | `make lab STAGE=00` → `nwrite` / `nread` |
-| 01 | 24–27 | (auto) | `make lab STAGE=01`; then `WORKERS=1 make lab STAGE=01` |
-| 02 | 28–30 | (auto) | `make lab STAGE=02` → `nload 40 10` |
+| 01 | 24–27 (+26b) | (auto) | `make lab STAGE=01`; then `WORKERS=1 make lab STAGE=01` |
+| 02 | 28–30 (+28b) | (auto) | `make lab STAGE=02` → `nload 40 10` |
 | 03 ✏️ | 31–35 | `make gap STAGE=03` | `make lab STAGE=03` → `nload round_robin/adaptive 40 10` |
 | 04 ✏️ | 36–43 | `make gap STAGE=04` | `make lab STAGE=04` → flood |
 | 05 ✏️ | 44–48 | `make gap STAGE=05` | `make lab STAGE=05` → `kvwrite/kvstatus/kvread` |

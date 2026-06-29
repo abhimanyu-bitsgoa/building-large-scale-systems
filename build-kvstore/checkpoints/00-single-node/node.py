@@ -47,5 +47,5 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=5001, help="Port to run on")
     parser.add_argument("--id", type=int, default=1, help="Node ID")
     args = parser.parse_args()
-    print(f"🚀 Node {args.id} starting on port {args.port}")
+    print(f"Node {args.id} starting on port {args.port}")
     uvicorn.run(app, host="0.0.0.0", port=args.port)

@@ -22,9 +22,9 @@ if os.path.exists(fn):
 print("\n  Build-a-KVStore — progress\n")
 for sid, name in STAGES:
     if sid in DEMO:
-        print(f"   🖥️   {sid}  {name} (demo)")
+        print(f"   {sid}  {name} (demo)")
         continue
-    mark = "✅" if progress.get(sid, {}).get("pass") else "⬜"
+    mark = "[x]" if progress.get(sid, {}).get("pass") else "[ ]"
     print(f"   {mark}  {sid}  {name}")
 gradeable = [s for s in STAGES if s[0] not in DEMO]
 done = sum(1 for s, _ in gradeable if progress.get(s, {}).get("pass"))

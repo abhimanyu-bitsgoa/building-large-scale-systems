@@ -33,11 +33,11 @@ def perform_catchup(follower_url: str, leader_url: str, timeout: int = 10) -> bo
             timeout=timeout,
         )
         if resp.status_code == 200:
-            print(f"[Catchup] ✅ Follower caught up successfully")
+            print(f"[Catchup] [OK] Follower caught up successfully")
             return True
-        print(f"[Catchup] ❌ Failed to send to follower: {resp.status_code}")
+        print(f"[Catchup] [ERR] Failed to send to follower: {resp.status_code}")
         return False
 
     except requests.exceptions.RequestException as e:
-        print(f"[Catchup] ❌ Error: {e}")
+        print(f"[Catchup] [ERR] Error: {e}")
         return False

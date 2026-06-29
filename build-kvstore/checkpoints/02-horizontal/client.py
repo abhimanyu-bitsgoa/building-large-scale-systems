@@ -85,26 +85,26 @@ def send_request(node_url: str, verbose: bool = False) -> tuple:
         if resp.status_code == 200:
             metrics.record_success(node_url, latency)
             if verbose:
-                print(f"✅ [{node_url}] 200 | Latency: {latency:.2f}ms | Active: {active_reqs}")
+                print(f"[OK]  [{node_url}] 200 | Latency: {latency:.2f}ms | Active: {active_reqs}")
             return True, latency, 200
 
         elif resp.status_code == 429:
             metrics.record_rate_limited(node_url)
             retry_after = resp.headers.get("Retry-After", "?")
             if verbose:
-                print(f"🚫 [{node_url}] 429 RATE LIMITED | Retry-After: {retry_after}s")
+                print(f"[RL]  [{node_url}] 429 RATE LIMITED | Retry-After: {retry_after}s")
             return False, latency, 429
 
         else:
             metrics.record_error(node_url)
             if verbose:
-                print(f"❌ [{node_url}] {resp.status_code} | Latency: {latency:.2f}ms")
+                print(f"[ERR] [{node_url}] {resp.status_code} | Latency: {latency:.2f}ms")
             return False, latency, resp.status_code
 
     except Exception as e:
         metrics.record_error(node_url)
         if verbose:
-            print(f"❌ Failed to reach {node_url}: {e}")
+            print(f"[ERR] Failed to reach {node_url}: {e}")
         return False, 0, 0
 
 # ========================
@@ -123,7 +123,7 @@ def run_client(nodes: list, concurrency: int, requests_limit: int,
         rate_delay: Delay between batches (seconds)
         verbose: Print each request result
     """
-    print(f"🚀 Starting Client")
+    print(f"Starting Client")
     print(f"   Nodes: {nodes}")
     print(f"   Threads: {concurrency}")
     print(f"   Routing: naive round-robin (no load balancer)")
@@ -158,7 +158,7 @@ def run_client(nodes: list, concurrency: int, requests_limit: int,
                     time.sleep(0.01)
 
         except KeyboardInterrupt:
-            print("\n🛑 Client stopped.")
+            print("\nClient stopped.")
 
     print_stats(nodes)
 
@@ -198,11 +198,11 @@ def print_stats(nodes: list):
         p95_latency = calculate_percentile(latencies, 95) if latencies else 0.0
 
         print(f"{node}:")
-        print(f"  ✅ Success: {success}")
-        print(f"  🚫 Rate Limited: {limited}")
-        print(f"  ❌ Errors: {errors}")
-        print(f"  ⏱️  Avg Latency: {avg_latency:.2f}ms")
-        print(f"  ⏱️  P95 Latency: {p95_latency:.2f}ms")
+        print(f"  Success: {success}")
+        print(f"  Rate Limited: {limited}")
+        print(f"  Errors: {errors}")
+        print(f"  Avg Latency: {avg_latency:.2f}ms")
+        print(f"  P95 Latency: {p95_latency:.2f}ms")
         print()
 
     print("=" * 60)
@@ -215,11 +215,11 @@ def print_stats(nodes: list):
     else:
         global_avg = global_p95 = 0.0
 
-    print(f"  ✅ Total Success: {total_success}")
-    print(f"  🚫 Total Rate Limited: {rate_limited}")
-    print(f"  ❌ Total Errors: {total_errors}")
-    print(f"  ⏱️  Global Avg Latency: {global_avg:.2f}ms")
-    print(f"  ⏱️  Global P95 Latency: {global_p95:.2f}ms")
+    print(f"  Total Success: {total_success}")
+    print(f"  Total Rate Limited: {rate_limited}")
+    print(f"  Total Errors: {total_errors}")
+    print(f"  Global Avg Latency: {global_avg:.2f}ms")
+    print(f"  Global P95 Latency: {global_p95:.2f}ms")
     print()
 
 def calculate_percentile(data: list, percentile: float) -> float:
@@ -276,5 +276,5 @@ if __name__ == "__main__":
             verbose=args.verbose
         )
     except KeyboardInterrupt:
-        print("\n🛑 Client stopped.")
+        print("\nClient stopped.")
         print_stats(nodes)

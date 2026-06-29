@@ -75,7 +75,7 @@ def prune_nodes():
                 elapsed = now - node.get("last_heartbeat", 0)
                 
                 if node["status"] == "alive" and elapsed > HEARTBEAT_TIMEOUT:
-                    print(f"💀 [Registry] Node '{node_id}' missed heartbeat ({elapsed:.1f}s)")
+                    print(f"[Registry] Node '{node_id}' missed heartbeat ({elapsed:.1f}s)")
                     nodes[node_id]["status"] = "dead"
                     
                     # Notify coordinator about dead node
@@ -98,11 +98,11 @@ def prune_nodes():
 
 def auto_spawn_node(dead_node_id: str, port: int):
     """Wait and then request coordinator to spawn a replacement node."""
-    print(f"⏳ [Registry] Auto-spawn enabled. Waiting {AUTO_SPAWN_DELAY}s before spawning replacement for {dead_node_id}...")
+    print(f"[Registry] Auto-spawn enabled. Waiting {AUTO_SPAWN_DELAY}s before spawning replacement for {dead_node_id}...")
     time.sleep(AUTO_SPAWN_DELAY)
     
     try:
-        print(f"🔄 [Registry] Requesting coordinator to spawn replacement for {dead_node_id}")
+        print(f"[Registry] Requesting coordinator to spawn replacement for {dead_node_id}")
         resp = requests.post(
             f"{COORDINATOR_URL}/spawn", 
             json={"node_id": dead_node_id, "port": port},
@@ -110,11 +110,11 @@ def auto_spawn_node(dead_node_id: str, port: int):
         )
         if resp.status_code == 200:
             data = resp.json()
-            print(f"✅ [Registry] Spawned {data.get('node_id')} as replacement")
+            print(f"[OK] [Registry] Spawned {data.get('node_id')} as replacement")
         else:
-            print(f"❌ [Registry] Failed to spawn replacement: {resp.status_code}")
+            print(f"[ERR] [Registry] Failed to spawn replacement: {resp.status_code}")
     except Exception as e:
-        print(f"❌ [Registry] Auto-spawn error: {e}")
+        print(f"[ERR] [Registry] Auto-spawn error: {e}")
 
 # Start pruner thread
 pruner_thread = threading.Thread(target=prune_nodes, daemon=True)
@@ -144,7 +144,7 @@ def receive_heartbeat(payload: HeartbeatPayload):
     # (Catchup is handled by the coordinator on /spawn — the registry is pure discovery.)
     with lock:
         if is_new_node:
-            print(f"✅ [Registry] New node '{payload.node_id}' ({payload.role}) at {payload.url}")
+            print(f"[OK] [Registry] New node '{payload.node_id}' ({payload.role}) at {payload.url}")
 
         nodes[payload.node_id] = {
             "node_id": payload.node_id,
@@ -169,7 +169,7 @@ def deregister(payload: DeregisterPayload):
     with lock:
         if payload.node_id in nodes:
             node = nodes[payload.node_id]
-            print(f"👋 [Registry] Node '{payload.node_id}' deregistered")
+            print(f"[Registry] Node '{payload.node_id}' deregistered")
             
             # Auto-spawn if enabled (for followers only)
             if AUTO_SPAWN and node.get("role") == "follower":
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     AUTO_SPAWN = args.auto_spawn
     AUTO_SPAWN_DELAY = args.spawn_delay
     
-    print(f"📋 Starting Registry on port {args.port}")
+    print(f"Starting Registry on port {args.port}")
     print(f"   Coordinator: {args.coordinator}")
     print(f"   Heartbeat timeout: {HEARTBEAT_TIMEOUT}s")
     if AUTO_SPAWN:

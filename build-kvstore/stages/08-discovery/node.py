@@ -112,7 +112,7 @@ def heartbeat_loop():
             # can't detect its death (stage 08) or auto-respawn it (stage 09).
             raise NotImplementedError("STAGE 08: POST a heartbeat to the registry")
         except Exception as e:
-            print(f"[{NODE_ID}] ⚠️ heartbeat not sent yet (implement heartbeat_loop): {e}")
+            print(f"[{NODE_ID}] [WARN] heartbeat not sent yet (implement heartbeat_loop): {e}")
         time.sleep(HEARTBEAT_INTERVAL)
 
 # ========================
@@ -130,7 +130,7 @@ def replicate_to_follower(follower_url: str, key: str, value: str, version: int,
     actual_delay = delay if delay is not None else REPLICATION_DELAY
     
     if actual_delay > 0:
-        print(f"[{NODE_ID}] ⏳ Replicating {key} to {follower_url} (delay: {actual_delay}s)...")
+        print(f"[{NODE_ID}] Replicating {key} to {follower_url} (delay: {actual_delay}s)...")
         time.sleep(actual_delay)
     
     try:
@@ -141,11 +141,11 @@ def replicate_to_follower(follower_url: str, key: str, value: str, version: int,
         )
         if resp.status_code == 200:
             replications_sent += 1
-            print(f"[{NODE_ID}] ✅ Replicated {key} to {follower_url}")
+            print(f"[{NODE_ID}] [OK] Replicated {key} to {follower_url}")
             return True
         return False
     except Exception as e:
-        print(f"[{NODE_ID}] ❌ Replication failed: {e}")
+        print(f"[{NODE_ID}] [ERR] Replication failed: {e}")
         return False
 
 def replicate_sync(sync_followers: List[str], key: str, value: str, version: int) -> dict:
@@ -177,7 +177,7 @@ def replicate_sync(sync_followers: List[str], key: str, value: str, version: int
                     results["sync_acks"] += 1
                     results["sync_acked_by"].append(follower_url)
             except Exception as e:
-                print(f"[{NODE_ID}] ❌ Sync replication error: {e}")
+                print(f"[{NODE_ID}] [ERR] Sync replication error: {e}")
     
     return results
 
@@ -197,7 +197,7 @@ def replicate_async(async_followers: List[str], key: str, value: str, version: i
     # Start background thread
     thread = threading.Thread(target=do_async_replication, daemon=True)
     thread.start()
-    print(f"[{NODE_ID}] 🔄 Queued async replication to {len(async_followers)} followers")
+    print(f"[{NODE_ID}] Queued async replication to {len(async_followers)} followers")
 
 # ========================
 # Middleware
@@ -269,7 +269,7 @@ def store_data(payload: DataPayload):
     data_versions[payload.key] = new_version
     total_writes += 1
     
-    print(f"[{NODE_ID}] 📝 Written {payload.key}={payload.value} (v{new_version})")
+    print(f"[{NODE_ID}] Written {payload.key}={payload.value} (v{new_version})")
     
     # Get follower lists from payload (coordinator specifies sync/async)
     sync_followers = payload.sync_followers or []
@@ -332,7 +332,7 @@ def receive_replication(payload: ReplicatePayload):
         data_store[payload.key] = payload.value
         data_versions[payload.key] = payload.version
         replications_received += 1
-        print(f"[{NODE_ID}] 📥 Replicated: {payload.key}={payload.value} (v{payload.version})")
+        print(f"[{NODE_ID}] Replicated: {payload.key}={payload.value} (v{payload.version})")
         return {"status": "accepted", "node_id": NODE_ID, "version": payload.version}
     else:
         return {"status": "rejected", "reason": "stale_version"}
@@ -342,12 +342,12 @@ def receive_catchup(payload: CatchupPayload):
     """Receive full state from leader (for new followers)."""
     global data_store, data_versions
     
-    print(f"[{NODE_ID}] 📥 Receiving catchup data...")
+    print(f"[{NODE_ID}] Receiving catchup data...")
     
     data_store = payload.data.copy()
     data_versions = payload.versions.copy()
     
-    print(f"[{NODE_ID}] ✅ Catchup complete: {len(data_store)} keys")
+    print(f"[{NODE_ID}] [OK] Catchup complete: {len(data_store)} keys")
     
     return {
         "status": "caught_up",
@@ -364,7 +364,7 @@ def register_follower(payload: dict):
     follower_url = payload.get("url")
     if follower_url and follower_url not in followers:
         followers.append(follower_url)
-        print(f"[{NODE_ID}] ✅ Registered follower: {follower_url}")
+        print(f"[{NODE_ID}] [OK] Registered follower: {follower_url}")
     
     return {"status": "registered", "followers": followers}
 
@@ -434,8 +434,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, graceful_shutdown)
     signal.signal(signal.SIGTERM, graceful_shutdown)
     
-    role_emoji = "👑" if NODE_ROLE == "leader" else "📋"
-    print(f"{role_emoji} Starting {NODE_ROLE.upper()} node '{NODE_ID}' on port {NODE_PORT}")
+    print(f"Starting {NODE_ROLE.upper()} node '{NODE_ID}' on port {NODE_PORT}")
     print(f"   Registry: {REGISTRY_URL}")
     
     # Start heartbeat thread

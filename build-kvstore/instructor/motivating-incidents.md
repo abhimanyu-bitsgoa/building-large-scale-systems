@@ -64,12 +64,25 @@ what Redis's single thread does during `KEYS *`, exactly what a GC pause does to
 lever is *vertical*: give the box more parallel execution (more workers / more cores) so one slow
 request can't hold the door shut for all the others.
 
+**The payoff → scaling *up* is often the whole answer (the real motivation for this stage).** Be
+honest about Cloudflare: it proves the ceiling is **real and brutal**, but it is *not* a "vertical
+scaling cured it" story — the fix was to *kill the bad rule and free the CPU*; no amount of extra
+compute out-runs an exponentially-backtracking regex. For the proof that *scaling up works*, look at
+**Stack Overflow**: one of the busiest sites on earth (~half a billion page views a month) runs on a
+*handful* of servers, with a single SQL primary that takes almost all the load — deliberately idling
+around **5–10% CPU** for headroom. They scaled **up, not out, and never had to shard.** That is the
+motivation for Stage 01: before you reach for distributed systems and all their pain, ask whether a
+bigger box — or simply *using all of its cores* — would do. The everyday version of our `--workers`
+fix is exactly that: `gunicorn`/`uvicorn --workers`, Node's `cluster` module, `nginx
+worker_processes auto` — spend every core on the machine before you reach for a second machine.
+
 **Caveat.** Cloudflare's meltdown was CPU exhaustion *across* many cores; our demo is one worker vs.
-many. The shared structure — *a CPU-bound task starving concurrent work* — is the real, transferable
-idea, not the core count.
+many — and, as above, its *fix* was removing the work, not adding compute. The shared structure —
+*a CPU-bound task starving concurrent work* — is the real, transferable idea, not the core count.
 
 **The arc (→ 02).** A bigger box has a bigger ceiling, but it's still a ceiling — and still one box.
-What happens when that box simply dies?
+Scaling up bought Stack Overflow everything; for others it eventually runs out of "bigger." What
+happens when that box hits its wall, or simply dies?
 
 ---
 
@@ -85,6 +98,14 @@ death — drove a write/read spike the single primary couldn't absorb, and the w
 The "Fail Whale" became a cultural meme precisely *because* the failure was so reliable: one box, one
 point of failure, one capacity wall. Twitter's multi-year re-architecture into many services and
 sharded/replicated storage was, in essence, the move from Stage 01 to everything after it.
+
+**The modern echo (the bridge from Stage 01).** Stack Overflow scaled *up* and it was enough — but
+vertical scaling has a hard edge, and **Figma** found it. For years all of Figma ran on a *single*
+Postgres instance — **the largest box AWS would rent them.** That one machine carried the company to
+millions of users (vertical scaling genuinely *works*) — until it ran out of room money couldn't buy:
+Postgres `VACUUM` reliability problems and the **maximum IOPS RDS supports.** When "buy a bigger box"
+has no bigger box left, you're out of vertical road and the only way forward is *more boxes.* That is
+the exact moment Stage 02 begins.
 
 **The lesson → why this stage exists.** A single node is two problems wearing one coat: a **capacity
 wall** (it can only do so much) and a **single point of failure** (when it's gone, you're gone). The
@@ -332,8 +353,8 @@ operational scars. And now you know where every scar came from."*
 | Stage | The real scar | What it proves you need | Hands the next stage a problem |
 |---|---|---|---|
 | 00 Single node | Redis was born as a dict behind a socket (antirez, 2009) | Prove the data model on one box first | One box gets busy |
-| 01 Vertical scaling | Cloudflare's regex pegs all CPUs (Jul 2 2019) | One CPU-bound op serializes everything → add workers | A bigger box is still one box |
-| 02 Horizontal scaling | Twitter's "Fail Whale" (single primary, ~2008–10) | A node is a capacity wall *and* a SPOF → run several | Split data + blind round-robin |
+| 01 Vertical scaling | Cloudflare regex pegs all CPUs (Jul 2 2019) — the ceiling is real; **Stack Overflow** scaled *up* and never had to shard | Use every core first (more workers) — scaling up is often enough | A bigger box is still one box |
+| 02 Horizontal scaling | Twitter's "Fail Whale" (single primary, ~2008–10); **Figma** outgrows AWS's largest Postgres box (2020→) | A node is a capacity wall *and* a SPOF → run several | Split data + blind round-robin |
 | 03 Load balancing | "The Tail at Scale" (Dean & Barroso, 2013) | Your slowest node sets p99 → route to capacity | Healthy nodes, but too much traffic |
 | 04 Rate limiting | GitHub 1.35 Tbps DDoS (2018) · DynamoDB retry storm (2015) | Floods (external *and* self-inflicted) need an intake valve | Data still lives on one node |
 | 05 Replication | GitLab deletes the primary, loses 6h (Jan 31 2017) | The leader's only copy is one command from gone | Async followers lag |
