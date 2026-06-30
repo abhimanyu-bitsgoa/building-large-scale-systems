@@ -14,10 +14,9 @@ Each stage adds one idea. You don't have to finish all of them — every stage s
 
 | # | Stage | What you learn | You write code? |
 |---|---|---|---|
-| 00 | single node | a KV store is a dict behind HTTP | — |
-| 01 | vertical scaling | one process has a hard ceiling (the GIL) | — |
-| 02 | horizontal scaling | many nodes, and why naive copies diverge | — |
-| 03 | load balancing | round-robin vs. capacity-aware routing | ✏️ |
+| 01 | single node | a KV store is a dict behind HTTP | — |
+| 02 | vertical scaling | one process has a hard ceiling (the GIL) | — |
+| 03 | horizontal scaling + load balancing | many nodes (and why naive copies diverge), then round-robin vs. capacity-aware routing | ✏️ |
 | 04 | rate limiting | protecting a node from floods | ✏️ |
 | 05 | replication | single-leader replication | ✏️ |
 | 06 | synchronous replication | all followers sync → no stale reads | — |
@@ -80,12 +79,12 @@ See your overall progress any time with `make status`.
 
 ---
 
-## Stage 00 — A single node
+## Stage 01 — A single node
 
 A key-value store in its purest form: a Python `dict` behind two HTTP routes.
 
 ```bash
-make lab STAGE=00        # loads stage 00 automatically + opens the dashboard
+make lab STAGE=01        # loads stage 01 automatically + opens the dashboard
 ```
 
 In the **control pane**, write and read a key:
@@ -96,15 +95,15 @@ nread cart               # GET /data/cart  → "shoes"
 ```
 
 When you're ready, press **Enter** in the **incident pane** to confirm the round-trip works (✅).
-Reload this stage by hand any time with `make reset STAGE=00`.
+Reload this stage by hand any time with `make reset STAGE=01`.
 
-## Stage 01 — Vertical scaling
+## Stage 02 — Vertical scaling
 
 One process can only do so much: Python runs your handler on a single thread (the GIL), so under
 concurrent load latency climbs. The fix is more worker processes.
 
 ```bash
-make lab STAGE=01        # loads stage 01: a node with a CPU-load simulator, running 4 workers
+make lab STAGE=02        # loads stage 02: a node with a CPU-load simulator, running 4 workers
 ```
 
 The **incident pane** drives concurrent load and measures latency — press **Enter** there and note
@@ -113,48 +112,32 @@ the check again:
 
 ```bash
 make lab-down
-WORKERS=1 make lab STAGE=01     # same check, one worker → latency spikes
+WORKERS=1 make lab STAGE=02     # same check, one worker → latency spikes
 ```
 
 (The control pane's `nwrite` / `nread` / `nhealth` confirm the node serves. Reload by hand:
-`make reset STAGE=01`.)
+`make reset STAGE=02`.)
 
-## Stage 02 — Horizontal scaling
+## Stage 03 — Horizontal scaling + load balancing ✏️
 
-One box is a single point of failure and a capacity wall, so we run three nodes and have the client
-spread requests across them — by **naive round-robin**, with no load balancer yet.
-
-```bash
-make lab STAGE=02        # loads stage 02: 3 nodes (1 weak, 2 strong) + a control pane
-```
-
-In the control pane, push load across the cluster and watch the weak node drag the tail latency:
-
-```bash
-nload 40 10              # 40 requests, 10 concurrent, naive round-robin
-nwrite a 1              # note: writes land on different nodes — the data is SPLIT across them
-nread a                 # may miss, depending on which node served it
-```
-
-Two lessons to notice: the nodes have **separate** dicts (which motivates replication), and
-round-robin is **blind to capacity** (which motivates the load balancer next). Press **Enter** in the
-incident pane to confirm load is served across the cluster (✅). Reload: `make reset STAGE=02`.
-
-## Stage 03 — Load balancing ✏️
-
-Round-robin sends an equal share to every node, even a slow one, so the slow node drags your tail
-latency. You'll implement a **capacity-aware** strategy that prefers the least-loaded node.
+One box is a single point of failure and a capacity wall, so we go wide: run **three** nodes and
+spread requests across them. But the cluster is *heterogeneous* — one weak node (load 30, 1 worker)
+and two strong ones (load 25, 4 workers) — and the simplest spread, **round-robin by turn**, is blind
+to that. It bombards the weak node with its fair 1/3 share; the weak node queues and the tail latency
+tanks. You'll fix it by implementing a **capacity-aware** strategy that prefers the least-loaded node.
 
 ```bash
 make gap STAGE=03        # load the exercise: AdaptiveStrategy.get_node is left blank
-make lab STAGE=03        # dashboard: 3 node panes + control + incident pane
+make lab STAGE=03        # dashboard: 3 node panes (1 weak, 2 strong) + control + incident pane
 ```
 
-In the control pane, compare the two strategies (adaptive errors until you implement it):
+In the control pane, watch round-robin punish the weak node (adaptive errors until you implement it):
 
 ```bash
-nload round_robin 40 10
-nload adaptive 40 10
+nload round_robin 96 12  # blind 1/3 share lands on the weak node → bad global p95
+nload adaptive 96 12     # (errors until you write the one line below)
+nwrite a 1               # note: writes land on different nodes — the data is SPLIT across them
+nread a                  #   (a key on node 1 isn't on node 2 — this is what motivates replication, stage 05)
 ```
 
 Now implement it: open `kvstore/load_balancer.py` and complete **`AdaptiveStrategy.get_node`** —
@@ -162,11 +145,11 @@ return the node with the lowest load score (one line). Then restart so your chan
 
 ```bash
 make lab-down            # stop the lab so the edit is picked up
-make lab STAGE=03        # your code is preserved; adaptive now beats round-robin
+make lab STAGE=03        # your code is preserved; adaptive now steers around the weak node
 ```
 
-Press **Enter** in the incident pane → ✅ (adaptive p95 < round-robin p95). Stuck? `make reset STAGE=03`
-loads the worked solution.
+Press **Enter** in the incident pane → ✅ (adaptive p95 clearly below round-robin p95). Stuck?
+`make reset STAGE=03` loads the worked solution.
 
 ## Stage 04 — Rate limiting ✏️
 
@@ -323,7 +306,7 @@ itself — the high point of what you build by hand. Reload: `make reset STAGE=0
 ## Stage 10 — The full system (demo)
 
 Stage 10 puts an **edge gateway** in front of everything and ties the whole system together. There's
-no exercise and no check here — it's the synthesis of stages 00–09, and the way to experience it is
+no exercise and no check here — it's the synthesis of stages 01–09, and the way to experience it is
 to drive it yourself.
 
 ```bash

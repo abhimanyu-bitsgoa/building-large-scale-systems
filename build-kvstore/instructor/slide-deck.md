@@ -1,6 +1,6 @@
 # Slide Deck — *Deconstructing the Tenets of Planet-Scale Systems with Python*
 
-> **Scope — read first.** This deck targets the **`build-kvstore/` ladder only**: stages **00–10**,
+> **Scope — read first.** This deck targets the **`build-kvstore/` ladder only**: stages **01–10**,
 > driven by `make lab STAGE=NN` from inside the container. That ladder *is* the workshop the attendees
 > run. The repo's legacy top-level **`labs/`** folder (the older `scalability/` · `replication/` ·
 > `distributed-kvstore/` split, and the `:5000`/`:6000` ports in the root `CLAUDE.md`) is **not** part
@@ -46,7 +46,7 @@ Pair them with [`INSTRUCTOR-GUIDE.md`](INSTRUCTOR-GUIDE.md) (pacing, caveats, ex
 |---|---|---|---|
 | **A. Open** | 1–6 | ~10 min | promise, framing, setup gate |
 | **B. The Tenets (theory)** | 7–20 | ~40 min | the 40%-theory foundation |
-| **C. The Ladder, part 1** | 21–43 | ~45 min | stages 00–04 (incl. 2 code stages) |
+| **C. The Ladder, part 1** | 21–43 | ~45 min | stages 01–04 (incl. 2 code stages) |
 | **— BREAK —** | — | ~10 min | coffee; leave the setup-check slide up |
 | **C. The Ladder, part 2** | 44–67 | ~55 min | stages 05–10 (incl. 2 code stages + climax) |
 | **D. Close** | 68–73 | ~10 min | synthesis, scope honesty, resources |
@@ -225,10 +225,11 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
   the attacker. The valve for that is rate limiting — and the real example, AWS DynamoDB's 2015 retry
   storm, opens S04." (→ S04.)
 
-### Slide 20 — The map: 11 rungs, 11 scars  ⏱ ~2.5m
-- **Show:** The ladder 00→10 as rungs climbing up to the end-state diagram from slide 3. Each rung
-  tagged with its company scar (Redis · Cloudflare · Twitter · Google · GitHub/AWS · GitLab · Facebook
-  · Kafka · Roblox · Netflix · ✦). Mark the 4 ✏️ code rungs (03/04/05/08).
+### Slide 20 — The map: 10 rungs, 11 scars  ⏱ ~2.5m
+- **Show:** The ladder 01→10 as rungs climbing up to the end-state diagram from slide 3. Each rung
+  tagged with its company scar (Redis · Cloudflare · Twitter + Google · GitHub/AWS · GitLab · Facebook
+  · Kafka · Roblox · Netflix · ✦) — rung 03 (horizontal scaling + load balancing) carries two scars.
+  Mark the 4 ✏️ code rungs (03/04/05/08).
 - **Text:** "Every rung is a fix for a real outage."
 - **Say:** "Here's the whole climb. Each rung was added by some real company *after* it cost them an
   outage. We'll tell the failure first, then build the fix. Let's start at the bottom." → transition to
@@ -243,7 +244,7 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 > dashboard) → optional **caveat** → **arc slide** (hand the next stage its problem). The deck frames;
 > the terminal proves. Drive the live parts from [`../LAB-MANUAL.md`](../LAB-MANUAL.md).
 
-## Stage 00 — Single node · *the origin story*  ·  slides 21–23  ·  ~3m
+## Stage 01 — Single node · *the origin story*  ·  slides 21–23  ·  ~3m
 
 ### Slide 21 — Scar: Redis was born as a dict behind a socket  ⏱ ~1.5m
 - **Show:** antirez / early Redis; "LLOOGG, 2009." A doodle: `{ }` behind a TCP plug.
@@ -258,13 +259,13 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 - **Say:** "That's the whole data model. We keep it boring on purpose — it's the control variable for
   everything we add. You earn distribution by first proving the model on one box."
 
-### Slide 23 — [LIVE] Stage 00 round-trip  ⏱ ~0.5m
-- **Do [LIVE]:** `make lab STAGE=00` → in the control pane: `nwrite cart shoes` then `nread cart` →
+### Slide 23 — [LIVE] Stage 01 round-trip  ⏱ ~0.5m
+- **Do [LIVE]:** `make lab STAGE=01` → in the control pane: `nwrite cart shoes` then `nread cart` →
   press **Enter** in the incident pane (✅).
 - **Text (held):** "One box. It works. Now let's make it busy."
 - **Arc:** "One box is wonderful right up until it's busy. Let's make it busy."
 
-## Stage 01 — Vertical scaling · *the ceiling is real — and scaling up is often enough*  ·  slides 24–27 (+26b)  ·  ~7m
+## Stage 02 — Vertical scaling · *the ceiling is real — and scaling up is often enough*  ·  slides 24–27 (+26b)  ·  ~7m
 
 ### Slide 24 — Scar: Cloudflare, July 2 2019  ⏱ ~2m
 - **Show:** The Cloudflare status page / a CPU-pegged-at-100% graph. "Global 502s · ~30 min · one
@@ -284,11 +285,11 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
   more workers so one slow request can't hold the door shut."
 
 ### Slide 26 — [LIVE] 4 workers vs. 1 worker  ⏱ ~1.5m
-- **Do [LIVE]:** `make lab STAGE=01` → Enter in incident pane, note p95 (✅). Then `make lab-down` →
-  `WORKERS=1 make lab STAGE=01` → Enter again → latency spikes. *Feel* the ceiling.
+- **Do [LIVE]:** `make lab STAGE=02` → Enter in incident pane, note p95 (✅). Then `make lab-down` →
+  `WORKERS=1 make lab STAGE=02` → Enter again → latency spikes. *Feel* the ceiling.
 - **Text (held):** "Same code. 4 workers vs 1. Watch p95."
 
-### Slide 26b — Payoff: scaling *up* is often the whole answer  ⏱ ~1.5m  ← the real Stage-01 motivation
+### Slide 26b — Payoff: scaling *up* is often the whole answer  ⏱ ~1.5m  ← the real Stage-02 motivation
 - **Show:** Stack Overflow logo + "a handful of servers." A fat single box at ~5–10% CPU with huge
   headroom; "560M+ page views/month · never sharded the main DB." (Cite: Nick Craver, 2016.)
 - **Text:** "Scale up first. You might never need more."
@@ -308,7 +309,12 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
   out (that's Figma, next). A bigger box is still *one box*. What happens when it hits its wall, or
   simply dies?"
 
-## Stage 02 — Horizontal scaling · *the Fail Whale — and the day vertical ran out*  ·  slides 28–30 (+28b)  ·  ~5m
+## Stage 03 — Horizontal scaling + load balancing ✏️ · *go wide — then pay the tail-at-scale tax*  ·  slides 28–35 (+28b)  ·  ~17m
+
+> **Two-act stage (merged horizontal scaling + load balancing).** Act 1 (slides 28–30): go wide to 3
+> heterogeneous nodes and watch blind round-robin bombard the weak node (and the data split). Act 2
+> (slides 31–35): implement adaptive routing so traffic flows to capacity and the tail recovers. One
+> `make lab STAGE=03` throughout; the red→green is `nload round_robin 96 12` vs `nload adaptive 96 12`.
 
 ### Slide 28 — Scar: Twitter's single primary  ⏱ ~1.5m
 - **Show:** The actual Fail Whale image. "One Rails app, one MySQL primary, ~2008–10."
@@ -316,7 +322,7 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 - **Say:** Hook (verbatim): "For two years the most famous image in tech was a whale lifted by birds —
   Twitter's Fail Whale. It showed up every time one overloaded stack couldn't take the spike."
 
-### Slide 28b — Bridge: Figma, when the biggest box isn't big enough  ⏱ ~1m  ← the link from Stage 01
+### Slide 28b — Bridge: Figma, when the biggest box isn't big enough  ⏱ ~1m  ← the link from Stage 02
 - **Show:** "Figma: one Postgres on AWS's *largest* instance (2020)." A box with a hard ceiling line;
   "VACUUM stalls · max RDS IOPS." Arrow → "more boxes."
 - **Text:** "Stack Overflow scaled up and won. Figma scaled up and *ran out*."
@@ -324,7 +330,7 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
   *all* of Figma ran on a single Postgres — the largest box AWS would rent them. It carried them to
   millions of users… until it hit limits money couldn't buy past: VACUUM reliability and the max IOPS
   RDS supports. When 'buy a bigger box' has no bigger box, the only way forward is *more* boxes. That's
-  the moment Stage 02 begins."
+  the moment Stage 03 begins."
 
 ### Slide 29 — Concept: more nodes — but now the bills come due  ⏱ ~1.5m
 - **Show:** 3 nodes appear with *3 separate dicts*. Two red flags: "split, not shared" and "round-robin
@@ -332,15 +338,16 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 - **Text:** "3 nodes · 3 separate dicts · blind round-robin."
 - **Say:** "A node is two problems in one coat: a capacity wall *and* a single point of failure. So run
   three. But notice the new pain — three separate dicts means data is *split, not shared*, and blind
-  round-robin feeds the weak node anyway. Stage 02 doesn't *solve* anything; it reveals the two bills:
-  replication (05) and load balancing (03)."
+  round-robin feeds the weak node anyway. Going wide reveals two bills: **replication** (data is split →
+  paid at 05) and **load balancing** (round-robin is blind → we pay it in Act 2, right now)."
 
-### Slide 30 — [LIVE] watch the data split  ⏱ ~1m
-- **Do [LIVE]:** `make lab STAGE=02` → `nload 40 10` (weak node drags p95); `nwrite a 1`, then
-  `nread a` (may miss — data is split). Enter in incident pane (✅).
+### Slide 30 — [LIVE] watch round-robin punish the weak node  ⏱ ~1m
+- **Do [LIVE]:** `make lab STAGE=03` → `nload round_robin 96 12` (weak node drags the global p95);
+  `nwrite a 1`, then `nread a` (may miss — data is split across nodes). Note the bad p95 — we fix it in
+  Act 2.
 - **Arc:** "More nodes — but they're not equal, and round-robin doesn't know that."
 
-## Stage 03 — Load balancing ✏️ · *the tail-at-scale tax*  ·  slides 31–35  ·  ~12m
+### — Act 2: route by capacity (load balancing) —
 
 ### Slide 31 — Scar: "The Tail at Scale" (Dean & Barroso, 2013)  ⏱ ~2m
 - **Show:** The fan-out diagram from the paper; one slow node poisoning the response. p99 histogram.
@@ -363,9 +370,9 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 - **Do:** `make gap STAGE=03` (loads the blank); rescue is `make reset STAGE=03`.
 
 ### Slide 34 — [LIVE] the tax appears, then vanishes  ⏱ ~2.5m
-- **Do [LIVE]:** `make lab STAGE=03` → `nload round_robin 40 10` vs `nload adaptive 40 10`. The weak
+- **Do [LIVE]:** `make lab STAGE=03` → `nload round_robin 96 12` vs `nload adaptive 96 12`. The weak
   node's tax shows under round-robin and disappears under adaptive. Enter in incident pane (✅:
-  adaptive p95 < round-robin p95).
+  adaptive p95 clearly below round-robin p95).
 - **Text (held):** "round_robin vs adaptive — watch p95."
 
 ### Slide 35 — Arc  ⏱ ~0.5m
@@ -686,10 +693,9 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 
 | Stage | Slides | Load | Live (dashboard) |
 |---|---|---|---|
-| 00 | 21–23 | (auto) | `make lab STAGE=00` → `nwrite` / `nread` |
-| 01 | 24–27 (+26b) | (auto) | `make lab STAGE=01`; then `WORKERS=1 make lab STAGE=01` |
-| 02 | 28–30 (+28b) | (auto) | `make lab STAGE=02` → `nload 40 10` |
-| 03 ✏️ | 31–35 | `make gap STAGE=03` | `make lab STAGE=03` → `nload round_robin/adaptive 40 10` |
+| 01 | 21–23 | (auto) | `make lab STAGE=01` → `nwrite` / `nread` |
+| 02 | 24–27 (+26b) | (auto) | `make lab STAGE=02`; then `WORKERS=1 make lab STAGE=02` |
+| 03 ✏️ | 28–35 (+28b) | `make gap STAGE=03` | `make lab STAGE=03` → `nload round_robin 96 12` vs `nload adaptive 96 12` |
 | 04 ✏️ | 36–43 | `make gap STAGE=04` | `make lab STAGE=04` → flood |
 | 05 ✏️ | 44–48 | `make gap STAGE=05` | `make lab STAGE=05` → `kvwrite/kvstatus/kvread` |
 | 06 | 49–52 | (auto) | `make lab STAGE=06` → `kvwrite/kvread` |

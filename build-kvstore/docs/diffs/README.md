@@ -2,9 +2,9 @@
 
 This is the story of the system you build. Each stage adds **one capability**, and every
 addition is forced by a problem you can *watch* the previous stage fail at (the `make incident
-STAGE=NN` check). Read this top to bottom and the eleven checkpoints should feel like a single
+STAGE=NN` check). Read this top to bottom and the ten checkpoints should feel like a single
 arc — a dict behind HTTP growing, one earned step at a time, into a fault-tolerant cluster —
-not eleven unrelated programs.
+not ten unrelated programs.
 
 Two of the steps are big enough to be **new chapters** (they add whole files and reshape the
 node); those get their own deep-dives, linked below. The rest are small, and several add *no
@@ -15,12 +15,12 @@ solution code at all* — they're a config flip plus a new thing to observe.
 > identical to the previous one — the stage is about configuration and observation, not new code.
 
 ```
-00 ─ 01 ─ 02 ─ 03 ─ 04 ║ 05 ─ 06 ─ 07 ║ 08 ─ 09 ─ 10
- a dict   one box, then  ║  one logical  ║  the cluster heals
- behind   many boxes     ║  store across ║  itself, then gets
- HTTP     + a balancer   ║  many boxes   ║  an edge (the gateway)
-                         ║  (replication)║  (discovery)
-        CHAPTER 1 boundary ↑           CHAPTER 2 boundary ↑
+01 ─ 02 ─ 03 ─ 04 ║ 05 ─ 06 ─ 07 ║ 08 ─ 09 ─ 10
+ a dict   one box, then ║  one logical  ║  the cluster heals
+ behind   many boxes    ║  store across ║  itself, then gets
+ HTTP     + a balancer  ║  many boxes   ║  an edge (the gateway)
+                        ║  (replication)║  (discovery)
+       CHAPTER 1 boundary ↑           CHAPTER 2 boundary ↑
 ```
 
 A through-line worth noticing before you start: **the load balancer and rate limiter appear in
@@ -35,11 +35,11 @@ across followers) rather than back onto a client. See
 
 ---
 
-## 00 → 01 — find the ceiling of a single box
+## 01 → 02 — find the ceiling of a single box
 
 - **Diff:** `node.py` only. Adds a CPU-load simulator (`simulate_cpu_load`, a deliberately naive
   recursive Fibonacci) and a `--workers` flag.
-- **Why:** Stage 00 is a key-value store in its purest form — a Python `dict` behind two HTTP
+- **Why:** Stage 01 is a key-value store in its purest form — a Python `dict` behind two HTTP
   routes. The first question any system faces is *how far does one box go?* The Fibonacci load is
   a stand-in for real CPU work (think a `KEYS *` scan or a big serialization in Redis); under
   concurrency a single worker serializes on Python's GIL and latency falls off a cliff. Adding
@@ -48,35 +48,28 @@ across followers) rather than back onto a client. See
 - **Anchor:** Redis executes commands on one thread on purpose; you run more instances to use
   more cores. The GIL gives us that same one-thread constraint for free.
 
-## 01 → 02 — one box becomes many
+## 02 → 03 — many boxes, then route by capacity *(merged: horizontal scaling + load balancing)*
 
-- **Diff:** Adds `client.py` — and *only* `client.py`. There is **no load balancer yet**: the
-  client spreads requests across the three nodes by **naive round-robin**, a single inline counter
-  (`node = nodes[i % len(nodes)]`). `node.py` is unchanged in spirit — you just run three of it.
-- **Why:** A single box is both a capacity wall *and* a single point of failure. The cure is
-  **horizontal scaling**: run N nodes and spread requests across them. The simplest possible spread
-  is round-robin by turn, so that's where we start.
-- **The pain it sets up (stage 03):** the three nodes are *heterogeneous* — one weak (1 worker), two
-  strong (4 workers). Round-robin is blind to that, so a third of the traffic piles onto the slow
-  node and the tail latency suffers. Run `nload 40 10` and watch node-1 drag the global p95.
-- **The other catch (sets up stage 05):** these three nodes have *separate* dicts. Horizontal
-  scaling naively **splits your data** — a key written to node 1 isn't on node 2. Hold that thought;
-  it's the whole reason replication exists.
+This stage does two things at once, because they're the same story: going wide, and then routing
+across the wide cluster intelligently.
 
-## 02 → 03 — route by capacity, not by turn
-
-- **Diff:** **`load_balancer.py` appears** — this is the stage that introduces it. It brings the
-  strategy pattern (`RoundRobinStrategy`, `AdaptiveStrategy`, power-of-two, weighted, random), and
-  `client.py` is rewired to route through a `LoadBalancer` selected with `--strategy` instead of its
-  old inline counter.
-- **The exercise:** in the gapped start (`make gap STAGE=03`) you implement the one line at the
-  heart of `AdaptiveStrategy.get_node` — pick the node with the lowest score (latency + in-flight
-  load).
-- **Why:** Round-robin (stage 02) is blind: it sends an equal share to a node that's already
-  drowning. Adaptive routing watches each node and steers away from the slow one. Compare
-  `nload round_robin 40 10` vs `nload adaptive 40 10` on the heterogeneous cluster — the difference
-  in p95 is dramatic and visible. (This is **client-side** load balancing; see
-  [`load-balancing-client-vs-server.md`](../load-balancing-client-vs-server.md).)
+- **Diff:** Adds **`client.py`** and **`load_balancer.py`** — you run **three** nodes and the client
+  routes across them through a `LoadBalancer` selected with `--strategy`. The balancer brings the
+  strategy pattern (`RoundRobinStrategy`, `AdaptiveStrategy`, power-of-two, weighted, random).
+- **Why go wide:** a single box is both a capacity wall *and* a single point of failure. The cure is
+  **horizontal scaling**: run N nodes and spread requests across them.
+- **The red — round-robin is blind:** the three nodes are *heterogeneous* — one weak (load 30, 1
+  worker), two strong (load 25, 4 workers). The simplest spread, **round-robin by turn**, ignores
+  that: it bombards the weak node with its fair 1/3 share, the weak node queues, and the global p95
+  tanks. Run `nload round_robin 96 12` and watch node-1 drag the tail.
+- **The green — the exercise:** in the gapped start (`make gap STAGE=03`) you implement the one line
+  at the heart of `AdaptiveStrategy.get_node` — pick the node with the lowest score (latency +
+  in-flight load). Adaptive watches each node and steers away from the weak one. Compare
+  `nload adaptive 96 12` — the p95 recovers, reproducibly. (This is **client-side** load balancing;
+  see [`load-balancing-client-vs-server.md`](../load-balancing-client-vs-server.md).)
+- **The catch it sets up (stage 05):** these three nodes have *separate* dicts. Horizontal scaling
+  naively **splits your data** — a key written to node 1 isn't on node 2. Hold that thought; it's the
+  whole reason replication exists.
 - **Anchor:** least-connections / power-of-two-choices (Nginx, HAProxy, Netflix).
 
 ## 03 → 04 — protect the node from a flood
@@ -101,7 +94,7 @@ This is the first big jump, and it has its own deep-dive: **[04-to-05-replicatio
   A brand-new **`coordinator.py`** appears in front: it takes every write, applies it to the leader,
   waits for `W` follower acks, and answers reads from `R` followers. The client now talks to the
   coordinator, not to individual nodes.
-- **Why:** stage 02 left us with N independent dicts — data split across boxes, no safety. **Single-
+- **Why:** stage 03 left us with N independent dicts — data split across boxes, no safety. **Single-
   leader replication** turns N boxes into *one logical store with N copies*: write once, it lands on
   every replica, so any node can serve it and a node dying doesn't lose data.
 - **The exercise:** implement the core of `replicate_to_follower` — the one POST that *is*
@@ -185,7 +178,7 @@ The second big jump, with its own deep-dive: **[07-to-08-discovery.md](07-to-08-
   [`../load-balancing-client-vs-server.md`](../load-balancing-client-vs-server.md)). In a larger
   deployment you'd run several coordinators/leaders behind the gateway, and *that's* where a
   gateway-side balancer would earn its keep.
-- **No incident — this is a demo.** Stage 10 is the synthesis of everything built in 00–09, driven by
+- **No incident — this is a demo.** Stage 10 is the synthesis of everything built in 01–09, driven by
   hand: `make lab STAGE=10`, then trace one request through the whole stack (gateway → coordinator →
   leader → followers), shed load at the edge, and kill a follower to watch the cluster self-heal while
   reads stay fresh. There's nothing new to *implement* and nothing to discriminate, so there's no
@@ -195,11 +188,11 @@ The second big jump, with its own deep-dive: **[07-to-08-discovery.md](07-to-08-
 
 ## The arc in one paragraph
 
-You start with a dict behind HTTP (00) and find the single-box ceiling (01). You go wide with
-many nodes and a balancer (02–04) — and discover that wide-but-independent means split, unsafe
+You start with a dict behind HTTP (01) and find the single-box ceiling (02). You go wide with
+many nodes and a balancer (03–04) — and discover that wide-but-independent means split, unsafe
 data. So you make the nodes *one logical store* with single-leader replication (05), tune the
 quorum so reads can't go stale (06), and decide what to do when nodes die (07). To recover from
 death you must first detect it, so you add heartbeat-based discovery (08), then automatic respawn
 and catchup (09). Finally you put a real edge in front — a rate-limiting gateway — and step into
-the SRE's chair to debug the system you built (10). Eleven steps, one store, every step earned by
+the SRE's chair to debug the system you built (10). Ten steps, one store, every step earned by
 a failure you watched.

@@ -53,7 +53,7 @@ rsync -a --delete \
 3. Verify it boots standalone:
    - `docker compose up -d`
    - `docker compose exec workshop bash -c 'make validate'` → expect **18/18**
-   - `docker compose exec workshop bash -c 'make start && make up STAGE=00'` (sanity)
+   - `docker compose exec workshop bash -c 'make start && make up STAGE=01'` (sanity)
 4. Confirm `README.md` points at `LAB-MANUAL.md` and that no file links into `instructor/`
    (it's gone): `grep -rn "instructor/" .` should return nothing.
 5. On GitHub: push, then **Settings → Template repository → ✅** so attendees get "Use this template".

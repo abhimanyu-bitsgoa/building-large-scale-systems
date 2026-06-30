@@ -5,7 +5,7 @@
 
 ## 1. Goal & scope
 
-Turn the three disjoint labs into **one narrative system** built across ~11 stages (00→10),
+Turn the three disjoint labs into **one narrative system** built across ~10 stages (01→10),
 from a single in-memory node to a Redis-/Dynamo-like distributed KV store. Each stage
 transition is justified by a **red→green incident script** that breaks on the previous
 checkpoint and passes on the next. Attendees work in one evolving directory and can
@@ -29,8 +29,8 @@ faithful/random quorum rewrite (v1 keeps the deterministic port-pinned model).
 ```
 build-kvstore/
   README.md  LAB-MANUAL.md  Makefile  .gitignore   # attendee-facing
-  kvstore/                 # evolving working dir (gitignored; seeded from checkpoints/00)
-  checkpoints/00-…/ … /10-full-system/   # frozen, complete, known-good snapshots
+  kvstore/                 # evolving working dir (gitignored; seeded from checkpoints/01)
+  checkpoints/01-…/ … /10-full-system/   # frozen, complete, known-good snapshots
   stages/                  # gapped starting points — only the 5 code stages (03,04,05,06,08)
   incidents/_harness.py + incident_01…09  (stage 10 is a demo, no incident)
   tools/up.sh down.sh status.py validate_ladder.sh snapshot.sh
@@ -42,15 +42,14 @@ build-kvstore/
 
 ## 4. Stage ladder
 
-Ports: **00–04 → `5001+`** (single service tier); **05–10 → `registry 9000 / coordinator 7000 / gateway 8000`**.
+Ports: **01–04 → `5001+`** (single service tier); **05–10 → `registry 9000 / coordinator 7000 / gateway 8000`**.
 Port shifts coincide with the two architecture jumps.
 
 | # | Checkpoint | Reuse source | Feature | Attendee action | Code gap |
 |---|---|---|---|---|---|
-| 00 | single-node | scalability `node.py` (trim) | KV behind HTTP | type/read together | — |
-| 01 | vertical | + load-sim & `--workers` | single-thread ceiling (GIL≈Redis) | config | — |
-| 02 | horizontal | + `client.py` (naive inline round-robin, no LB) | N nodes, dumb spread | config | — |
-| 03 | load-balancing | + `load_balancer.py` (strategy pattern) | smart client-side LB | write `AdaptiveStrategy.get_node` | ✅ |
+| 01 | single-node | scalability `node.py` (trim) | KV behind HTTP | type/read together | — |
+| 02 | vertical | + load-sim & `--workers` | single-thread ceiling (GIL≈Redis) | config | — |
+| 03 | horizontal + load-balancing | + `client.py` + `load_balancer.py` (strategy pattern) | go wide (N heterogeneous nodes); round-robin is blind → smart client-side LB | write `AdaptiveStrategy.get_node` | ✅ |
 | 04 | rate-limit | + `rate_limiter.py` | protect the node | write `FixedWindow.is_allowed` | ✅ |
 | 05 | replication | replication `coordinator.py`+`node.py` (trim quorum) | single-leader replication | write `replicate_to_follower` | ✅ |
 | 06 | sync-replication | *same code as 05* | all followers sync (W=N) → no stale reads | config (raise W to N: W=3,R=1) | — |
@@ -66,7 +65,7 @@ forwards to a single coordinator, so `load_balancer.py` ships in the checkpoint 
 doesn't use it — the load-balancing responsibility now lives server-side in the coordinator's quorum
 routing. Stage 10
 is a 5-min whole-system demo (gateway in front of the cluster) with no incident — it's the synthesis
-of everything built in 00–09, driven by hand.
+of everything built in 01–09, driven by hand.
 
 **Two chapter boundaries (chunky diffs, documented in `docs/diffs/`):** 04→05 (introduce
 coordinator + leader/follower replication) and 07→08 (introduce registry + heartbeats).
@@ -76,18 +75,17 @@ coordinator + leader/follower replication) and 07→08 (introduce registry + hea
 `incidents/_harness.py` exposes `report(stage, name, resolved, detail)` → prints a banner,
 records into `progress.json`, exits `0` (green) / `1` (red). Each `incident_N.py` is black-box.
 
-> Incidents **01–09** are red→green (table below). Stage **00** additionally has
-> `incident_00_smoke.py`, a *baseline smoke test* (write+read round-trip on the single node)
+> Incidents **02–09** are red→green (table below). Stage **01** (single node) additionally has
+> `incident_01_smoke.py`, a *baseline smoke test* (write+read round-trip on the single node)
 > with **no RED counterpart** — nothing precedes it — so it is intentionally **not** part of
-> `validate_ladder.sh` (which checks the 01–09 invariant). It just confirms the foundation works.
+> `validate_ladder.sh` (which checks the 02–09 invariant). It just confirms the foundation works.
 > Stage **10** is a whole-system demo with **no incident** — nothing to discriminate, so it is not
 > in the validator either.
 
 | Incident | Does | RED (prev) | GREEN (this) | Reuses |
 |---|---|---|---|---|
-| 01 choke | flood 1 node, measure p95 | p95 high | p95 low (workers) | new |
-| 02 SPOF | load, kill a node | all fail | cluster serves | new |
-| 03 imbalance | client `--strategy adaptive`, heterogeneous cluster | NotImpl / high p95 | p95 low | client driver |
+| 02 choke | flood 1 node, measure p95 | p95 high | p95 low (workers) | new |
+| 03 imbalance | client `round_robin` vs `adaptive`, heterogeneous cluster (1 weak / 2 strong) | NotImpl (gap) / RR p95 | adaptive p95 < RR×0.9 | client driver |
 | 04 flood | send > limit | no 429s | 429s | `run_rate_limit_test` |
 | 05 durability | write, read other replica | miss | present | read/write |
 | 06 stale | write then immediate read | stale | fresh | `run_stale_read_test` |
@@ -111,8 +109,8 @@ existing Docker container (no host ports — `7000` collides with macOS Control 
    gateway imports made local. Verify the full stack boots. ✅
 3. Subtract backward 09→05: remove gateway → 09; remove auto-spawn+catchup → 08;
    remove registry+heartbeats → 07; 07≡06 (config-only); remove quorum → 05. Verify each boots.
-4. `checkpoints/04…00` from `labs/scalability` (node grows down to a bare dict). Verify each boots.
-5. `incidents/01…09`. 
+4. `checkpoints/04…01` from `labs/scalability` (node grows down to a bare dict). Verify each boots.
+5. `incidents/01…09` (01 = baseline smoke; 02…09 = red→green). 
 6. Gapped `stages/` (03,04,05,06,08) with `raise NotImplementedError("STAGE N: …")` + per-stage README.
 7. Flesh `up.sh`/tmux/`status.py`; rehearse twice.
 
@@ -125,12 +123,12 @@ existing Docker container (no host ports — `7000` collides with macOS Control 
 ## 9. Resolved decisions (2026-06-14)
 
 1. Quorum: keep deterministic port-pinned for v1 + honest caveat slide.
-2. Ports: 00–04 `5001+`, 05–10 KV `7000/8000/9000`.
+2. Ports: 01–04 `5001+`, 05–10 KV `7000/8000/9000`.
 3. Code stages: 03,04,05,06,08.
 4. Boundaries 04→05 and 07→08 accepted as documented chapter breaks.
 5. Docker-only; reuse current container.
 6. `labs/` untouched.
-7. Spec persisted here; stage count 11 (00–10).
+7. Spec persisted here; stage count 10 (01–10).
 
 ## 10. Phase status
 
@@ -144,7 +142,7 @@ existing Docker container (no host ports — `7000` collides with macOS Control 
 | 5 | `stages/` gaps + per-stage guide | ✅ — 4 gaps (03/04/05/08) + `docs/stages.md` |
 | 6 | Makefile/tools + end-to-end smoke | ✅ — start/gap/up/down/incident/reset/status all work |
 
-**The build is complete:** 11 checkpoints, 9 incidents (stages 01–09; stage 10 is a demo), 4 code
+**The build is complete:** 10 checkpoints, 9 incidents (stages 01–09; stage 10 is a demo), 4 code
 gaps, the Makefile toolchain, the per-stage guide, and the bug log — all verified inside the
 container. As of 2026-06-15, `tools/validate_ladder.sh` is a **working regression suite**
 (`make validate`): it boots each checkpoint via its own `up.sh`, asserts `incident_N` GREEN on

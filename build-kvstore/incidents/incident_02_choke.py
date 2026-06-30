@@ -1,4 +1,4 @@
-"""INC-01 (vertical scaling): a single node saturates under concurrent load.
+"""INC-02 (vertical scaling): a single node saturates under concurrent load.
 GREEN when p95 latency stays within budget (i.e. you scaled the node up with --workers)."""
 import os
 import sys
@@ -28,7 +28,7 @@ def main():
         lat = sorted(ex.map(one, range(N)))
     p95 = lat[int(0.95 * (len(lat) - 1))]
     ok = p95 < P95_BUDGET_MS
-    report("01", "Single-node saturation under load", ok,
+    report("02", "Single-node saturation under load", ok,
            f"p95={p95:.0f}ms over {N} concurrent writes (budget {P95_BUDGET_MS}ms) — "
            + ("multiple workers absorb the concurrent load" if ok
               else "a single worker serializes on the GIL; scale up with --workers"))

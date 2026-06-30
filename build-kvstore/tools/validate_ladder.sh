@@ -13,16 +13,17 @@
 #     launched on the *same* topology as the checkpoint — proves the gap matters.
 #   • config/observe stages → the previous checkpoint or a tightened/loosened config
 #     (e.g. 06 red = W=1,R=1; 07 red = all-sync W=3 [stage 06]; 09 red = no auto-spawn).
-#     01 red = the single-worker node (GIL ceiling).
-# Stage 10 is a whole-system *demo* (gateway integration) with no incident, so it is not
-# validated here — it has no red→green discriminator to check.
+#     02 red = the single-worker node (GIL ceiling).
+# Stage 01 (single node) is the baseline — nothing precedes it to break — so it has no
+# red→green discriminator and is not validated here. Stage 10 is a whole-system *demo*
+# (gateway integration) with no incident, so it is not validated here either.
 #
 # Everything runs inside the Docker container. Cleanup uses tools/down.sh (kills by
 # script name AND by workshop port — catches orphaned uvicorn --workers); see SPEC §12
 # for why ad-hoc `pkill -f` is a foot-gun here.
 #
 # Usage:
-#   bash tools/validate_ladder.sh            # full ladder, N=1..10
+#   bash tools/validate_ladder.sh            # full ladder, N=02..09
 #   bash tools/validate_ladder.sh 05 06 07   # only these stages
 
 set -u
@@ -89,7 +90,7 @@ PY
 }
 
 # run_case STAGE EXPECT SEED LAUNCH READY ENV
-#   STAGE  : two-digit incident number (01..09)
+#   STAGE  : two-digit incident number (02..09)
 #   EXPECT : green | red
 #   SEED   : directory to copy into kvstore/  (checkpoints/.. or stages/..)
 #   LAUNCH : "up:NN" | "cmd:<shell>" | "none"
@@ -147,21 +148,19 @@ run_case() {
 declare -A WANT
 add() { WANT["$1"]=1; }
 if [ "$#" -gt 0 ]; then for s in "$@"; do add "$(printf '%02d' "$((10#$s))")"; done
-else for s in 01 02 03 04 05 06 07 08 09; do add "$s"; done; fi
+else for s in 02 03 04 05 06 07 08 09; do add "$s"; done; fi
 run() { [ -n "${WANT[$1]:-}" ] && run_case "$@"; }
 
 echo "Validating the build-kvstore ladder (GREEN on checkpoint N, RED on the before-state)"
 echo
 
-# 01 vertical scaling — green: --workers 4; red: single worker (GIL serializes)
-run 01 green checkpoints/01-vertical            "up:01" "http:http://localhost:5001/health" ""
-run 01 red   checkpoints/01-vertical            "cmd:python node.py --port 5001 --id 1 --load-factor 30 --workers 1" "http:http://localhost:5001/health" ""
+# 02 vertical scaling — green: --workers 4; red: single worker (GIL serializes)
+run 02 green checkpoints/02-vertical            "up:02" "http:http://localhost:5001/health" ""
+run 02 red   checkpoints/02-vertical            "cmd:python node.py --port 5001 --id 1 --load-factor 30 --workers 1" "http:http://localhost:5001/health" ""
 
-# 02 horizontal scaling — green: 3 nodes; red: single node (rest unreachable)
-run 02 green checkpoints/02-horizontal          "up:02" "http:http://localhost:5003/health" ""
-run 02 red   checkpoints/00-single-node         "up:00" "http:http://localhost:5001/health" ""
-
-# 03 adaptive LB — green: implemented; red: gapped AdaptiveStrategy (NotImplementedError)
+# 03 horizontal scaling + adaptive load balancing — 3 heterogeneous nodes; green: adaptive
+#    routes around the weak node and beats round-robin p95; red: gapped AdaptiveStrategy
+#    (NotImplementedError) so adaptive can't be measured.
 run 03 green checkpoints/03-load-balancing      "up:03" "http:http://localhost:5003/health" ""
 run 03 red   stages/03-load-balancing           "up:03" "http:http://localhost:5003/health" ""
 

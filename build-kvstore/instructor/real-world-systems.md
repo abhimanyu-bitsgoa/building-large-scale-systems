@@ -4,11 +4,11 @@ Each stage of the KV-store workshop maps directly to battle-tested patterns in p
 
 ---
 
-## Stage 00 — Single Node: A Dict Behind HTTP
+## Stage 01 — Single Node: A Dict Behind HTTP
 
 **Real-world example: Redis (single-instance mode)**
 
-Redis at its core is an in-memory hash-map exposed over a TCP protocol (RESP). When you run `redis-server` on a single box, it is fundamentally a dictionary behind a network interface — exactly what Stage 00 builds over HTTP. Every `GET key` → hash lookup, every `SET key value` → hash insertion. Memcached follows the same model: an in-memory hash table behind a text/binary protocol.
+Redis at its core is an in-memory hash-map exposed over a TCP protocol (RESP). When you run `redis-server` on a single box, it is fundamentally a dictionary behind a network interface — exactly what Stage 01 builds over HTTP. Every `GET key` → hash lookup, every `SET key value` → hash insertion. Memcached follows the same model: an in-memory hash table behind a text/binary protocol.
 
 **Why this matters:** Almost every caching layer in production (Instagram's cache tier, Twitter's timeline cache, GitHub's session store) started as "a dictionary behind a network endpoint." The simplicity is the point — you prove the data model works before worrying about scale.
 
@@ -16,13 +16,13 @@ Redis at its core is an in-memory hash-map exposed over a TCP protocol (RESP). W
 
 ---
 
-## Stage 01 — Vertical Scaling: The Single-Thread Ceiling
+## Stage 02 — Vertical Scaling: The Single-Thread Ceiling
 
 **Real-world example: Redis's deliberate single-threaded design**
 
 Redis famously runs your commands on **one thread**. Salvatore Sanfilippo (antirez) chose this deliberately: a single thread means zero lock contention, predictable latencies, and atomic operations for free. But it also means one CPU core is your ceiling — if your command is CPU-heavy (a large `SORT`, `KEYS *`, or a Lua script), every other client waits.
 
-**How Redis scales vertically:** Redis 6.0+ introduced **I/O threads** (multi-threaded I/O for parsing and writing, but still single-threaded command execution). This is exactly analogous to Stage 01 running multiple `uvicorn` workers behind the GIL — the GIL serializes Python execution just like Redis serializes command execution, and you scale by running multiple workers/processes on the same box.
+**How Redis scales vertically:** Redis 6.0+ introduced **I/O threads** (multi-threaded I/O for parsing and writing, but still single-threaded command execution). This is exactly analogous to Stage 02 running multiple `uvicorn` workers behind the GIL — the GIL serializes Python execution just like Redis serializes command execution, and you scale by running multiple workers/processes on the same box.
 
 **Also see:**
 - **Node.js** has the same single-thread model (the event loop). You scale vertically with the `cluster` module, which forks worker processes — same box, more cores.
@@ -30,9 +30,9 @@ Redis famously runs your commands on **one thread**. Salvatore Sanfilippo (antir
 
 **Real-world example: Stack Overflow — vertical scaling as a deliberate *end state* (not a stopgap)**
 
-Not every system that scales up is on its way to a distributed rewrite. Stack Overflow serves one of the busiest sites on earth — ~half a billion page views a month — from a *handful* of powerful servers, with a single SQL Server primary carrying almost all the load (per Nick Craver's 2016 architecture posts: ~768 GB RAM, multi-TB PCIe SSD) and idling around **5–10% CPU** for headroom. They've accidentally served the whole site on a *single* web server and survived. They scaled **up, not out**, and never sharded the main database. The lesson Stage 01 borrows: *vertical scaling is a legitimate destination, not just a phase before "real" architecture* — for a huge range of workloads, one big, well-fed box is the whole answer.
+Not every system that scales up is on its way to a distributed rewrite. Stack Overflow serves one of the busiest sites on earth — ~half a billion page views a month — from a *handful* of powerful servers, with a single SQL Server primary carrying almost all the load (per Nick Craver's 2016 architecture posts: ~768 GB RAM, multi-TB PCIe SSD) and idling around **5–10% CPU** for headroom. They've accidentally served the whole site on a *single* web server and survived. They scaled **up, not out**, and never sharded the main database. The lesson Stage 02 borrows: *vertical scaling is a legitimate destination, not just a phase before "real" architecture* — for a huge range of workloads, one big, well-fed box is the whole answer.
 
-**The everyday mechanism — workers = cores.** The boring, universal version of Stage 01's `--workers` fix is to use *every core on the box*: `gunicorn`/`uvicorn --workers N`, Node.js's `cluster` module, `nginx worker_processes auto`. A single-process server pins one core; running W workers spreads load across W cores on the same machine. That's the literal move our `--workers 4` vs `WORKERS=1` demonstrates — and the first lever you reach for before adding a second machine.
+**The everyday mechanism — workers = cores.** The boring, universal version of Stage 02's `--workers` fix is to use *every core on the box*: `gunicorn`/`uvicorn --workers N`, Node.js's `cluster` module, `nginx worker_processes auto`. A single-process server pins one core; running W workers spreads load across W cores on the same machine. That's the literal move our `--workers 4` vs `WORKERS=1` demonstrates — and the first lever you reach for before adding a second machine.
 
 > **A Redis nuance worth saying out loud:** because Redis is single-threaded, it gets *nothing* from more cores — its vertical levers are a **faster** core (clock speed) and **more RAM**, and most deployments run one instance and never shard. Redis is the perfect "single-thread ceiling" anchor, but don't cite it as proof that *throughput scales with compute* — it doesn't. Stack Overflow and "workers = cores" carry that argument.
 
@@ -60,7 +60,7 @@ Other Redis commands that exhibit this:
 
 Node.js is single-threaded like Redis. If a request handler does something CPU-intensive — JSON parsing a 50MB payload, image resizing, bcrypt hashing, PDF generation — it blocks the event loop, and every other request queues behind it. The Node.js documentation calls this *"the danger of event loop blocking."*
 
-Companies like PayPal and Netflix explicitly offload CPU-heavy work to worker threads (Node's `worker_threads` module) or external processes — the same pattern as Stage 01's multi-worker fix.
+Companies like PayPal and Netflix explicitly offload CPU-heavy work to worker threads (Node's `worker_threads` module) or external processes — the same pattern as Stage 02's multi-worker fix.
 
 **3. Garbage collection pauses — the JVM "stop the world"**
 
@@ -73,9 +73,9 @@ A GC pause is structurally identical to the Fibonacci choke: a CPU-bound operati
 
 **4. TLS handshake storms — CPU choking at the edge**
 
-When Cloudflare or an Nginx proxy handles thousands of new TLS connections per second, the asymmetric cryptography (RSA/ECDSA key exchange) is pure CPU work. During traffic spikes, TLS handshakes can saturate a single core and queue incoming connections. Cloudflare moved to hardware crypto offload and multi-process `nginx` workers to parallelize — the exact same "vertical scaling" solution as Stage 01.
+When Cloudflare or an Nginx proxy handles thousands of new TLS connections per second, the asymmetric cryptography (RSA/ECDSA key exchange) is pure CPU work. During traffic spikes, TLS handshakes can saturate a single core and queue incoming connections. Cloudflare moved to hardware crypto offload and multi-process `nginx` workers to parallelize — the exact same "vertical scaling" solution as Stage 02.
 
-**5. Heterogeneous nodes in production — the Stage 02/03 weak node**
+**5. Heterogeneous nodes in production — the Stage 03 weak node**
 
 The workshop runs node-1 with `--workers 1` (weak) and nodes 2–3 with `--workers 4` (strong), all with the same `--load-factor 28`. This heterogeneity isn't contrived either:
 
@@ -94,13 +94,13 @@ The Fibonacci function is a **synthetic stand-in**, but the phenomenon it produc
 
 ---
 
-## Stage 02 — Horizontal Scaling: More Nodes, Diverging Copies
+## Stage 03 — Horizontal Scaling + Load Balancing: More Nodes, Then Routing by Capacity
 
 **Real-world example: Early Memcached clusters / naive Redis multi-node**
 
 Before Redis Cluster existed, teams ran multiple independent Redis instances. Each node held a *different subset* of data — there was no automatic data sharing. If you wrote `user:123` to node A, reading from node B returned nothing. The data was split, not replicated.
 
-This is exactly what Stage 02 demonstrates: three nodes with separate dicts. The data diverges because there's no replication — each node is an island.
+This is exactly what Stage 03 demonstrates: three nodes with separate dicts. The data diverges because there's no replication — each node is an island.
 
 **How the real world solved it:**
 - **Memcached** embraced this with **consistent hashing** (introduced by the Ketama algorithm at Last.fm) — the *client* decides which node owns which key, so the split is intentional and balanced. But if a node dies, its partition is gone.
@@ -108,13 +108,11 @@ This is exactly what Stage 02 demonstrates: three nodes with separate dicts. The
 
 **Real-world example: Figma — when vertical scaling runs out**
 
-Figma is the other half of the Stack Overflow story. For years it ran on a *single* Postgres instance — the **largest box AWS offered** — and that carried it to millions of users. But by 2022–24 it hit limits a bigger box couldn't fix: `VACUUM` reliability problems and the **maximum IOPS RDS supports**. The only way past "the biggest single box" is *more* boxes — read replicas, partitioning, and ultimately horizontal sharding (Figma built `DBProxy` to route queries across shards). Figma is the lived proof of Stage 02's premise: vertical scaling is finite, and *outgrowing it* is what forces you horizontal. (Notion's "Herding Elephants" tells the same story and explicitly rejects "playing Cookie Clicker with the RDS resize button" as a long-term plan.)
+Figma is the other half of the Stack Overflow story. For years it ran on a *single* Postgres instance — the **largest box AWS offered** — and that carried it to millions of users. But by 2022–24 it hit limits a bigger box couldn't fix: `VACUUM` reliability problems and the **maximum IOPS RDS supports**. The only way past "the biggest single box" is *more* boxes — read replicas, partitioning, and ultimately horizontal sharding (Figma built `DBProxy` to route queries across shards). Figma is the lived proof of Stage 03's premise: vertical scaling is finite, and *outgrowing it* is what forces you horizontal. (Notion's "Herding Elephants" tells the same story and explicitly rejects "playing Cookie Clicker with the RDS resize button" as a long-term plan.)
 
-> **The lesson Stage 02 teaches:** horizontal scaling without coordination just fragments your data. That pain motivates replication (Stage 05) and load balancing (Stage 03).
+> **The lesson the first half of Stage 03 teaches:** horizontal scaling without coordination just fragments your data (that pain motivates replication, Stage 05) and naive round-robin is blind to capacity (which the second half of this stage fixes with adaptive load balancing).
 
----
-
-## Stage 03 — Load Balancing: Round-Robin vs. Adaptive Routing
+### Stage 03, part 2 — Load Balancing: Round-Robin vs. Adaptive Routing
 
 **Real-world example: Nginx, HAProxy, and the "Power of Two Choices"**
 

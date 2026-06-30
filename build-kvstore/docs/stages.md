@@ -15,14 +15,14 @@ config/observe. Stuck? `make reset STAGE=NN` jumps you to a known-good solution.
 | progress | `make status` |
 
 > **`make lab` vs `make up`:** `make up` runs the stage in one shell (what the incident drives).
-> `make lab` (any stage, **00–10**) is the *observe-and-play* view — every process gets its own
+> `make lab` (any stage, **01–10**) is the *observe-and-play* view — every process gets its own
 > pane so you watch them react, plus a control pane of helpers:
-> - **00–04 (nodes):** `nwrite` / `nread` / `nhealth`, and `nload <strategy>` to fire load across
->   the cluster (compare `nload adaptive` vs `nload round_robin` on stages 02/03).
+> - **01–04 (nodes):** `nwrite` / `nread` / `nhealth`, and `nload <strategy>` to fire load across
+>   the cluster (compare `nload adaptive` vs `nload round_robin` on stage 03).
 > - **05–10 (cluster):** `kvwrite` / `kvread` / `kvstatus`, plus `kvkill <n>` / `kvspawn` to crash
 >   a follower and watch recovery yourself instead of only running the checker.
 >
-> Mouse mode is on (click a pane, scroll to read history). `WORKERS=1 make lab STAGE=01` demos the
+> Mouse mode is on (click a pane, scroll to read history). `WORKERS=1 make lab STAGE=02` demos the
 > single-thread choke. Tear down with `make lab-down`.
 
 > Want to see *what changes between stages and why* the system grows the way it does? Read
@@ -30,28 +30,25 @@ config/observe. Stuck? `make reset STAGE=NN` jumps you to a known-good solution.
 
 ---
 
-## 00 — Single node
+## 01 — Single node
 **Idea:** a KV store is a dict behind HTTP. `POST /data`, `GET /data/{key}`.
 **Anchor:** Redis is an in-memory keyspace (we skip persistence).
 
-## 01 — Vertical scaling
+## 02 — Vertical scaling
 **Incident:** one node saturates under concurrent load — its single thread (the GIL) is the
 ceiling, exactly the constraint Redis chose on purpose.
 **Do:** scale the node up with `--workers`. *(config)*
 **Anchor:** Redis is single-threaded; you run more instances to use more cores.
 
-## 02 — Horizontal scaling
-**Incident:** a single node is a SPOF and a capacity wall.
-**Do:** run 3 nodes; the client spreads load across them by **naive round-robin** (no load balancer
-yet — just `client.py`). *(config)*
-**Note:** independent nodes have *separate* dicts — naive horizontal scaling splits your data,
-which is exactly what motivates replication (stage 05). And round-robin is blind to capacity, which
-is what motivates the load balancer (stage 03). Try `nload 40 10` and watch the weak node drag p95.
-
-## 03 — Load balancing ⌨️ code
-**Incident:** round-robin ignores capacity and tanks on the slow node.
-**Do:** implement `AdaptiveStrategy.get_node` in `load_balancer.py` — **the file this stage
-introduces** (pick the lowest-score node). Compare `nload round_robin 40 10` vs `nload adaptive 40 10`.
+## 03 — Horizontal scaling + load balancing ⌨️ code
+**Incident (red):** one box is a SPOF and a capacity wall, so we run 3 *heterogeneous* nodes (one
+weak, two strong). The simplest spread — **round-robin by turn** — is blind to capacity: it
+bombards the weak node with its fair 1/3 share, the weak node queues, and the global p95 tanks.
+**Do (green):** implement `AdaptiveStrategy.get_node` in `load_balancer.py` — **the file this stage
+introduces** (pick the lowest-score node = latency + in-flight load). Adaptive steers traffic off
+the weak node and the tail recovers. Compare `nload round_robin 96 12` vs `nload adaptive 96 12`.
+**Note:** independent nodes also have *separate* dicts — naive horizontal scaling splits your data,
+which is exactly what motivates replication (stage 05).
 **Anchor:** power-of-two-choices / least-connections (Nginx, HAProxy, Netflix).
 **Talk reference:** [`load-balancing-client-vs-server.md`](load-balancing-client-vs-server.md) —
 client-side vs server-side load balancing (real systems + pros/cons), and how this lab moves from

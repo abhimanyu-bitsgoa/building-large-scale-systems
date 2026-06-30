@@ -23,7 +23,7 @@ distributed system.**
 
 ---
 
-## Stage 00 — Single Node · *The origin story*
+## Stage 01 — Single Node · *The origin story*
 
 **The hook (say this):** *"Every database you've ever depended on started as a dictionary behind a
 socket. Including the one most of this room has run in production."*
@@ -32,7 +32,7 @@ socket. Including the one most of this room has run in production."*
 real-time web-analytics product. A single SQL database couldn't keep up with the write rate of a
 live "who's on my site right now" feed. So he wrote a small in-memory data-structure server that was,
 at its heart, a hash map behind a TCP socket. That throwaway tool became **Redis** — now one of the
-most deployed datastores on earth. It began as exactly what Stage 00 is: `POST /data`, `GET
+most deployed datastores on earth. It began as exactly what Stage 01 is: `POST /data`, `GET
 /data/{key}`, a dict behind a network endpoint.
 
 **The lesson → why this stage exists.** You earn the right to talk about distribution by first
@@ -44,7 +44,7 @@ everything that follows.
 
 ---
 
-## Stage 01 — Vertical Scaling · *The day one expensive request froze the planet*
+## Stage 02 — Vertical Scaling · *The day one expensive request froze the planet*
 
 **The hook (say this):** *"On July 2nd, 2019, a single regular expression took Cloudflare offline
 worldwide. Not a DDoS. Not a bad deploy. One line of CPU-bound code that no other request could get
@@ -71,7 +71,7 @@ compute out-runs an exponentially-backtracking regex. For the proof that *scalin
 **Stack Overflow**: one of the busiest sites on earth (~half a billion page views a month) runs on a
 *handful* of servers, with a single SQL primary that takes almost all the load — deliberately idling
 around **5–10% CPU** for headroom. They scaled **up, not out, and never had to shard.** That is the
-motivation for Stage 01: before you reach for distributed systems and all their pain, ask whether a
+motivation for Stage 02: before you reach for distributed systems and all their pain, ask whether a
 bigger box — or simply *using all of its cores* — would do. The everyday version of our `--workers`
 fix is exactly that: `gunicorn`/`uvicorn --workers`, Node's `cluster` module, `nginx
 worker_processes auto` — spend every core on the machine before you reach for a second machine.
@@ -86,7 +86,7 @@ happens when that box hits its wall, or simply dies?
 
 ---
 
-## Stage 02 — Horizontal Scaling · *The single server that became a national outage*
+## Stage 03 — Horizontal Scaling + Load Balancing · *The single server that became a national outage — then the tail-at-scale tax*
 
 **The hook (say this):** *"For two years, the most famous image in tech was a whale being lifted by
 birds — Twitter's 'Fail Whale.' It showed up every time one overloaded stack couldn't take the
@@ -97,32 +97,30 @@ MySQL** database. Every record-breaking moment — the 2010 World Cup, New Year'
 death — drove a write/read spike the single primary couldn't absorb, and the whole site fell over.
 The "Fail Whale" became a cultural meme precisely *because* the failure was so reliable: one box, one
 point of failure, one capacity wall. Twitter's multi-year re-architecture into many services and
-sharded/replicated storage was, in essence, the move from Stage 01 to everything after it.
+sharded/replicated storage was, in essence, the move from Stage 02 to everything after it.
 
-**The modern echo (the bridge from Stage 01).** Stack Overflow scaled *up* and it was enough — but
+**The modern echo (the bridge from Stage 02).** Stack Overflow scaled *up* and it was enough — but
 vertical scaling has a hard edge, and **Figma** found it. For years all of Figma ran on a *single*
 Postgres instance — **the largest box AWS would rent them.** That one machine carried the company to
 millions of users (vertical scaling genuinely *works*) — until it ran out of room money couldn't buy:
 Postgres `VACUUM` reliability problems and the **maximum IOPS RDS supports.** When "buy a bigger box"
 has no bigger box left, you're out of vertical road and the only way forward is *more boxes.* That is
-the exact moment Stage 02 begins.
+the exact moment Stage 03 begins.
 
 **The lesson → why this stage exists.** A single node is two problems wearing one coat: a **capacity
 wall** (it can only do so much) and a **single point of failure** (when it's gone, you're gone). The
-first instinct is the right one: run *more* nodes. Stage 02 does exactly that — three independent
+first instinct is the right one: run *more* nodes. Stage 03 does exactly that — three independent
 nodes, traffic spread by naive round-robin in the client.
 
-**But notice the new pain (this is the whole point of Stage 02):** three nodes with three *separate*
+**But notice the new pain (this is what going wide reveals):** three nodes with three *separate*
 dicts means your data is now **split, not shared** — write `user:123` to node A and it's invisible
-from node B. And blind round-robin sends equal traffic to unequal nodes. Stage 02 doesn't *solve*
-horizontal scaling; it reveals the two bills that come due: **replication** (05) and **load
-balancing** (03).
+from node B. And blind round-robin sends equal traffic to unequal nodes. Going wide reveals two bills:
+**replication** (data is split → paid at 05) and **load balancing** (round-robin is blind → paid
+right now, in the second half of this stage).
 
-**The arc (→ 03).** More nodes, but they're not equal — and round-robin doesn't know that.
+**The arc (→ load balancing).** More nodes, but they're not equal — and round-robin doesn't know that.
 
----
-
-## Stage 03 — Load Balancing · *The tax you pay for your slowest node*
+### …and the second half of Stage 03: Load Balancing · *The tax you pay for your slowest node*
 
 **The hook (say this):** *"At scale, your user's experience isn't decided by your average server. It's
 decided by your worst one — and round-robin keeps feeding it traffic anyway."*
@@ -138,8 +136,8 @@ round-robin toward routing that reacts to live load.
 
 **The lesson → why this stage exists.** Spreading traffic isn't enough; you have to spread it
 *toward capacity*. Stage 03 is the first code stage: implement `AdaptiveStrategy.get_node` to pick the
-lowest-load node instead of the next one in line. In the dashboard, `nload round_robin 40 10` vs.
-`nload adaptive 40 10` makes the weak node's "tax" appear and then vanish — the slow node stops
+lowest-load node instead of the next one in line. In the dashboard, `nload round_robin 96 12` vs.
+`nload adaptive 96 12` makes the weak node's "tax" appear and then vanish — the slow node stops
 dragging p95 because adaptive routing stops over-feeding it.
 
 **The arc (→ 04).** Now traffic flows to the healthy nodes. But what if *all* of them are healthy and

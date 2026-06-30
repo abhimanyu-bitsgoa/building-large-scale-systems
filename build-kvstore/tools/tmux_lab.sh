@@ -3,9 +3,9 @@
 # tmux_lab.sh  <NN>   —   one-window "observe + play" dashboard for ANY stage.
 #
 # Lays EVERY process the stage runs in its OWN pane so you can WATCH each one
-# react — the node(s) on stages 00-04, or registry / coordinator / gateway on
+# react — the node(s) on stages 01-04, or registry / coordinator / gateway on
 # 05-10. A "control" pane is pre-loaded with helpers so you drive the system BY
-# HAND (write/read on 00-04; on 05-10 also kvkill / kvspawn to crash & revive
+# HAND (write/read on 01-04; on 05-10 also kvkill / kvspawn to crash & revive
 # nodes) instead of only running the incident checker. An "incident" pane has the
 # graded check pre-typed. Mouse mode is on: click a pane to focus, scroll to read.
 #
@@ -46,8 +46,8 @@ fi
 
 STAGE="${1:-}"
 case "$STAGE" in
-  0[0-9]|10) : ;;
-  *) echo "Usage: bash tools/tmux_lab.sh <NN>   (NN = 00..10)   |   bash tools/tmux_lab.sh down"; exit 1 ;;
+  0[1-9]|10) : ;;
+  *) echo "Usage: bash tools/tmux_lab.sh <NN>   (NN = 01..10)   |   bash tools/tmux_lab.sh down"; exit 1 ;;
 esac
 N=$((10#$STAGE))   # strip the leading zero so arithmetic doesn't read 08/09 as octal
 
@@ -81,21 +81,24 @@ tmux kill-session -t "$SESSION" 2>/dev/null || true
 # Keep the two in sync if you change how a stage launches.
 S_TITLE=(); S_CMD=(); TIER=cluster
 case "$N" in
-  0)
+  1)
     TIER=node
     S_TITLE+=("node-1  :5001  (a KV store = a dict behind HTTP)")
     S_CMD+=("python node.py --port 5001 --id 1")
     ;;
-  1)
+  2)
     TIER=node; WK="${WORKERS:-4}"
     S_TITLE+=("node-1  :5001  (CPU load + $WK worker(s); the single-thread/GIL ceiling)")
     S_CMD+=("python node.py --port 5001 --id 1 --load-factor 30 --workers $WK")
     ;;
-  2|3)
+  3)
     TIER=node
-    S_TITLE+=("node-1  :5001  (weak: 1 worker)");    S_CMD+=("python node.py --port 5001 --id 1 --load-factor 28 --workers 1")
-    S_TITLE+=("node-2  :5002  (strong: 4 workers)"); S_CMD+=("python node.py --port 5002 --id 2 --load-factor 28 --workers 4")
-    S_TITLE+=("node-3  :5003  (strong: 4 workers)"); S_CMD+=("python node.py --port 5003 --id 3 --load-factor 28 --workers 4")
+    # Weak node carries a heavier per-request cost (load-factor 30) on one worker, so it queues
+    # under concurrency and round-robin's blind 1/3 share drags the tail; strong nodes (25/4w)
+    # absorb load cheaply. This deterministic gap makes adaptive's win reproducible.
+    S_TITLE+=("node-1  :5001  (weak: load 30, 1 worker)");  S_CMD+=("python node.py --port 5001 --id 1 --load-factor 30 --workers 1")
+    S_TITLE+=("node-2  :5002  (strong: load 25, 4 workers)"); S_CMD+=("python node.py --port 5002 --id 2 --load-factor 25 --workers 4")
+    S_TITLE+=("node-3  :5003  (strong: load 25, 4 workers)"); S_CMD+=("python node.py --port 5003 --id 3 --load-factor 25 --workers 4")
     ;;
   4)
     TIER=node
@@ -132,13 +135,13 @@ esac
 # ---- URLs for the control pane helpers -------------------------------------
 if [ "$TIER" = node ]; then
   NODE_URL="http://localhost:5001"
-  if [ "$N" -eq 2 ] || [ "$N" -eq 3 ]; then
+  if [ "$N" -eq 3 ]; then
     NODES="http://localhost:5001,http://localhost:5002,http://localhost:5003"
   else
     NODES="$NODE_URL"
   fi
   # HAS_LB marks stages whose client.py has the load balancer (03/04) so `nload`
-  # offers a strategy arg; stage 02's client routes naive round-robin (no strategy).
+  # offers a strategy arg (round_robin vs adaptive). Stages 01/02 are single-node.
   if [ "$N" -eq 3 ] || [ "$N" -eq 4 ]; then HAS_LB=1; else HAS_LB=; fi
   CTRL_ENV="export TIER=node NODE_URL=$NODE_URL NODES=$NODES KVDIR='$KV' HAS_LB='$HAS_LB'"
 else
@@ -197,7 +200,7 @@ echo
 echo "Lab dashboard for stage $STAGE is up. Attaching…"
 if [ "$TIER" = node ]; then
   echo "  • try:  nwrite cart shoes → nread cart"
-  [ "$N" -eq 2 ] || [ "$N" -eq 3 ] && echo "  • compare routing:  nload adaptive 40 10   vs   nload round_robin 40 10"
+  [ "$N" -eq 3 ] && echo "  • compare routing:  nload adaptive 96 12   vs   nload round_robin 96 12"
 else
   echo "  • try:  kvwrite cart shoes → kvstatus → kvkill 1 → kvstatus → kvspawn"
 fi

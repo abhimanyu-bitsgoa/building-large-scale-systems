@@ -55,9 +55,9 @@ Tutorials are not rehearsable to a fixed length like talks — pace depends on t
 
 ---
 
-## 3. A concrete run-of-show (~180 min) on the 00→10 ladder
+## 3. A concrete run-of-show (~180 min) on the 01→10 ladder
 
-Your workshop is one KV store built incrementally across 11 stages, each gated by an incident the room watches fail (🔴) before they fix it (🟢). That structure already dodges the worst pacing trap — you never lecture for long, because theory lives in the short "teach head" of each stage (keep each ≤ ~10 min) and is immediately cashed out in a hands-on fix. The four ⌨️ **code stages (03, 04, 05, 08)** are your I-do / we-do / you-do anchors; the config stages move faster. Put the break after **stage 05** (replication has just started working — the CAP drama lands right after). Total maps to EuroPython's 180 min incl. the 15-min break, with the 20-min setup window before.
+Your workshop is one KV store built incrementally across 10 stages, each gated by an incident the room watches fail (🔴) before they fix it (🟢). That structure already dodges the worst pacing trap — you never lecture for long, because theory lives in the short "teach head" of each stage (keep each ≤ ~10 min) and is immediately cashed out in a hands-on fix. The four ⌨️ **code stages (03, 04, 05, 08)** are your I-do / we-do / you-do anchors; the config stages move faster. Put the break after **stage 05** (replication has just started working — the CAP drama lands right after). Total maps to EuroPython's 180 min incl. the 15-min break, with the 20-min setup window before.
 
 | Time | Stage(s) | What happens | Mode |
 |---|---|---|---|

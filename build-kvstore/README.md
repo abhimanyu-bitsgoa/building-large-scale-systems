@@ -23,10 +23,9 @@ tells the whole build as one narrative arc — what each stage adds and the prob
 
 | # | Stage | You learn |
 |---|---|---|
-| 00 | single node | a KV store is a dict behind HTTP |
-| 01 | vertical scaling | the single-thread ceiling (the GIL gives us Redis's one thread for free) |
-| 02 | horizontal scaling | more nodes, and why naive copies diverge |
-| 03 | load balancing | round-robin vs adaptive routing |
+| 01 | single node | a KV store is a dict behind HTTP |
+| 02 | vertical scaling | the single-thread ceiling (the GIL gives us Redis's one thread for free) |
+| 03 | horizontal scaling + load balancing | more nodes (and why naive copies diverge), then round-robin vs adaptive routing around a weak node |
 | 04 | rate limiting | protecting the store from floods |
 | 05 | replication | single-leader replication |
 | 06 | synchronous replication | all followers sync (`W = N`) → no stale reads |

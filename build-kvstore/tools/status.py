@@ -3,10 +3,10 @@ import json
 import os
 
 STAGES = [
-    ("00", "single node"), ("01", "vertical scaling"), ("02", "horizontal scaling"),
-    ("03", "load balancing"), ("04", "rate limiting"), ("05", "replication"),
-    ("06", "quorum"), ("07", "fault tolerance"), ("08", "service discovery"),
-    ("09", "auto-recovery"), ("10", "full system"),
+    ("01", "single node"), ("02", "vertical scaling"),
+    ("03", "horizontal scaling + load balancing"), ("04", "rate limiting"),
+    ("05", "replication"), ("06", "quorum"), ("07", "fault tolerance"),
+    ("08", "service discovery"), ("09", "auto-recovery"), ("10", "full system"),
 ]
 
 # Stage 10 is a whole-system demo (gateway integration) with no incident, so it has no

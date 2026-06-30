@@ -111,7 +111,7 @@ per-request decision locally.
 
 ## How to map it back to the lab (one-liner for the room)
 
-> "In stages 00–04 the **client** is smart and the nodes are dumb — that's client-side load
+> "In stages 01–04 the **client** is smart and the nodes are dumb — that's client-side load
 > balancing, like a Cassandra or Redis Cluster driver. As we build the real cluster in 05–10, the
 > smarts move **out of the client and into the gateway and coordinator** — that's the shift to
 > server-side. Neither is 'correct'; you're trading an extra hop and a central control point

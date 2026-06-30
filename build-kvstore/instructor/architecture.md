@@ -1,7 +1,7 @@
 # Architecture — one component diagram per stage
 
 **What this is.** A showable component diagram for **every stage of the `build-kvstore/` ladder
-(00–10)** — the picture you put on screen so attendees can *see* the system grow one box at a time.
+(01–10)** — the picture you put on screen so attendees can *see* the system grow one box at a time.
 Every box, port, and arrow below is taken from the actual checkpoint code and from
 [`tools/up.sh`](../tools/up.sh) (the canonical "what runs at stage NN"), not from memory.
 
@@ -30,7 +30,7 @@ show the scar, then reveal the box that appears here.
 
 | Stages | Component | Port(s) |
 |---|---|---|
-| 00–04 | node(s) | `:5001`, `:5002`, `:5003` |
+| 01–04 | node(s) | `:5001`, `:5002`, `:5003` |
 | 05–10 | **coordinator** API | `:7000` |
 | 05–10 | **leader** | `:7001` |
 | 05–10 | **followers** | `:7002`, `:7003`, `:7004` (N=3) |
@@ -44,7 +44,7 @@ vanish; it moves **server-side** into the coordinator's quorum routing.
 
 ---
 
-## Stage 00 — Single node ·  *a dict behind HTTP*
+## Stage 01 — Single node ·  *a dict behind HTTP*
 
 ```
                   ⚡ NEW: node.py
@@ -60,7 +60,7 @@ vanish; it moves **server-side** into the coordinator's quorum routing.
 
 ---
 
-## Stage 01 — Vertical scaling ·  *the single-thread ceiling*
+## Stage 02 — Vertical scaling ·  *the single-thread ceiling*
 
 ```
                        ⚡ NEW: --workers N, --load-factor 30
@@ -75,51 +75,40 @@ vanish; it moves **server-side** into the coordinator's quorum routing.
 ```
 
 - **Flow:** same node, now CPU-bound per request; multiple worker processes use multiple cores.
-- **Teaches:** one thread (the GIL ≈ Redis's one command thread) is a hard ceiling. Fix = more workers. Demo the ceiling with `WORKERS=1 make lab STAGE=01`.
+- **Teaches:** one thread (the GIL ≈ Redis's one command thread) is a hard ceiling. Fix = more workers. Demo the ceiling with `WORKERS=1 make lab STAGE=02`.
 
 ---
 
-## Stage 02 — Horizontal scaling ·  *more nodes, but the bills come due*
+## Stage 03 — Horizontal scaling + load balancing ✏️ ·  *go wide, then route by capacity*
 
 ```
-                    ┌──────────────────────────────┐
-                    │  client.py                   │   ⚡ NEW: 3 nodes
-   load  ─────────→ │  naive round-robin (inline)  │   1→2→3→1→2→3 (blind)
-                    └──────┬─────────┬─────────┬────┘
-                ┌──────────┘         │         └──────────┐
-                ▼                    ▼                    ▼
-       ┌────────────────┐  ┌────────────────┐  ┌────────────────┐
-       │ node-1 :5001   │  │ node-2 :5002   │  │ node-3 :5003   │
-       │ workers=1 WEAK │  │ workers=4      │  │ workers=4      │
-       │   { dict A }   │  │   { dict B }   │  │   { dict C }   │
-       └────────────────┘  └────────────────┘  └────────────────┘
-   ⚠ three SEPARATE dicts → data is SPLIT, not shared   ⚠ round-robin over-feeds the weak node
-```
-
-- **Flow:** client deals requests round-robin (no load balancer yet — the logic is inline in `client.py`).
-- **Teaches:** a node is a capacity wall *and* a SPOF → run several. But naive scaling reveals two bills: **replication** (data is split → S05) and **load balancing** (round-robin is blind → S03).
-
----
-
-## Stage 03 — Load balancing ✏️ ·  *the tail-at-scale tax*
-
-```
+   RED  — round-robin is blind          GREEN — adaptive routes by capacity
                     ┌──────────────────────────────────┐
-                    │  client.py                       │
-   load  ─────────→ │  ⚡ NEW: load_balancer.py        │   round_robin | ADAPTIVE
-                    │  AdaptiveStrategy.get_node()  ✏️ │   adaptive → lowest-load node
+                    │  client.py                       │   ⚡ NEW: 3 nodes + load_balancer.py
+   load  ─────────→ │  round_robin (blind)  |  ADAPTIVE│   round_robin → 1→2→3 (over-feeds weak)
+                    │  AdaptiveStrategy.get_node()  ✏️ │   adaptive    → lowest-load node
                     └──────┬─────────┬─────────┬────────┘
                 ┌──────────┘         │         └──────────┐
                 ▼                    ▼                    ▼
        ┌────────────────┐  ┌────────────────┐  ┌────────────────┐
        │ node-1 :5001   │  │ node-2 :5002   │  │ node-3 :5003   │
-       │ workers=1 WEAK │  │ workers=4      │  │ workers=4      │
+       │ load 30 WEAK   │  │ load 25 strong │  │ load 25 strong │
+       │ workers=1      │  │ workers=4      │  │ workers=4      │
+       │   { dict A }   │  │   { dict B }   │  │   { dict C }   │
        └────────────────┘  └────────────────┘  └────────────────┘
-   adaptive routes traffic AWAY from the weak node → p95 drops.
+   ⚠ three SEPARATE dicts → data is SPLIT (motivates replication, S05)
+   round-robin over-feeds the weak node → bad p95;  adaptive routes AWAY from it → p95 drops.
 ```
 
-- **⚡ NEW box:** `load_balancer.py` (a strategy the client uses). You implement `AdaptiveStrategy.get_node` — return the lowest-load node.
-- **Teaches:** spread toward *capacity*, not evenly (HAProxy `leastconn` / Envoy power-of-two). Compare `nload round_robin 40 10` vs `nload adaptive 40 10`.
+- **Flow:** one box is a capacity wall *and* a SPOF → run several (horizontal scaling). The client
+  routes across them through `load_balancer.py` selected with `--strategy`.
+- **⚡ NEW box:** `load_balancer.py` (a strategy the client uses). You implement
+  `AdaptiveStrategy.get_node` — return the lowest-load node.
+- **Teaches:** going wide reveals two bills — **load balancing** (round-robin is blind to capacity →
+  you pay it here with adaptive routing, spreading toward *capacity* not evenly: HAProxy `leastconn`
+  / Envoy power-of-two) and **replication** (the dicts are split → paid at S05). The weak node's
+  heavier per-request cost (load 30 vs 25) on one worker makes adaptive's win reproducible. Compare
+  `nload round_robin 96 12` vs `nload adaptive 96 12`.
 
 ---
 

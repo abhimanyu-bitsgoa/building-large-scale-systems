@@ -17,16 +17,16 @@ suite. Read these before doing anything:
 
 ## What already exists & is verified (do NOT redo)
 
-- 11 checkpoints `build-kvstore/checkpoints/00…10` (single node → full Redis/Dynamo-like KV
+- 10 checkpoints `build-kvstore/checkpoints/01…10` (single node → full Redis/Dynamo-like KV
   store), each runnable. Checkpoint 10 is the full-system gateway demo (no incident/grader).
-- 9 incident scripts `build-kvstore/incidents/incident_01…09.py` (black-box red→green checks);
-  stage 10 has no incident (it's a demo).
+- 9 incident scripts `build-kvstore/incidents/incident_01…09.py` — `incident_01` is a baseline
+  smoke test; `incident_02…09` are the black-box red→green checks. Stage 10 has no incident (demo).
 - 4 code gaps `build-kvstore/stages/{03,04,05,08}` (NotImplementedError + guidance).
 - Makefile toolchain: `make start|gap|up|down|incident|reset|status` (all work).
 - **`tools/validate_ladder.sh` is a working regression suite** (`make validate`): for each
   incident N it asserts GREEN on `checkpoints/N` (launched via that stage's own `up.sh`) and RED
   on a per-stage "before" state (gapped `stages/N` for code stages; deterministic config-flips
-  otherwise). 18/18 cases pass (~3.5 min in-container). Subset runs:
+  otherwise). 16/16 cases pass (~6 min in-container). Subset runs:
   `bash tools/validate_ladder.sh 05 06`. **Re-run `make validate` after ANY edit to a
   coordinator/registry/node/incident, or to `tools/up.sh`/`down.sh`.**
 - `build-kvstore/docs/stages.md` (per-stage guide), README, SPEC.
@@ -36,7 +36,7 @@ suite. Read these before doing anything:
 - EVERYTHING runs inside Docker: `docker-compose up -d` then
   `docker-compose exec -T workshop bash -c '...'`. No host ports (port 7000 collides with macOS
   Control Center on the host). `make` IS installed in the container.
-- Ports: stages 00–04 → 5001-5003; 05–10 → registry 9000 / coordinator 7000 / gateway 8000.
+- Ports: stages 01–04 → 5001-5003; 05–10 → registry 9000 / coordinator 7000 / gateway 8000.
 - CLEANUP IS A TRAP:
   - `pkill -f "coordinator.py"` (or `node.py`) MATCHES YOUR OWN test script if the script text
     contains `python coordinator.py`. Keep pkill in a SEPARATE shell call using bracketed
@@ -66,10 +66,10 @@ suite. Read these before doing anything:
    `make validate` afterward** to prove the suite still boots every stage.
 4. **Per-stage task notes** for the 4 code stages — a short `stages/{03,04,05,08}/TASK.md` (or
    confirm `docs/stages.md` is enough) describing the gap + acceptance criteria.
-5. **Full rehearsal**: a clean end-to-end pass (`make start`, walk 00→10 via gap/up/incident/
+5. **Full rehearsal**: a clean end-to-end pass (`make start`, walk 01→10 via gap/up/incident/
    reset), confirm timing and that nothing is flaky. NOTE: `make validate` now covers the
    red→green correctness mechanically; this rehearsal is about the *human* flow, pacing, and
-   the few machine-dependent thresholds (incident_01 `P95_BUDGET_MS`, incident_03 relative p95).
+   the few machine-dependent thresholds (incident_02 `P95_BUDGET_MS`, incident_03 relative p95).
 
 ## Explicitly deferred (do NOT start unless asked)
 

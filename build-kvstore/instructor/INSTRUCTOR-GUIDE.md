@@ -44,7 +44,7 @@ Re-run `make validate` after **any** edit to a coordinator/registry/node/inciden
 
 ## 2. Pacing
 
-There are 11 stages but only **4 require writing code** (03, 04, 05, 08) — spend the most time there.
+There are 10 stages but only **4 require writing code** (03, 04, 05, 08) — spend the most time there.
 Everything else is a quick run-and-observe or a one-flag config change.
 
 ### The 2-hour core path

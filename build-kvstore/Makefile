@@ -1,17 +1,17 @@
-STAGE ?= 00
+STAGE ?= 01
 CP := $(shell ls -d checkpoints/$(STAGE)-* 2>/dev/null | head -1)
 
 .PHONY: help start gap up lab lab-down down incident reset status validate snapshot
 
 help:
 	@echo "Build-a-KVStore — workshop commands"
-	@echo "  make start              seed kvstore/ from checkpoint 00"
+	@echo "  make start              seed kvstore/ from checkpoint 01"
 	@echo "  make gap STAGE=NN       load the gapped start for a code stage (03/04/05/08)"
 	@echo "  make up STAGE=NN        start this stage's processes"
-	@echo "                          (stage 01: add WORKERS=1 to demo the single-thread choke)"
-	@echo "  make lab STAGE=NN       tmux dashboard for ANY stage (00-10): every process in its"
+	@echo "                          (stage 02: add WORKERS=1 to demo the single-thread choke)"
+	@echo "  make lab STAGE=NN       tmux dashboard for ANY stage (01-10): every process in its"
 	@echo "                          own pane + a control pane to drive it by hand (write/read on"
-	@echo "                          00-04; kill/spawn nodes on 05-10)"
+	@echo "                          01-04; kill/spawn nodes on 05-10)"
 	@echo "  make lab-down           tear down the tmux dashboard + its processes"
 	@echo "  make down               stop all workshop processes"
 	@echo "  make incident STAGE=NN  run this stage's red->green check"
@@ -19,8 +19,8 @@ help:
 	@echo "  make status             show the ladder of resolved incidents"
 
 start:
-	rm -rf kvstore && cp -r checkpoints/00-* kvstore
-	@echo "kvstore/ seeded from checkpoint 00"
+	rm -rf kvstore && cp -r checkpoints/01-* kvstore
+	@echo "kvstore/ seeded from checkpoint 01"
 
 gap:
 	rm -rf kvstore && cp -r stages/$(STAGE)-* kvstore

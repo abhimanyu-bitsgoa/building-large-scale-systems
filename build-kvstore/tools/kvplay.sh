@@ -3,12 +3,12 @@
 # Sourced into the "control" pane of the tmux lab dashboard (tmux_lab.sh) so attendees can
 # poke the running system interactively — the point is to *play*, not just run the checker.
 # Two tiers, selected by $TIER:
-#   TIER=node     stages 00-04: a single node (or 3 behind a client-side balancer)
+#   TIER=node     stages 01-04: a single node (or 3 behind a client-side balancer)
 #   TIER=cluster  stages 05-10: coordinator + leader/followers (+ registry/gateway)
 
-# ── node tier (00-04): talk straight to the node's HTTP API ──────────────────
+# ── node tier (01-04): talk straight to the node's HTTP API ──────────────────
 : "${NODE_URL:=http://localhost:5001}"   # the node you write/read against
-: "${NODES:=$NODE_URL}"                   # comma-separated list (02/03 run three)
+: "${NODES:=$NODE_URL}"                   # comma-separated list (stage 03 runs three)
 
 nwrite() {  # nwrite <key> <value>
   curl -s -X POST "$NODE_URL/data" -H 'Content-Type: application/json' \
@@ -17,8 +17,10 @@ nwrite() {  # nwrite <key> <value>
 nread()   { curl -s "$NODE_URL/data/${1:?usage: nread <key>}"; echo; }
 nhealth() { curl -s "$NODE_URL/health"; echo; }
 nload() {   # fire load across all nodes
-  # Stages with a load balancer (03/04, HAS_LB=1): nload [strategy] [requests] [concurrency].
-  # Stage 02 (no load balancer): nload [requests] [concurrency] — routing is naive round-robin.
+  # Stages with a load balancer (03/04, HAS_LB=1): nload [strategy] [requests] [concurrency]
+  #   — on stage 03 compare  nload round_robin 96 12  vs  nload adaptive 96 12.
+  # Single-node stages (01/02, no balancer): nload [requests] [concurrency] — fire concurrent load
+  #   at the one node (on stage 02 with WORKERS=1 you watch the GIL choke the tail).
   if [ -n "${HAS_LB:-}" ]; then
     ( cd "${KVDIR:?KVDIR not set}" && \
       python client.py --nodes "$NODES" --strategy "${1:-adaptive}" \
@@ -61,23 +63,23 @@ kvhelp() {
     nread  <key>            read it back
     nhealth                 node health + in-flight requests
     nload [strategy] [reqs] [conc]
-                            fire load across all nodes (strategy: round_robin|adaptive|...)
-                            e.g.  nload adaptive 30 10   vs   nload round_robin 30 10
+                            fire load across all 3 nodes (strategy: round_robin|adaptive|...)
+                            e.g.  nload round_robin 96 12   vs   nload adaptive 96 12
 
-  Try it: nwrite cart shoes → nread cart   |   nload adaptive 40 10  (watch the panes)
+  Try it: nwrite cart shoes → nread cart   |   round-robin bombards the weak node (node-1);
+          adaptive routes around it — compare the panes and the global p95.
   Run the graded check any time:  make incident STAGE=NN
 EOF
     else
       cat <<EOF
 
-  ── play with the node(s) (data → ${NODE_URL}) ──
+  ── play with the node (data → ${NODE_URL}) ──
     nwrite <key> <value>    write a value
     nread  <key>            read it back
     nhealth                 node health + in-flight requests
-    nload [reqs] [conc]     fire load across all nodes (naive round-robin; NO load balancer yet)
-                            e.g.  nload 40 10  — watch the WEAK node (node-1) drag the tail latency
+    nload [reqs] [conc]     fire concurrent load at the node
+                            e.g.  nload 40 10  — on stage 02 with WORKERS=1 the GIL chokes the tail
 
-  Stage 03 adds load_balancer.py so routing can dodge the slow node.
   Run the graded check any time:  make incident STAGE=NN
 EOF
     fi

@@ -1,5 +1,5 @@
 """
-Build-a-KVStore — Stage 00: a single node.
+Build-a-KVStore — Stage 01: a single node.
 
 A key-value store is, at heart, a dict behind HTTP. That's all this is:
 POST /data to store a key, GET /data/{key} to read it back. Everything else in
@@ -43,7 +43,7 @@ def get_data(key: str):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="KVStore Node — stage 00")
+    parser = argparse.ArgumentParser(description="KVStore Node — stage 01")
     parser.add_argument("--port", type=int, default=5001, help="Port to run on")
     parser.add_argument("--id", type=int, default=1, help="Node ID")
     args = parser.parse_args()

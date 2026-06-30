@@ -10,27 +10,25 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$HERE/kvstore"
 
 case "$STAGE" in
-  00)
+  01)
     echo "single node on :5001 — a KV store is a dict behind HTTP"
     python node.py --port 5001 --id 1
     ;;
-  01)
+  02)
     # WORKERS defaults to 4 (the fixed/green config); WORKERS=1 demos the single-thread choke.
     W="${WORKERS:-4}"
     echo "single node on :5001 with CPU load + $W worker(s) (vertical scaling / GIL ceiling)"
     python node.py --port 5001 --id 1 --load-factor 30 --workers "$W"
     ;;
-  02)
-    echo "3 heterogeneous nodes :5001-:5003 (1 weak, 2 strong) — naive round-robin from client.py (no load balancer yet)"
-    python node.py --port 5001 --id 1 --load-factor 28 --workers 1 &
-    python node.py --port 5002 --id 2 --load-factor 28 --workers 4 &
-    python node.py --port 5003 --id 3 --load-factor 28 --workers 4
-    ;;
   03)
-    echo "3 heterogeneous nodes :5001-:5003 (1 weak, 2 strong) — drive with client.py --strategy (load_balancer.py)"
-    python node.py --port 5001 --id 1 --load-factor 28 --workers 1 &
-    python node.py --port 5002 --id 2 --load-factor 28 --workers 4 &
-    python node.py --port 5003 --id 3 --load-factor 28 --workers 4
+    echo "horizontal scaling + load balancing: 3 heterogeneous nodes :5001-:5003 (1 weak, 2 strong) — drive with client.py --strategy (load_balancer.py)"
+    # The weak node carries a heavier per-request cost (load-factor 30) on a single worker, so
+    # under concurrency it queues and its latency balloons — round-robin's blind 1/3 share lands
+    # there and drags the tail. The strong nodes (load-factor 25, 4 workers) absorb load cheaply.
+    # This deterministic capacity gap is what makes adaptive's win over round-robin reproducible.
+    python node.py --port 5001 --id 1 --load-factor 30 --workers 1 &
+    python node.py --port 5002 --id 2 --load-factor 25 --workers 4 &
+    python node.py --port 5003 --id 3 --load-factor 25 --workers 4
     ;;
   04)
     echo "single node on :5001 with rate limiting (5 req / 10s)"
