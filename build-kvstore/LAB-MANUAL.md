@@ -18,7 +18,7 @@ Each stage adds one idea. You don't have to finish all of them — every stage s
 | 02 | vertical scaling | one process has a hard ceiling (the GIL) | — |
 | 03 | horizontal scaling + load balancing | many nodes (and why naive copies diverge), then round-robin vs. capacity-aware routing | ✏️ |
 | 04 | rate limiting | protecting a node from floods | ✏️ |
-| 05 | replication | single-leader replication | ✏️ |
+| 05 | replication | single-leader replication — and the stale reads a weak quorum can serve | ✏️ |
 | 06 | synchronous replication | all followers sync → no stale reads | — |
 | 07 | quorum & fault tolerance | majority quorum (`W + R > N`) + CAP | — |
 | 08 | service discovery | heartbeats that detect death | ✏️ |
@@ -203,13 +203,32 @@ make lab-down
 make lab STAGE=05        # the write now reaches the replicas
 ```
 
-Press **Enter** in the incident pane → ✅ (data readable from a replica). Rescue: `make reset STAGE=05`.
+Press **Enter** in the incident pane → ✅ (data readable from a replica).
+
+**The win:** a write now lives on several nodes, so the cluster keeps serving reads even if a node
+dies, and reads spread across the followers instead of hammering one box. (This buys read
+availability and scales *read* throughput — writes still funnel through the leader.)
+
+**Now the twist — stale reads.** This stage runs a **weak quorum** (`W = 1, R = 1`). A write returns
+as soon as the *sync* follower acks (~0.5s), but a read at `R = 1` is served by a *different*
+follower that replicates asynchronously (~5s behind the leader). The write set and read set don't
+overlap (`W + R = 2 ≤ N = 3`), so for a few seconds after an update the read hands back the **old**
+value. See it yourself:
+
+```bash
+kvwrite order paid       # write v1 — then wait ~5s so every follower (even the async one) has it
+kvwrite order shipped    # UPDATE to v2 — the sync follower gets it fast, the async one lags
+kvread order             # read immediately → "paid" (stale!); read again after ~5s → "shipped"
+```
+
+You're watching one follower lag behind the leader in real time. That fleeting wrong answer is
+exactly what **stage 06** removes. Rescue: `make reset STAGE=05`.
 
 ## Stage 06 — Synchronous replication
 
-In stage 05 some followers replicate asynchronously, so a read right after a write can land on one
-that hasn't caught up — a **stale** read. The fix: make **every** follower synchronous (`W = N`), so
-a write reaches all of them before it returns.
+You just watched a stale read in stage 05: at `W = 1, R = 1` the read lands on an async follower that
+hasn't caught up. Now turn the knob the other way — make **every** follower synchronous (`W = N`), so
+a write reaches all of them before it returns. No follower can lag, so no read is stale.
 
 ```bash
 make lab STAGE=06        # loads stage 06 (all-sync W=3, R=1) + dashboard
@@ -223,8 +242,16 @@ kvread order             # always the latest value
 kvstatus
 ```
 
-Press **Enter** in the incident pane → ✅ (no stale reads). The catch: a write now needs *every*
-follower alive — which the next stage fixes. Reload by hand: `make reset STAGE=06`.
+Press **Enter** in the incident pane → ✅ (no stale reads). But you've over-corrected: a write now
+needs *every* follower alive. Prove it — kill one and watch writes stop:
+
+```bash
+kvkill 1                 # take down a follower
+kvwrite order delivered  # → 503: the write can't reach all N followers anymore
+```
+
+Zero fault tolerance — the price of strong consistency. **Stage 07** finds the middle ground. Reload
+by hand: `make reset STAGE=06`.
 
 ## Stage 07 — Quorum & fault tolerance
 

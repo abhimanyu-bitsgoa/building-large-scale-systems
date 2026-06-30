@@ -62,10 +62,15 @@ one to the other.
 ## 05 — Replication ⌨️ code
 **Incident:** a write to the leader never reaches the followers (data isn't durable).
 **Do:** implement `replicate_to_follower` in `node.py` (POST the write to `/replicate`).
+**Then observe (the hook into 06):** this stage runs a **weak quorum** (`W=1, R=1`, so `W+R ≤ N`).
+The `R=1` read is served by an async follower lagging ~5s, so an update read straight back returns
+the **old** value — a deterministic stale read. The win (data replicated, reads scale) comes with a
+catch (stale reads), which motivates stage 06.
 **Anchor:** Redis primary–replica asynchronous replication.
 
 ## 06 — Synchronous replication (no stale reads)
-**Incident:** a read right after an update is **stale** — an async follower hasn't caught up.
+**Incident:** the stale read from stage 05 — a read right after an update lands on an async follower
+that hasn't caught up.
 **Do:** make **every follower synchronous** — raise `W` to `N` (launches `W=3, R=1`) so each write
 reaches all followers before it returns. *(config)*
 **Anchor:** synchronous replication / "write to everyone ⇒ read from anyone." *(Strong — but you'll
