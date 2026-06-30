@@ -40,7 +40,7 @@ proving the data model on one box. Single-node is not a strawman to knock down �
 real system *correctly* starts. Keep it boring on purpose; the simplicity is the control variable for
 everything that follows.
 
-**The arc (→ 01).** One box is wonderful right up to the first time it's busy. So let's make it busy.
+**The arc (→ 02).** One box is wonderful right up to the first time it's busy. So let's make it busy.
 
 ---
 
@@ -80,7 +80,7 @@ worker_processes auto` — spend every core on the machine before you reach for 
 many — and, as above, its *fix* was removing the work, not adding compute. The shared structure —
 *a CPU-bound task starving concurrent work* — is the real, transferable idea, not the core count.
 
-**The arc (→ 02).** A bigger box has a bigger ceiling, but it's still a ceiling — and still one box.
+**The arc (→ 03).** A bigger box has a bigger ceiling, but it's still a ceiling — and still one box.
 Scaling up bought Stack Overflow everything; for others it eventually runs out of "bigger." What
 happens when that box hits its wall, or simply dies?
 
@@ -350,10 +350,9 @@ operational scars. And now you know where every scar came from."*
 
 | Stage | The real scar | What it proves you need | Hands the next stage a problem |
 |---|---|---|---|
-| 00 Single node | Redis was born as a dict behind a socket (antirez, 2009) | Prove the data model on one box first | One box gets busy |
-| 01 Vertical scaling | Cloudflare regex pegs all CPUs (Jul 2 2019) — the ceiling is real; **Stack Overflow** scaled *up* and never had to shard | Use every core first (more workers) — scaling up is often enough | A bigger box is still one box |
-| 02 Horizontal scaling | Twitter's "Fail Whale" (single primary, ~2008–10); **Figma** outgrows AWS's largest Postgres box (2020→) | A node is a capacity wall *and* a SPOF → run several | Split data + blind round-robin |
-| 03 Load balancing | "The Tail at Scale" (Dean & Barroso, 2013) | Your slowest node sets p99 → route to capacity | Healthy nodes, but too much traffic |
+| 01 Single node | Redis was born as a dict behind a socket (antirez, 2009) | Prove the data model on one box first | One box gets busy |
+| 02 Vertical scaling | Cloudflare regex pegs all CPUs (Jul 2 2019) — the ceiling is real; **Stack Overflow** scaled *up* and never had to shard | Use every core first (more workers) — scaling up is often enough | A bigger box is still one box |
+| 03 Horizontal scaling + load balancing | Twitter's "Fail Whale" (single primary, ~2008–10) + **Figma** outgrows AWS's largest Postgres (2020→); "The Tail at Scale" (Dean & Barroso, 2013) | A node is a capacity wall *and* a SPOF → run several, then route to capacity (your slowest node sets p99) | Healthy nodes, but too much traffic |
 | 04 Rate limiting | GitHub 1.35 Tbps DDoS (2018) · DynamoDB retry storm (2015) | Floods (external *and* self-inflicted) need an intake valve | Data still lives on one node |
 | 05 Replication | GitLab deletes the primary, loses 6h (Jan 31 2017) | The leader's only copy is one command from gone | Async followers lag |
 | 06 Sync replication | Replica-lag stale reads (Facebook memcache, NSDI 2013) | Async = durable but stale → wait for everyone | "Wait for everyone" is fragile |
@@ -370,16 +369,16 @@ operational scars. And now you know where every scar came from."*
   <http://oldblog.antirez.com/post/redis-manifesto.html> and Redis project history.
 - **Cloudflare regex outage (Jul 2 2019)** — "Details of the Cloudflare outage on July 2, 2019":
   <https://blog.cloudflare.com/details-of-the-cloudflare-outage-on-july-2-2019/>
-- **Stack Overflow — vertical scaling as an end state (Stage 01)** — Nick Craver, "Stack Overflow: The
+- **Stack Overflow — vertical scaling as an end state (Stage 02)** — Nick Craver, "Stack Overflow: The
   Hardware — 2016 Edition" <https://nickcraver.com/blog/2016/03/29/stack-overflow-the-hardware-2016-edition/>
   and "The Architecture — 2016 Edition" <https://nickcraver.com/blog/2016/02/17/stack-overflow-the-architecture-2016-edition/>.
   (Redis "more cores don't help" — Redis benchmark docs:
   <https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/benchmarks/>.)
 - **Twitter "Fail Whale" / scaling** — widely documented; see Twitter Engineering's "The Infrastructure
   Behind Twitter" series and contemporaneous coverage of the Rails→services re-architecture.
-- **Figma — when vertical scaling runs out (Stage 02)** — Sammy Steele, "How Figma's Databases Team
+- **Figma — when vertical scaling runs out (Stage 03)** — Sammy Steele, "How Figma's Databases Team
   Lived to Tell the Scale" (Apr 2024): <https://www.figma.com/blog/how-figmas-databases-team-lived-to-tell-the-scale/>
-- **Notion — sharding Postgres (Stage 02 corroboration)** — "Herding elephants: lessons learned from
+- **Notion — sharding Postgres (Stage 03 corroboration)** — "Herding elephants: lessons learned from
   sharding Postgres at Notion" (Oct 2021): <https://www.notion.com/blog/sharding-postgres-at-notion>
 - **The Tail at Scale** — Dean & Barroso, *Communications of the ACM*, Feb 2013:
   <https://research.google/pubs/the-tail-at-scale/>

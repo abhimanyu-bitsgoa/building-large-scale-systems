@@ -147,8 +147,8 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
   **horizontal**. A ceiling line over the tall box.
 - **Text:** "Bigger box (vertical) vs. more boxes (horizontal)."
 - **Say:** "Vertical is easy and has a hard ceiling — you run out of box. Horizontal is unlimited and
-  hands you a *new* problem: coordination. We'll do both — S01 vertical, S02 horizontal — and feel the
-  exact moment vertical stops working." (→ S01, → S02.)
+  hands you a *new* problem: coordination. We'll do both — S02 vertical, S03 horizontal — and feel the
+  exact moment vertical stops working." (→ S02, → S03.)
 
 ### Slide 11 — The real enemy is *state*  ⏱ ~2.5m
 - **Show:** Two columns. **Stateless** (web servers) — clone freely, a green "just add boxes." **Stateful**

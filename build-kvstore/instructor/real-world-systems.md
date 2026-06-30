@@ -302,10 +302,9 @@ This maps to real-world architectures:
 
 | Stage | Concept | Real-world system(s) | Key pattern |
 |---|---|---|---|
-| 00 | Single node | Redis single-instance, Memcached | In-memory dict behind a protocol |
-| 01 | Vertical scaling | Redis single-thread, Node.js event loop, **Stack Overflow** (scale-up end state) | Use all cores (fork workers); one big box is often enough |
-| 02 | Horizontal scaling | Memcached/Redis Cluster hash slots; **Figma** (outgrew AWS's largest Postgres) | Multiple nodes = split data without coordination |
-| 03 | Load balancing | Nginx, HAProxy, Envoy (power-of-two-choices) | Adaptive > round-robin when nodes differ |
+| 01 | Single node | Redis single-instance, Memcached | In-memory dict behind a protocol |
+| 02 | Vertical scaling | Redis single-thread, Node.js event loop, **Stack Overflow** (scale-up end state) | Use all cores (fork workers); one big box is often enough |
+| 03 | Horizontal scaling + load balancing | Memcached/Redis Cluster hash slots, **Figma** (outgrew AWS's largest Postgres); Nginx, HAProxy, Envoy (power-of-two) | Split data across nodes, then route adaptively (beats round-robin when nodes differ) |
 | 04 | Rate limiting | Cloudflare, GitHub API, Stripe (Redis `INCR`+`EXPIRE`) | Fixed-window counter; 429 at the edge |
 | 05 | Replication | Redis `REPLICAOF`, PostgreSQL streaming, MySQL binlog | Single-leader → followers (async) |
 | 06 | Sync replication | PostgreSQL `synchronous_commit`, MySQL semi-sync | W=N: consistent but zero fault budget |
