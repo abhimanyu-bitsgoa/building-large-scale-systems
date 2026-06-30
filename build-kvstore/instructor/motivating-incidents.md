@@ -370,8 +370,17 @@ operational scars. And now you know where every scar came from."*
   <http://oldblog.antirez.com/post/redis-manifesto.html> and Redis project history.
 - **Cloudflare regex outage (Jul 2 2019)** — "Details of the Cloudflare outage on July 2, 2019":
   <https://blog.cloudflare.com/details-of-the-cloudflare-outage-on-july-2-2019/>
+- **Stack Overflow — vertical scaling as an end state (Stage 01)** — Nick Craver, "Stack Overflow: The
+  Hardware — 2016 Edition" <https://nickcraver.com/blog/2016/03/29/stack-overflow-the-hardware-2016-edition/>
+  and "The Architecture — 2016 Edition" <https://nickcraver.com/blog/2016/02/17/stack-overflow-the-architecture-2016-edition/>.
+  (Redis "more cores don't help" — Redis benchmark docs:
+  <https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/benchmarks/>.)
 - **Twitter "Fail Whale" / scaling** — widely documented; see Twitter Engineering's "The Infrastructure
   Behind Twitter" series and contemporaneous coverage of the Rails→services re-architecture.
+- **Figma — when vertical scaling runs out (Stage 02)** — Sammy Steele, "How Figma's Databases Team
+  Lived to Tell the Scale" (Apr 2024): <https://www.figma.com/blog/how-figmas-databases-team-lived-to-tell-the-scale/>
+- **Notion — sharding Postgres (Stage 02 corroboration)** — "Herding elephants: lessons learned from
+  sharding Postgres at Notion" (Oct 2021): <https://www.notion.com/blog/sharding-postgres-at-notion>
 - **The Tail at Scale** — Dean & Barroso, *Communications of the ACM*, Feb 2013:
   <https://research.google/pubs/the-tail-at-scale/>
 - **GitHub 1.35 Tbps DDoS (Feb 28 2018)** — "GitHub survived the biggest DDoS attack ever recorded":
