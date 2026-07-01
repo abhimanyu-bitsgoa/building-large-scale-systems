@@ -199,18 +199,6 @@ def list_nodes():
             ]
         }
 
-@app.get("/alive")
-def list_alive_nodes():
-    """List only alive nodes."""
-    with lock:
-        return {
-            "nodes": [
-                {"node_id": n["node_id"], "url": n["url"], "role": n["role"]}
-                for n in nodes.values()
-                if n["status"] == "alive"
-            ]
-        }
-
 # ========================
 # Main Entry Point
 # ========================

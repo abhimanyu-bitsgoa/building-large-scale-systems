@@ -249,7 +249,7 @@ Same as S08 + the registry now runs `--auto-spawn --spawn-delay 5`.
    │ LEADER :7001 │ ─────────────►│ coordinator  │ ───► │ revived follower :7002    │
    │     👑       │   full state  │  (catchup)   │ data │  📋 caught up, serving     │
    └──────────────┘               └──────────────┘      └──────────────────────────┘
-   ✅ kill a follower → ~5s later it's respawned AND caught up from the leader's snapshot. No human.
+   ✅ crash a follower → the registry detects the silence, respawns it AND catches it up from the leader's snapshot. No human.
 ```
 
 - **No new box** — a registry flag plus the existing catchup path (coordinator `GET /snapshot` → `POST /catchup`).

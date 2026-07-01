@@ -55,7 +55,7 @@ Port shifts coincide with the two architecture jumps.
 | 06 | sync-replication | *same code as 05* | all followers sync (W=N) → no stale reads | config (raise W to N: W=3,R=1) | — |
 | 07 | quorum + fault-tolerance | *same code as 05* | majority quorum (W+R>N) + CAP | config (W=2,R=2) | — |
 | 08 | discovery | KV `registry.py` + node `heartbeat_loop` | heartbeats detect death | write `heartbeat_loop` | ✅ |
-| 09 | auto-recovery | + auto-spawn + `catchup.py` | respawn + catchup | config + read | — |
+| 09 | auto-recovery | + registry auto-spawn (catchup on coordinator `/spawn`) | respawn + catchup | config + read | — |
 | 10 | full-system | + `gateway.py` | edge gateway + whole-system demo | drive the demo (no incident) | — |
 
 4 code-gap stages (03 adaptive LB, 04 rate limiter, 05 replication, 08 heartbeat); the rest are
@@ -90,8 +90,8 @@ records into `progress.json`, exits `0` (green) / `1` (red). Each `incident_N.py
 | 05 durability | write, read other replica | miss | present | read/write |
 | 06 stale | write then immediate read | stale | fresh | `run_stale_read_test` |
 | 07 outage | kill floor(N/2), write | 503 | succeeds | `run_kill_nodes_test` |
-| 08 blind | kill node, poll status | "alive" | "dead" | `/status` |
-| 09 degraded | kill follower, wait | stays dead | respawned+data | spawn+read |
+| 08 blind | crash node out-of-band (`/crash`), poll coordinator status | "alive" (blind) | "dead" (registry detected) | `/status` |
+| 09 degraded | crash follower, wait | stays dead | respawned+data | crash+read |
 
 `tools/status.py` renders the ladder from `progress.json`.
 

@@ -43,6 +43,12 @@ kvwrite() {  # kvwrite <key> <value>
 kvread()   { curl -s "$WR_URL/read/${1:?usage: kvread <key>}"; echo; }
 kvstatus() { curl -s "$ADMIN_URL/status" | python -m json.tool; }
 kvkill()   { curl -s -X POST "$ADMIN_URL/kill/follower-${1:?usage: kvkill <n>   (e.g. kvkill 1)}"; echo; }
+kvcrash()  {  # kvcrash <n> — CRASH follower-<n> out-of-band: the node dies WITHOUT telling the
+              # coordinator (unlike kvkill). Only the registry can notice, via missed heartbeats
+              # (stage 08+). follower-<n> listens on :700(1+n) -> follower-1 :7002, etc.
+  local n="${1:?usage: kvcrash <n>   (e.g. kvcrash 1)}"
+  curl -s -X POST "http://localhost:$((7001 + n))/crash"; echo
+}
 kvspawn()  { curl -s -X POST "$ADMIN_URL/spawn"; echo; }
 kvflood()  {  # kvflood [n] — fire n quick writes; the edge rate limiter sheds the overflow as 429 (stage 10)
   local n="${1:-15}" i code
@@ -90,7 +96,8 @@ EOF
     kvwrite <key> <value>   write a value
     kvread  <key>           read it back
     kvstatus                show leader + followers (alive/dead)
-    kvkill  <n>             CRASH follower-<n>   e.g.  kvkill 1
+    kvkill  <n>             take follower-<n> offline (planned removal via the coordinator)
+    kvcrash <n>             CRASH follower-<n> unannounced (stage 08+: only the registry notices)
     kvspawn                 respawn a follower   (auto-catchup on stages 09/10)
     kvflood [n]             fire n quick writes; the edge sheds overflow as 429 (stage 10 gateway)
 

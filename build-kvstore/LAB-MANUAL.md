@@ -264,11 +264,11 @@ trade-off, made visible.
 make lab STAGE=07        # loads stage 07 (majority quorum W=2, R=2) + dashboard
 ```
 
-In the control pane, kill a follower and confirm writes still succeed:
+In the control pane, take a follower offline and confirm writes still succeed:
 
 ```bash
 kvwrite order paid
-kvkill 1                 # crash one follower
+kvkill 1                 # planned removal — kvkill goes THROUGH the coordinator, so it knows
 kvstatus                 # one dead, but the quorum holds
 kvwrite order shipped    # still works
 kvread order             # still fresh
@@ -277,34 +277,50 @@ kvread order             # still fresh
 Press **Enter** in the incident pane → ✅ (writes survive a follower failure). Reload:
 `make reset STAGE=07`.
 
+> **Notice something.** The coordinator coped because *you told it* — `kvkill` is an administrative
+> removal that runs through the coordinator's own API. It isn't *detecting* anything; it's the one
+> pulling the trigger. So what happens when a node just **crashes** — no warning, nobody told? The
+> coordinator has no way to find out. That gap is exactly what stage 08 fixes.
+
 ## Stage 08 — Service discovery ✏️
 
-The cluster can't recover from a death it never notices. A **registry** service tracks which nodes are
-alive via heartbeats. You'll implement the heartbeat each node sends.
+Until now the coordinator only knew a node was gone because *it* removed it (`kvkill`). But real nodes
+**crash** — unannounced, telling no one. The coordinator has no health monitor of its own, so a crash
+is invisible to it: it keeps routing writes to a corpse. The fix is a **registry** service that tracks
+liveness via **heartbeats** — nodes announce "I'm alive" on an interval, and when the beats stop the
+registry notices and tells the coordinator. You'll implement the heartbeat each node sends.
+
+First, watch the coordinator go blind. Load the gapped stage (no heartbeats yet) and **crash** a
+follower out-of-band — `kvcrash` kills the node directly, *without* going through the coordinator:
 
 ```bash
 make gap STAGE=08        # load the exercise: heartbeat_loop is left blank
 make lab STAGE=08        # dashboard: registry + coordinator panes + control
 ```
 
-In the control pane, kill a follower and check the registry — without heartbeats it never even learns
-the node existed, so it can't be marked dead:
-
 ```bash
-kvkill 1
-kvstatus
+kvwrite order paid
+kvcrash 1                # the node dies; the coordinator is NOT told
+# wait a few seconds...
+kvstatus                 # follower-1 still shows "alive" — the coordinator has no idea it's gone
 ```
 
-Now implement it: open `kvstore/node.py` and complete **`heartbeat_loop`** — `POST` the node's
-identity (`node_id`, `port`, `url`, `role`) to the registry's `/heartbeat` route each interval. Then
-restart and check:
+That stale "alive" is the bug: with no heartbeats the registry never even saw follower-1, so it can't
+report the death. Now fix it — open `kvstore/node.py` and complete **`heartbeat_loop`**: `POST` the
+node's identity (`node_id`, `port`, `url`, `role`) to the registry's `/heartbeat` route each interval.
+Then restart and crash it again:
 
 ```bash
 make lab-down
-make lab STAGE=08        # a killed follower is now detected as dead within the timeout
+make lab STAGE=08
+kvwrite order paid
+kvcrash 1                # crash again
+# wait past the heartbeat timeout (~5s)...
+kvstatus                 # follower-1 now flips to "dead" — the registry detected the silence
 ```
 
-Press **Enter** in the incident pane → ✅. Rescue: `make reset STAGE=08`.
+Press **Enter** in the incident pane → ✅ (the unannounced crash is detected). Rescue:
+`make reset STAGE=08`.
 
 ## Stage 09 — Auto-recovery
 
@@ -320,9 +336,9 @@ In the control pane, crash a follower and watch the cluster heal itself:
 
 ```bash
 kvwrite order paid
-kvkill 1                 # crash a follower
+kvcrash 1                # unannounced crash — the registry detects the missed heartbeats
 kvstatus                 # degraded...
-# wait ~5s — the coordinator pane shows the respawn + catch-up
+# wait ~10s — the registry auto-spawns a replacement; the coordinator pane shows the catch-up
 kvstatus                 # back to full strength
 kvread order             # the revived node has the data
 ```

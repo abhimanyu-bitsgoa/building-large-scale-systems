@@ -23,6 +23,11 @@ multi-second) timing. Each carries into the checkpoints as they are derived. New
   (its node had no shutdown handler, so it wasn't strictly broken there).
 - **Verified:** checkpoint 08 keeps a killed follower dead (writes survive at W=2); checkpoint 07
   kills `floor(N/2)` and survives, then loses quorum (503) on the next kill.
+- **Update (Path B, service-discovery redesign):** the coordinator's continuous health-check loop
+  has since been **removed** entirely, so the "resurrect" race described here can no longer occur by
+  that mechanism. Liveness is now owned by the registry (heartbeats → `/node-died` push); the
+  coordinator only marks nodes alive via a one-shot startup/spawn readiness probe. `/kill` remains an
+  *administrative* removal (05-07); an unannounced crash uses the node's new `/crash` endpoint (08+).
 
 ## BUG-2 🔴 — Auto-respawned followers come up empty (no catchup)
 - **Where:** `registry.py` `receive_heartbeat` + `coordinator.py` `/spawn` (checkpoints 08/09/10).

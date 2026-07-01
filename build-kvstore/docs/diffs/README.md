@@ -138,13 +138,15 @@ This is the first big jump, and it has its own deep-dive: **[04-to-05-replicatio
 The second big jump, with its own deep-dive: **[07-to-08-discovery.md](07-to-08-discovery.md)**.
 
 - **Diff (in brief):** a new **`registry.py`** (a discovery service: nodes POST heartbeats to it; it
-  prunes ones that go silent and answers `/nodes` and `/alive`) and a new **`catchup.py`**. `node.py`
-  grows a `heartbeat_loop`, a `/snapshot` endpoint, a `/catchup` endpoint and a graceful deregister.
-  `coordinator.py` learns to drive catchup and to react to a reported death.
-- **Why:** through stage 07 the coordinator only *guessed* at liveness by polling health. Real
-  clusters use **push-based heartbeats**: each node continuously says "I'm alive," and absence of
-  that signal — not a failed poll — is what declares it dead. This is the foundation everything after
-  it stands on: you can't *recover* a node until you can reliably *detect* its death.
+  prunes ones that go silent, answers `/nodes`, and pushes `/node-died` to the coordinator). `node.py`
+  grows a `heartbeat_loop`, a `/snapshot` endpoint, a `/catchup` endpoint, a `/crash` endpoint (for the
+  unannounced-crash demo) and a graceful deregister. `coordinator.py` **drops its health loop** — it
+  now learns of a crash only from the registry's `/node-died` push — and drives catchup on `/spawn`.
+- **Why:** through stage 07 the coordinator only ever knew about *administrative* removals it performed
+  itself (`/kill`); an unannounced **crash** was invisible. Real clusters use **push-based
+  heartbeats**: each node continuously says "I'm alive," and absence of that signal is what declares it
+  dead. This is the foundation everything after it stands on: you can't *recover* a node until you can
+  reliably *detect* its death.
 - **The exercise:** implement the core of `heartbeat_loop` — the one POST a node sends the registry
   to announce it's alive.
 - **Anchor:** etcd / Consul / Redis Cluster gossip.

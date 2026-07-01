@@ -239,6 +239,21 @@ def health():
         "role": NODE_ROLE
     }
 
+@app.post("/crash")
+def crash():
+    """Simulate an UNANNOUNCED crash: die immediately without deregistering.
+
+    Unlike the coordinator's /kill (an administrative removal the coordinator performs and records),
+    a crash tells no one. The coordinator keeps believing this node is alive; only the registry can
+    notice, because its heartbeats stop arriving. This is what makes stage 08's failure detection
+    matter. os._exit skips the graceful-shutdown handler on purpose, so no /deregister is sent.
+    """
+    def _die():
+        time.sleep(0.2)  # let the HTTP response flush before the process vanishes
+        os._exit(1)
+    threading.Thread(target=_die, daemon=True).start()
+    return {"status": "crashing", "node_id": NODE_ID}
+
 @app.get("/stats")
 def stats():
     """Node statistics."""

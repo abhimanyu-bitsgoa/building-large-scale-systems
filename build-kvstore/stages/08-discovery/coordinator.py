@@ -51,7 +51,6 @@ logger = EventLogger()
 BASE_PORT = 7000
 NODE_SCRIPT = os.path.join(os.path.dirname(__file__), "node.py")
 REGISTRY_URL = "http://localhost:9000"
-HEARTBEAT_TIMEOUT = 5
 
 # Replication delays (consistent with node.py)
 ASYNC_REPLICATION_DELAY = 5.0
@@ -74,10 +73,7 @@ class ClusterState:
         self.write_quorum = write_quorum
         self.read_quorum = read_quorum
         self.lock = threading.Lock()
-        
-        # Track previous status for change detection
-        self.previous_status: Dict[str, str] = {}
-    
+
     def get_all_nodes(self) -> List[dict]:
         nodes = []
         if self.leader:
@@ -151,46 +147,34 @@ def check_node_health(url: str) -> bool:
     except:
         return False
 
-def health_check_loop():
-    """Background thread to check node health and log status changes."""
-    while True:
-        with cluster.lock:
-            # Check leader
-            if cluster.leader:
-                node_id = cluster.leader["node_id"]
-                old_status = cluster.previous_status.get(node_id)
-                new_status = "alive" if check_node_health(cluster.leader["url"]) else "dead"
-                cluster.leader["status"] = new_status
-                
-                if old_status and old_status != new_status:
-                    if new_status == "dead":
-                        logger.log("[DOWN]", f"LEADER DOWN: {node_id} is no longer responding")
-                    else:
-                        logger.log("[UP]", f"LEADER RECOVERED: {node_id} is back online")
-                cluster.previous_status[node_id] = new_status
-            
-            # Check followers
-            for node_id, follower in cluster.followers.items():
-                old_status = cluster.previous_status.get(node_id)
-                new_status = "alive" if check_node_health(follower["url"]) else "dead"
-                follower["status"] = new_status
-                
-                if old_status and old_status != new_status:
-                    sync_followers = cluster.get_sync_followers()
-                    sync_ids = {f["node_id"] for f in sync_followers}
-                    role_tag = "SYNC" if node_id in sync_ids else "ASYNC"
-                    
-                    if new_status == "dead":
-                        logger.log("[DOWN]", f"NODE DOWN: {node_id} [{role_tag}]")
-                        # Log quorum impact
-                        if not cluster.can_write():
-                            logger.log("[WARN]", f"WRITE QUORUM LOST: Only {len(cluster.get_alive_followers())} followers alive, need {cluster.write_quorum}")
-                    else:
-                        logger.log("[UP]", f"NODE RECOVERED: {node_id} [{role_tag}]")
-                
-                cluster.previous_status[node_id] = new_status
-        
-        time.sleep(2)
+def mark_nodes_ready():
+    """One-shot startup readiness: mark leader + followers alive once they answer /health.
+
+    There is deliberately NO continuous health loop. From stage 08 on, the REGISTRY is the failure
+    detector: nodes heartbeat it, and when a heartbeat lapses the registry pushes /node-died to the
+    coordinator. So the coordinator never polls health after startup -- an unannounced crash is
+    learned about only through the registry. This probe just waits for freshly spawned nodes to boot.
+    """
+    for node in cluster.get_all_nodes():
+        alive = False
+        for _ in range(10):
+            if check_node_health(node["url"]):
+                alive = True
+                break
+            time.sleep(0.5)
+        node["status"] = "alive" if alive else "dead"
+
+def mark_follower_ready(node_id: str, url: str):
+    """Spawn-path equivalent of mark_nodes_ready: mark a (re)spawned follower alive once it
+    answers /health. Needed because there is no background loop to flip it from 'starting'."""
+    for _ in range(10):
+        if check_node_health(url):
+            with cluster.lock:
+                if node_id in cluster.followers:
+                    cluster.followers[node_id]["status"] = "alive"
+            logger.log("[UP]", f"NODE READY: {node_id}")
+            return
+        time.sleep(0.5)
 
 def send_catchup_to_follower(follower_url: str, leader_url: str) -> bool:
     """
@@ -494,6 +478,8 @@ def spawn_follower(request: Optional[SpawnRequest] = None):
                 except Exception:
                     pass
                 send_catchup_to_follower(url, leader_url)
+                # No health loop: mark the respawned node alive once it answers /health.
+                mark_follower_ready(node_id, url)
 
             threading.Thread(target=register_and_catchup, daemon=True).start()
         
@@ -526,35 +512,22 @@ def kill_follower(node_id: str):
             "can_write": cluster.can_write()
         }
 
-@app.post("/catchup")
-def trigger_catchup(request: NodeRequest):
-    """Trigger catchup for a follower (called by registry)."""
-    if not cluster.leader:
-        raise HTTPException(status_code=503, detail="No leader available")
-    
-    node_url = request.url
-    if not node_url and request.node_id in cluster.followers:
-        node_url = cluster.followers[request.node_id]["url"]
-    
-    if not node_url:
-        raise HTTPException(status_code=404, detail=f"Node '{request.node_id}' not found")
-    
-    success = send_catchup_to_follower(node_url, cluster.leader["url"])
-    
-    if success:
-        logger.log("[OK]", f"Catchup completed for {request.node_id}")
-        return {"status": "caught_up", "node_id": request.node_id}
-    else:
-        raise HTTPException(status_code=500, detail="Catchup failed")
-
 @app.post("/node-died")
 def handle_node_died(request: NodeRequest):
-    """Handle notification that a node died (from registry)."""
+    """Handle notification that a node died (pushed by the registry when heartbeats lapse).
+
+    This is how the coordinator learns about an UNANNOUNCED crash. It has no health loop of its
+    own, so without this push it would keep believing a crashed node is alive and route writes to
+    a corpse. This is the payoff of service discovery: the registry's heartbeats are the eyes the
+    coordinator lacks.
+    """
     with cluster.lock:
         if request.node_id in cluster.followers:
             cluster.followers[request.node_id]["status"] = "dead"
-            logger.log("[DEAD]", f"Node {request.node_id} died")
-    
+            logger.log("[DEAD]", f"NODE DOWN (detected via registry heartbeats): {request.node_id}")
+            if not cluster.can_write():
+                logger.log("[WARN]", f"WRITE QUORUM LOST: Only {len(cluster.get_alive_followers())} followers alive, need {cluster.write_quorum}")
+
     return {"status": "acknowledged"}
 
 # ========================
@@ -636,13 +609,9 @@ def initialize_cluster(num_followers: int):
         except:
             pass
     
-    # Initialize previous status for all nodes (for health check change detection)
-    cluster.previous_status = {"leader": "alive"}
-    for node_id in cluster.followers:
-        cluster.previous_status[node_id] = "alive"
-    
-    # Start background health check thread
-    threading.Thread(target=health_check_loop, daemon=True).start()
+    # One-shot readiness probe. No continuous health monitoring: from stage 08 on the registry
+    # is the failure detector, and the coordinator learns of deaths via /node-died.
+    mark_nodes_ready()
     
     print()
     logger.log_separator()

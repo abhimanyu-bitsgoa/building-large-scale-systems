@@ -84,14 +84,19 @@ pay for it next stage: a write now needs every follower alive.)*
 keep consistency, the CP corner). The general rule: **W + R > N**; tune `W` along the CAP spectrum.
 
 ## 08 — Service discovery ⌨️ code
-**Incident:** the registry never sees a node, so it can't detect its death.
-**Do:** implement `heartbeat_loop` in `node.py` (POST to the registry every interval).
-**Anchor:** Redis Cluster gossip / etcd / Consul heartbeats.
+**Framing:** in 05-07 the coordinator only knew a node was gone because it removed it itself (an
+administrative `/kill`). It has **no health loop** — an *unannounced crash* (`kvcrash`, a node dying
+without going through the coordinator) is invisible to it. The registry adds the missing eyes.
+**Incident:** crash a follower out-of-band; with no heartbeats the registry never saw the node, so the
+coordinator keeps it `alive` and routes to a corpse.
+**Do:** implement `heartbeat_loop` in `node.py` (POST to the registry every interval). Now the
+registry detects the missed heartbeats and pushes `/node-died` to the coordinator.
+**Anchor:** Redis Cluster gossip / etcd / Consul heartbeats (ephemeral membership).
 
 ## 09 — Auto-recovery
-**Incident:** a dead follower stays dead; the cluster runs degraded.
-**Do:** enable `--auto-spawn`; the coordinator catches the new node up from the leader's snapshot.
-*(config)*
+**Incident:** a crashed follower stays dead; the cluster runs degraded.
+**Do:** enable the registry's `--auto-spawn`; on a detected crash it asks the coordinator to respawn
+the follower, which then catches it up from the leader's snapshot. *(config)*
 **Anchor:** replacing a failed replica + full resync (Redis `PSYNC`). This is *follower* recovery —
 not leader failover (that's Sentinel, out of scope).
 
@@ -99,7 +104,7 @@ not leader failover (that's Sentinel, out of scope).
 Put the **gateway** in front (rate limiting returns to the edge — the same `rate_limiter.py`) and run
 a 5-minute whole-system demo: `make lab STAGE=10`, then in the control pane trace one request end to
 end (`kvwrite`/`kvread` → gateway → coordinator → leader → followers), shed load at the edge
-(`kvflood`), and survive a failure (`kvkill 1` → auto-respawn + catchup → `kvread` still fresh).
+(`kvflood`), and survive a crash (`kvcrash 1` → registry detects → auto-respawn + catchup → `kvread` still fresh).
 *Note:* the gateway forwards to a single coordinator, so it doesn't load-balance — the routing
 responsibility now lives server-side in the coordinator's quorum. There is **no incident** for this
 stage: it's the synthesis of everything from 00–09, driven by hand.
