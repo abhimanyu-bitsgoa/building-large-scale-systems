@@ -281,7 +281,7 @@ def write_data(request: WriteRequest):
     """
     logger.log_separator()
     logger.log("[WRITE]", f"WRITE REQUEST: key=\"{request.key}\" value=\"{request.value}\"")
-    
+
     if not cluster.can_write():
         alive = len(cluster.get_alive_followers())
         logger.log("[ERR]", f"WRITE REJECTED: Quorum unavailable ({alive}/{cluster.write_quorum} followers)")
@@ -293,18 +293,18 @@ def write_data(request: WriteRequest):
                 "required": cluster.write_quorum
             }
         )
-    
+
     sync_followers = cluster.get_sync_followers()
     async_followers = cluster.get_async_followers()
-    
+
     sync_urls = [f["url"] for f in sync_followers]
     async_urls = [f["url"] for f in async_followers]
-    
+
     logger.log("→", f"Sending to leader ({cluster.leader['node_id']})")
     logger.log("→", f"Sync followers: {[f['node_id'] for f in sync_followers]}")
     if async_followers:
         logger.log("→", f"Async followers: {[f['node_id'] for f in async_followers]}")
-    
+
     try:
         resp = requests.post(
             f"{cluster.leader['url']}/data",
@@ -366,17 +366,17 @@ def read_data(key: str):
     """
     logger.log_separator()
     logger.log("[READ]", f"READ REQUEST: key=\"{key}\"")
-    
+
     if not cluster.can_read():
         logger.log("[ERR]", f"READ REJECTED: Quorum unavailable")
         raise HTTPException(status_code=503, detail="Read quorum not available")
-    
+
     results = []
     read_followers = cluster.get_read_followers()
     read_follower_ids = [f["node_id"] for f in read_followers]
-    
+
     logger.log("→", f"Querying followers (largest ports): {read_follower_ids}")
-    
+
     # Query followers first
     for node in read_followers:
         try:
@@ -392,15 +392,15 @@ def read_data(key: str):
                 logger.log("←", f"{node['node_id']}: {resp.status_code}")
         except:
             logger.log("←", f"{node['node_id']}: Unreachable")
-    
+
     # Check if we have R quorum responses
     if len(results) < cluster.read_quorum:
         logger.log("[ERR]", f"QUORUM FAILED: Only {len(results)}/{cluster.read_quorum} nodes responded")
         raise HTTPException(status_code=503, detail={"error": "Read quorum not met", "responses": len(results), "required": cluster.read_quorum})
-    
+
     # Check for version conflict (only for nodes that have the key)
     found_results = [r for r in results if r["value"] is not None]
-    
+
     if not found_results:
         logger.log("[ERR]", f"KEY NOT FOUND in quorum")
         raise HTTPException(status_code=404, detail=f"Key '{key}' not found in quorum")
@@ -409,10 +409,10 @@ def read_data(key: str):
     if len(versions) > 1:
         logger.log("[WARN]", f"VERSION CONFLICT: Detected multiple versions: {list(versions)}")
         logger.log("→", "Selecting highest version for resolution")
-    
+
     latest = max(found_results, key=lambda x: x["version"])
     logger.log("[OK]", f"RESULT: v{latest['version']} \"{latest['value']}\" (from {latest['node_id']})")
-    
+
     return {
         "key": key,
         "value": latest["value"],

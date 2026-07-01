@@ -12,7 +12,7 @@ Core architecture is consistent across all labs for student familiarity.
 """
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import argparse

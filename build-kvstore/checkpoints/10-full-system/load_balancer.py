@@ -120,14 +120,10 @@ class AdaptiveStrategy(LoadBalancerStrategy):
     def get_node(self, nodes: List[str]) -> str:
         if not nodes:
             raise ValueError("No nodes available")
-        
-        # Calculate scores for each node (lower is better)
-        scored_nodes = [(node, node_stats.get_score(node)) for node in nodes]
-        
-        # Sort by score (ascending) and pick the best
-        scored_nodes.sort(key=lambda x: x[1])
-        
-        return scored_nodes[0][0]
+
+        # Pick the lowest-score node (score blends latency + active requests; lower is better).
+        # We only need the minimum, so this is a single O(n) pass — no full sort.
+        return min(nodes, key=node_stats.get_score)
 
 class PowerOfTwoStrategy(LoadBalancerStrategy):
     """

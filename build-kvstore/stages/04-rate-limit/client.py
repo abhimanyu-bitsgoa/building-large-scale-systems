@@ -11,7 +11,6 @@ import time
 import requests
 import argparse
 import concurrent.futures
-import sys
 from collections import defaultdict
 
 from load_balancer import LoadBalancer, get_available_strategies

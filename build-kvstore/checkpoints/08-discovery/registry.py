@@ -5,14 +5,13 @@ Service discovery with heartbeats, automatic pruning, and catchup triggering.
 """
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 import threading
 import time
 import requests
 import argparse
 from typing import Dict
-from datetime import datetime
 import logging
 
 # ========================

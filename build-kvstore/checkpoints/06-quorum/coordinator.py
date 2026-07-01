@@ -21,9 +21,8 @@ import time
 import os
 import sys
 import requests
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 # ========================
@@ -279,17 +278,22 @@ def get_status():
         "read_followers": [f["node_id"] for f in read_followers]
     }
 
+def _log_async_completion(follower_ids: List[str]):
+    """Background log line emitted once async replication has had time to land."""
+    time.sleep(ASYNC_REPLICATION_DELAY + 0.5)
+    logger.log("[OK]", f"ASYNC REPLICATION COMPLETE: Replicated to {follower_ids}")
+
+
 @app.post("/write")
 def write_data(request: WriteRequest):
     """
     Write data with quorum.
-    Waits for W follower acks before returning success.
-    Leader always writes, plus W followers must ack synchronously.
-    Remaining followers receive async replication.
+    Leader writes, waits for sync follower acks.
+    Async followers replicate in background.
     """
     logger.log_separator()
     logger.log("[WRITE]", f"WRITE REQUEST: key=\"{request.key}\" value=\"{request.value}\"")
-    
+
     if not cluster.can_write():
         alive = len(cluster.get_alive_followers())
         logger.log("[ERR]", f"WRITE REJECTED: Quorum unavailable ({alive}/{cluster.write_quorum} followers)")
@@ -298,220 +302,135 @@ def write_data(request: WriteRequest):
             detail={
                 "error": "Write quorum not available",
                 "alive_followers": alive,
-                "required": cluster.write_quorum,
-                "message": f"Need {cluster.write_quorum} followers, only {alive} alive"
+                "required": cluster.write_quorum
             }
         )
-    
+
     sync_followers = cluster.get_sync_followers()
     async_followers = cluster.get_async_followers()
-    
+
     sync_urls = [f["url"] for f in sync_followers]
     async_urls = [f["url"] for f in async_followers]
-    
+
     logger.log("→", f"Sending to leader ({cluster.leader['node_id']})")
     logger.log("→", f"Sync followers: {[f['node_id'] for f in sync_followers]}")
     if async_followers:
         logger.log("→", f"Async followers: {[f['node_id'] for f in async_followers]}")
-    
-    # Send write to leader with sync/async follower lists
+
     try:
         resp = requests.post(
             f"{cluster.leader['url']}/data",
             json={
-                "key": request.key, 
+                "key": request.key,
                 "value": request.value,
                 "sync_followers": sync_urls,
                 "async_followers": async_urls
             },
-            timeout=60  # Long timeout for replication
+            timeout=30
         )
-        
-        if resp.status_code == 200:
-            result = resp.json()
-            replication = result.get("replication", {})
-            sync_acks = replication.get("sync_acks", 0)
-            sync_acked_by = replication.get("sync_acked_by", [])
-            
-            # Log leader write
-            logger.log("[OK]", f"Leader: written (v{result.get('version')})")
-            
-            # Log sync acks
-            for node_url in sync_acked_by:
-                # Find node_id from URL
-                node_id = "unknown"
-                for f in sync_followers:
-                    if f["url"] == node_url:
-                        node_id = f["node_id"]
-                        break
-                logger.log("[OK]", f"{node_id}: sync ack received")
-            
-            if sync_acks >= cluster.write_quorum:
-                logger.log("[OK]", f"QUORUM MET: {sync_acks}/{cluster.write_quorum} sync acks")
-                
-                if async_followers:
-                    logger.log("[INFO]", f"Async replication queued for {len(async_followers)} followers")
-                    
-                    # Start a background thread to log when async replication is expected to complete
-                    def log_async_completion(follower_ids: List[str]):
-                        # Wait for delay + small buffer for network/processing
-                        time.sleep(ASYNC_REPLICATION_DELAY + 0.5)
-                        logger.log("[OK]", f"ASYNC REPLICATION COMPLETE: Replicated to {follower_ids}")
-                    
-                    async_ids = [f["node_id"] for f in async_followers]
-                    threading.Thread(target=log_async_completion, args=(async_ids,), daemon=True).start()
-                
-                sync_replicated_to_ids = []
-                for node_url in replication.get("sync_acked_by", []):
-                    node_id = next((f["node_id"] for f in sync_followers if f["url"] == node_url), "unknown")
-                    sync_replicated_to_ids.append(node_id)
-                
-                return {
-                    "status": "success",
-                    "key": request.key,
-                    "value": request.value,
-                    "version": result.get("version"),
-                    "sync_acks": sync_acks,
-                    "quorum": cluster.write_quorum,
-                    "sync_replicated_to": sync_replicated_to_ids,
-                    "async_queued": replication.get("async_queued", 0)
-                }
-            else:
-                logger.log("[ERR]", f"QUORUM FAILED: Only {sync_acks}/{cluster.write_quorum} acks")
-                raise HTTPException(
-                    status_code=503,
-                    detail={
-                        "error": "Write quorum not met",
-                        "sync_acks": sync_acks,
-                        "required": cluster.write_quorum
-                    }
-                )
-        else:
-            logger.log("[ERR]", f"Leader error: {resp.status_code}")
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-    
     except requests.exceptions.RequestException as e:
         logger.log("[ERR]", f"Leader unreachable: {e}")
         raise HTTPException(status_code=503, detail=f"Leader unreachable: {e}")
 
+    if resp.status_code != 200:
+        logger.log("[ERR]", f"Leader error: {resp.status_code}")
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+    result = resp.json()
+    replication = result.get("replication", {})
+    sync_acks = replication.get("sync_acks", 0)
+    sync_acked_by = replication.get("sync_acked_by", [])
+
+    logger.log("[OK]", f"Leader: written (v{result.get('version')})")
+
+    for node_url in sync_acked_by:
+        node_id = next((f["node_id"] for f in sync_followers if f["url"] == node_url), "unknown")
+        logger.log("[OK]", f"{node_id}: sync ack received")
+
+    # Did we meet the write quorum (sync_acks >= W)?
+    if sync_acks < cluster.write_quorum:
+        logger.log("[ERR]", f"QUORUM FAILED: Only {sync_acks}/{cluster.write_quorum} acks")
+        raise HTTPException(status_code=503, detail={"error": "Write quorum not met", "sync_acks": sync_acks})
+
+    logger.log("[OK]", f"QUORUM MET: {sync_acks}/{cluster.write_quorum} sync acks (leader + {sync_acks} followers)")
+
+    if async_followers:
+        logger.log("[INFO]", f"Async replication queued for {len(async_followers)} followers")
+        async_ids = [f["node_id"] for f in async_followers]
+        threading.Thread(target=_log_async_completion, args=(async_ids,), daemon=True).start()
+
+    return {
+        "status": "success",
+        "key": request.key,
+        "value": request.value,
+        "version": result.get("version"),
+        "sync_acks": sync_acks,
+        "quorum": cluster.write_quorum,
+        "sync_replicated_to": sync_acked_by
+    }
+
 @app.get("/read/{key}")
 def read_data(key: str):
     """
-    Read data with quorum.
-    Queries ALL nodes, waits for R quorum responses, returns latest version.
-    Uses largest R port followers for quorum check.
+    Read with quorum.
+    Queries R followers (largest ports) first.
+    Falls back to leader only if follower quorum not met.
     """
     logger.log_separator()
     logger.log("[READ]", f"READ REQUEST: key=\"{key}\"")
-    
+
     if not cluster.can_read():
         logger.log("[ERR]", f"READ REJECTED: Quorum unavailable")
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "error": "Read quorum not available",
-                "alive_followers": len(cluster.get_alive_followers()),
-                "required": cluster.read_quorum
-            }
-        )
-    
-    read_followers = cluster.get_read_followers()
-    read_follower_ids = {f["node_id"] for f in read_followers}
-    
-    logger.log("→", f"Quorum Read: Querying largest port nodes {list(read_follower_ids)}")
-    
-    # Query ONLY quorum nodes
+        raise HTTPException(status_code=503, detail="Read quorum not available")
+
     results = []
-    all_responses = []
-    
-    # Use thread pool to query quorum nodes in parallel
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {}
-        for node in read_followers:
-            future = executor.submit(
-                lambda n: requests.get(f"{n['url']}/data/{key}", timeout=5),
-                node
-            )
-            futures[future] = node
-        
-        for future in as_completed(futures):
-            node = futures[future]
-            try:
-                resp = future.result()
-                if resp.status_code == 200:
-                    data = resp.json()
-                    response_data = {
-                        "node_id": node["node_id"],
-                        "value": data.get("value"),
-                        "version": data.get("version", 0),
-                        "is_quorum_node": True
-                    }
-                    all_responses.append(response_data)
-                    
-                    # Log response
-                    logger.log("←", f"{node['node_id']}: v{data.get('version', 0)} \"{data.get('value', 'null')}\" [QUORUM]")
-                    results.append(response_data)
-                    
-                elif resp.status_code == 404:
-                    response_data = {
-                        "node_id": node["node_id"],
-                        "value": None,
-                        "version": 0,
-                        "is_quorum_node": True,
-                        "error": "not_found"
-                    }
-                    all_responses.append(response_data)
-                    
-                    # Log response
-                    logger.log("←", f"{node['node_id']}: NOT FOUND [QUORUM]")
-                    results.append(response_data)
-                    
-            except Exception as e:
-                logger.log("←", f"{node['node_id']}: ERROR ({str(e)[:30]})")
-                all_responses.append({
-                    "node_id": node["node_id"],
-                    "error": str(e)
-                })
-    
+    read_followers = cluster.get_read_followers()
+    read_follower_ids = [f["node_id"] for f in read_followers]
+
+    logger.log("→", f"Querying followers (largest ports): {read_follower_ids}")
+
+    # Query followers first
+    for node in read_followers:
+        try:
+            resp = requests.get(f"{node['url']}/data/{key}", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                logger.log("←", f"{node['node_id']}: v{data.get('version', 0)} \"{data.get('value')}\" [FOLLOWER]")
+                results.append({"node_id": node["node_id"], "value": data.get("value"), "version": data.get("version", 0)})
+            elif resp.status_code == 404:
+                logger.log("←", f"{node['node_id']}: NOT FOUND [FOLLOWER]")
+                results.append({"node_id": node["node_id"], "value": None, "version": 0})
+            else:
+                logger.log("←", f"{node['node_id']}: {resp.status_code}")
+        except:
+            logger.log("←", f"{node['node_id']}: Unreachable")
+
     # Check if we have R quorum responses
     if len(results) < cluster.read_quorum:
-        logger.log("[ERR]", f"QUORUM FAILED: Only {len(results)}/{cluster.read_quorum} responded")
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "error": "Read quorum not met (node unreachable)",
-                "responses": len(results),
-                "required": cluster.read_quorum,
-                "all_responses": all_responses
-            }
-        )
-    
-    # Check for version conflict
-    versions = set(r["version"] for r in results)
+        logger.log("[ERR]", f"QUORUM FAILED: Only {len(results)}/{cluster.read_quorum} nodes responded")
+        raise HTTPException(status_code=503, detail={"error": "Read quorum not met", "responses": len(results), "required": cluster.read_quorum})
+
+    # Check for version conflict (only for nodes that have the key)
+    found_results = [r for r in results if r["value"] is not None]
+
+    if not found_results:
+        logger.log("[ERR]", f"KEY NOT FOUND in quorum")
+        raise HTTPException(status_code=404, detail=f"Key '{key}' not found in quorum")
+
+    versions = set(r["version"] for r in found_results)
     if len(versions) > 1:
-        logger.log("[WARN]", f"VERSION CONFLICT: Detected multiple versions in read quorum: {list(versions)}")
+        logger.log("[WARN]", f"VERSION CONFLICT: Detected multiple versions: {list(versions)}")
         logger.log("→", "Selecting highest version for resolution")
-    
-    # Return the result with highest version (most recent)
-    latest = max(results, key=lambda x: x["version"])
-    
-    if latest["version"] == 0:
-        logger.log("[ERR]", f"RESULT: Key \"{key}\" not found in quorum")
-        raise HTTPException(status_code=404, detail={"error": "Key not found", "key": key})
-    
-    # Find all nodes that have this highest version
-    agreeing_nodes = [r["node_id"] for r in results if r["version"] == latest["version"]]
-    node_list = ", ".join(agreeing_nodes)
-    logger.log("[OK]", f"RESULT: v{latest['version']} \"{latest['value']}\" (from {node_list})")
-    
+
+    latest = max(found_results, key=lambda x: x["version"])
+    logger.log("[OK]", f"RESULT: v{latest['version']} \"{latest['value']}\" (from {latest['node_id']})")
+
     return {
         "key": key,
         "value": latest["value"],
         "version": latest["version"],
-        "served_by": node_list,
-        "quorum_responses": len(results),
-        "required_quorum": cluster.read_quorum,
-        "all_node_responses": all_responses
+        "served_by": latest["node_id"],
+        "quorum_responses": len(results)
     }
 
 @app.post("/spawn")

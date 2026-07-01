@@ -1,5 +1,5 @@
 """
-Build-a-KVStore — Node Server (scalability stages 01–03)
+Build-a-KVStore — Node Server (scalability stages 02–03)
 
 A single-node key-value server:
 - Basic key-value storage (a dict behind HTTP)
