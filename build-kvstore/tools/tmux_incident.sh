@@ -66,9 +66,9 @@ tmux set-option -g mouse on
 # ---- pane titles -----------------------------------------------------------
 tmux set-option -w -t "$SESSION:0" pane-border-status top
 tmux set-option -w -t "$SESSION:0" pane-border-format " #[bold]#{pane_title}#[default] "
-tmux select-pane -t "$P_SRV" -T "servers  (make up STAGE=$STAGE)  <- watch THIS while the incident runs"
-tmux select-pane -t "$P_INC" -T "incident  (press Enter to run — re-run as many times as you like)"
-tmux select-pane -t "$P_SCR" -T "scratch  (curl :7000/status | python -m json.tool   |   make status)"
+tmux select-pane -t "$P_SRV" -T "[1] servers  (make up STAGE=$STAGE)  <- watch THIS while the incident runs"
+tmux select-pane -t "$P_INC" -T "[2] incident  (press Enter to run — re-run as many times as you like)"
+tmux select-pane -t "$P_SCR" -T "[3] scratch  (curl :7000/status | python -m json.tool   |   make status)"
 
 # ---- start the servers; pre-type (don't fire) the incident -----------------
 tmux send-keys -t "$P_SRV" "make up STAGE=$STAGE" C-m

@@ -181,7 +181,7 @@ P_SCR="${PANES[$((NSVC+2))]}"
 tmux set-option -g mouse on
 tmux set-option -w -t "$SESSION:0" pane-border-status top
 tmux set-option -w -t "$SESSION:0" pane-border-format " #[bold]#{pane_title}#[default] "
-for i in "${!PANES[@]}"; do tmux select-pane -t "${PANES[$i]}" -T "${TITLES[$i]}"; done
+for i in "${!PANES[@]}"; do tmux select-pane -t "${PANES[$i]}" -T "[$((i+1))] ${TITLES[$i]}"; done
 
 # ---- start the services in dependency order (give each time to bind) --------
 for i in "${!S_CMD[@]}"; do
