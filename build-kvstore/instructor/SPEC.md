@@ -97,7 +97,7 @@ records into `progress.json`, exits `0` (green) / `1` (red). Each `incident_N.py
 
 ## 6. Makefile + tooling
 
-Attendee verbs: `make start` · `make up STAGE=NN` · `make down` · `make incident STAGE=NN`
+Attendee verbs: `make verify` · `make start` · `make up STAGE=NN` · `make down` · `make incident STAGE=NN`
 · `make checkpoint STAGE=NN` · `make status`. Author verbs: `make validate` · `make snapshot`.
 `tools/up.sh` is a per-stage `case` hiding multi-process startup. Everything runs inside the
 existing Docker container (no host ports — `7000` collides with macOS Control Center on host).

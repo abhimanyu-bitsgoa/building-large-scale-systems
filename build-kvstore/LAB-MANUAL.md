@@ -37,6 +37,7 @@ folder:
 ```bash
 docker compose up -d                 # build + start the container (first run takes a few minutes)
 docker compose exec workshop bash    # open a shell inside it — everything below runs in here
+make verify                          # preflight (~15s): checks the toolchain + boots a real node
 make start                           # seed your working copy (kvstore/) from the first checkpoint
 ```
 
@@ -49,8 +50,8 @@ Every stage is the same three beats: **load it → explore it in the dashboard �
 **1. Load the stage's code into your working copy (`kvstore/`).** Two commands do this:
 
 ```bash
-make todo STAGE=NN      # the ✏️ code stages (03/04/05/08): loads the exercise with one blank function
-make checkpoint STAGE=NN    # any stage: loads the complete, working code (also your "rescue" button)
+make todo STAGE=NN         # the ✏️ code stages (03/04/05/08): loads the exercise with one blank function
+make checkpoint STAGE=NN   # any stage: loads the complete, working code (also your "rescue" button)
 ```
 
 For the run-and-explore stages, `make lab` (below) loads the stage for you automatically — you only
@@ -374,13 +375,14 @@ Tear it down with `make lab-down`.
 ## Cheat sheet
 
 ```bash
-make start               # seed your working copy (once, at the very beginning)
-make todo STAGE=NN        # load a ✏️ code stage's exercise (03/04/05/08)
-make checkpoint STAGE=NN      # load a stage's complete, working code (also the rescue button)
-make lab STAGE=NN        # the dashboard: explore the stage by hand (loads non-code stages for you)
-make lab-down            # tear the dashboard down
-make incident STAGE=NN   # run a stage's check on its own (or just press Enter in the lab's incident pane)
-make status              # show your progress across the ladder
+make verify                # preflight: check your setup end-to-end (run once before the workshop)
+make start                 # seed your working copy (once, at the very beginning)
+make todo STAGE=NN         # load a ✏️ code stage's exercise (03/04/05/08)
+make checkpoint STAGE=NN   # load a stage's complete, working code (also the rescue button)
+make lab STAGE=NN          # the dashboard: explore the stage by hand (loads non-code stages for you)
+make lab-down              # tear the dashboard down
+make incident STAGE=NN     # run a stage's check on its own (or just press Enter in the lab's incident pane)
+make status                # show your progress across the ladder
 ```
 
 The typical loop: **code stage** → `make todo` → `make lab` → edit the one function → `make lab-down`,

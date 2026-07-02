@@ -1,10 +1,11 @@
 STAGE ?= 01
 CP := $(shell ls -d checkpoints/$(STAGE)-* 2>/dev/null | head -1)
 
-.PHONY: help start todo up lab lab-down down incident checkpoint status validate snapshot
+.PHONY: help verify start todo up lab lab-down down incident checkpoint status validate snapshot
 
 help:
 	@echo "Build-a-KVStore — workshop commands"
+	@echo "  make verify             preflight: check Docker/Python/tmux + boot a node (run once before the workshop)"
 	@echo "  make start              seed kvstore/ from checkpoint 01"
 	@echo "  make todo STAGE=NN      load the TODO start for a code stage (03/04/05/08)"
 	@echo "  make up STAGE=NN        start this stage's processes"
@@ -18,12 +19,18 @@ help:
 	@echo "  make checkpoint STAGE=NN restore kvstore/ to a known-good checkpoint"
 	@echo "  make status             show the ladder of resolved incidents"
 
+# The chmod after each seed matters on LINUX hosts: the container runs as root, so
+# without it the copied files are root-owned on the bind mount and a host editor
+# (e.g. VS Code) can't save into kvstore/. No-op effect on macOS/Windows.
+verify:
+	@bash tools/verify_setup.sh
+
 start:
-	rm -rf kvstore && cp -r checkpoints/01-* kvstore
+	rm -rf kvstore && cp -r checkpoints/01-* kvstore && chmod -R a+rw kvstore
 	@echo "kvstore/ seeded from checkpoint 01"
 
 todo:
-	rm -rf kvstore && cp -r stages/$(STAGE)-* kvstore
+	rm -rf kvstore && cp -r stages/$(STAGE)-* kvstore && chmod -R a+rw kvstore
 	@echo "kvstore/ loaded with the TODO starting point for stage $(STAGE)"
 
 up:
@@ -47,7 +54,7 @@ incident:
 	fi
 
 checkpoint:
-	rm -rf kvstore && cp -r $(CP) kvstore
+	rm -rf kvstore && cp -r $(CP) kvstore && chmod -R a+rw kvstore
 	@echo "kvstore/ restored to $(CP)"
 
 status:

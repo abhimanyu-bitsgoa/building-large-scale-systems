@@ -57,7 +57,9 @@ command -v tmux >/dev/null 2>&1 || { echo "tmux not found (try: apt-get install 
 seed_from_checkpoint() {
   local cp; cp="$(ls -d "$HERE"/checkpoints/"$STAGE"-* 2>/dev/null | head -1)"
   [ -n "$cp" ] || { echo "No checkpoints/$STAGE-* found"; exit 1; }
-  rm -rf "$KV" && cp -r "$cp" "$KV"
+  # chmod: on Linux hosts the container is root, so without this the seeded files
+  # are root-owned on the bind mount and a host editor can't save into kvstore/.
+  rm -rf "$KV" && cp -r "$cp" "$KV" && chmod -R a+rw "$KV"
   echo "kvstore/ seeded from $(basename "$cp")"
 }
 CODE_STAGES=" 03 04 05 08 "

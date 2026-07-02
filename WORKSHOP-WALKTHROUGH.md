@@ -35,7 +35,7 @@ The primary workshop lives in [`build-kvstore/`](build-kvstore/). The original t
 Every stage follows the same **red → green** loop:
 
 ```
-make reset STAGE=NN       # load this stage into kvstore/ (use `make gap` for code stages)
+make checkpoint STAGE=NN       # load this stage into kvstore/ (use `make todo` for code stages)
 make up STAGE=NN          # start the system               (in shell A — it keeps running)
 make incident STAGE=NN    # ❌ reproduce the incident       (in shell B) — watch it FAIL
    …you add the next feature (write code) or change config…
@@ -46,14 +46,14 @@ make status               # see the ladder of resolved incidents
 Two kinds of stage:
 
 - **⌨️ Code stages — `03, 04, 05, 08`.** You implement a missing function. Start from the
-  gapped code with `make gap STAGE=NN`. **The gap is deliberately tiny** — all the boilerplate
+  gapped code with `make todo STAGE=NN`. **The gap is deliberately tiny** — all the boilerplate
   (loops, try/except, metadata, logging) is pre-filled and a single `raise NotImplementedError(...)`
   marks the **one core line** you write. You're adding the *idea*, not the plumbing.
 - **⚙️ Config / observe stages — `00, 01, 02, 06, 07, 09, 10`.** No code to write; load the
-  stage with `make reset STAGE=NN`, then launch and observe (the corrected configuration is
+  stage with `make checkpoint STAGE=NN`, then launch and observe (the corrected configuration is
   baked into the launcher).
 
-**The panic button:** at any time, `make reset STAGE=NN` overwrites the working directory with
+**The panic button:** at any time, `make checkpoint STAGE=NN` overwrites the working directory with
 the known-good, complete code for stage `NN`. Nobody can get permanently stuck.
 
 **Two ways to drive the system** (covered in detail in [§4](#4-running-the-system-two-shells-or-the-tmux-dashboard)):
@@ -94,6 +94,7 @@ Inside the container, `python` and `make` are on the `PATH` (the venv at `/opt/v
 pre-activated). Verify you're ready:
 
 ```bash
+make verify        # preflight: checks Python/tmux + boots a real node (~15s) — do this the day before
 make help          # prints the workshop commands
 make start         # seed the working dir from checkpoint 00 (do this once)
 ```
@@ -110,12 +111,13 @@ Run all of these from inside the container, in the `build-kvstore/` directory.
 
 | Command | What it does |
 |---|---|
+| `make verify` | **Preflight check** (~15s): Python, libraries, tmux, and a real node boot + write/read. Run it once before the workshop. |
 | `make start` | Seed the working dir `kvstore/` from checkpoint 00. **Run once at the beginning.** |
-| `make gap STAGE=NN` | Load the **gapped** starting point for a code stage (`03/04/05/08`) into `kvstore/`. |
+| `make todo STAGE=NN` | Load the **gapped** starting point for a code stage (`03/04/05/08`) into `kvstore/`. |
 | `make up STAGE=NN` | Start this stage's process(es). **Blocks the terminal** — run it in its own shell. |
 | `make down` | Stop **all** workshop processes (safe to run between every stage). |
 | `make incident STAGE=NN` | Run this stage's red→green check. Exit `0` = ✅ resolved, `1` = ❌ active. |
-| `make reset STAGE=NN` | Overwrite `kvstore/` with the known-good code for stage `NN` (the rescue). |
+| `make checkpoint STAGE=NN` | Overwrite `kvstore/` with the known-good code for stage `NN` (the rescue). |
 | `make lab STAGE=NN` | **tmux dashboard for any stage (00–10):** every process in its own pane + a control pane to drive it by hand. See [§4](#4-running-the-system-two-shells-or-the-tmux-dashboard). |
 | `make lab-down` | Tear down the `make lab` tmux session **and** all stage processes. |
 | `make status` | Show the ladder of resolved incidents (reads `progress.json`). |
@@ -208,12 +210,12 @@ will not overwrite a solution you're working on. For all other stages it seeds t
 checkpoint code automatically. So the normal flows are:
 
 - **Config/observe stage:** `make lab STAGE=06` — just works (boots the correct code).
-- **Code stage:** `make gap STAGE=05` first (load the gap), *then* `make lab STAGE=05`.
+- **Code stage:** `make todo STAGE=05` first (load the gap), *then* `make lab STAGE=05`.
 
 **Demoing a code stage in the dashboard** (one extra step — you must restart the edited process):
 
 ```bash
-make gap STAGE=05            # load the gap
+make todo STAGE=05            # load the gap
 make lab STAGE=05            # boots with the gapped code
 #   → press Enter in the incident pane: ❌ (replication not implemented)
 #   → edit kvstore/node.py (host editor or nano) — fill the one core line
@@ -260,13 +262,13 @@ registry + heartbeats). Flag these to the room as "new chapter," not "rewrite."
 Begin once with `make start`. **Then every stage starts by loading its code into the working
 directory `kvstore/` — before you `make up`:**
 
-- **Code stages (`03`, `04`, `05`, `08`):** `make gap STAGE=NN` (loads the gapped code you complete).
-- **All other stages:** `make reset STAGE=NN` (loads that stage's ready-to-run code).
+- **Code stages (`03`, `04`, `05`, `08`):** `make todo STAGE=NN` (loads the gapped code you complete).
+- **All other stages:** `make checkpoint STAGE=NN` (loads that stage's ready-to-run code).
 
 `make up STAGE=NN` runs *that stage's* launch command against whatever is in `kvstore/`, so
 skipping the load step runs a new stage's command against old code and errors out. The per-stage
 loop is then *run the incident → watch it fail → make the change → run it again → watch it pass*.
-Stuck? `make reset STAGE=NN` jumps you to a known-good solution.
+Stuck? `make checkpoint STAGE=NN` jumps you to a known-good solution.
 
 ### 00 — Single node ⚙️
 A KV store is just a dict behind HTTP: `POST /data`, `GET /data/{key}`. There's no failure to
@@ -287,7 +289,7 @@ each stage *starts* with a failing incident you then fix.
 ceiling, exactly the constraint Redis chose on purpose.
 **Do:** first watch it choke with a single worker, then scale up — *same node*, more workers.
 ```bash
-make reset STAGE=01            # load this stage into kvstore/
+make checkpoint STAGE=01            # load this stage into kvstore/
 make up STAGE=01 WORKERS=1     # shell A — one worker (one GIL)
 make incident STAGE=01         # shell B — ❌ p95 over budget (CPU-bound requests serialize)
 make down
@@ -302,11 +304,11 @@ make incident STAGE=01         # shell B — ✅ p95 drops
 **Do:** see one node fail the spread, then run 3 nodes so the load is shared.
 ```bash
 # fail first — incident 02 fans 30 requests across :5001-:5003, but only one node is up:
-make reset STAGE=01 ; make up STAGE=01   # shell A — a single node on :5001
+make checkpoint STAGE=01 ; make up STAGE=01   # shell A — a single node on :5001
 make incident STAGE=02                   # shell B — ❌ ~10/30 served (5002/5003 unreachable)
 make down
 # fix — three nodes share the load:
-make reset STAGE=02 ; make up STAGE=02   # shell A — 3 nodes on :5001-:5003
+make checkpoint STAGE=02 ; make up STAGE=02   # shell A — 3 nodes on :5001-:5003
 make incident STAGE=02                   # shell B — ✅ 30/30 served
 ```
 🖥️ **One-window demo:** `make lab STAGE=02` → three node panes are visible; in the `control`
@@ -323,14 +325,14 @@ what motivates the load balancer at stage 03.
 **Do (one line):** in `kvstore/load_balancer.py` → `AdaptiveStrategy.get_node`, return the
 lowest-score node — `return min(nodes, key=node_stats.get_score)`.
 ```bash
-make gap STAGE=03        # load the gapped code (raises NotImplementedError where you write)
+make todo STAGE=03        # load the gapped code (raises NotImplementedError where you write)
 make up STAGE=03         # shell A
 make incident STAGE=03   # shell B — ❌ adaptive can't be measured (NotImplementedError)
 # …edit kvstore/load_balancer.py → AdaptiveStrategy.get_node, then restart…
 make down ; make up STAGE=03
 make incident STAGE=03   # shell B — ✅ adaptive p95 < round-robin p95
 ```
-🖥️ **One-window demo:** after implementing, `make gap STAGE=03 && make lab STAGE=03`; in the
+🖥️ **One-window demo:** after implementing, `make todo STAGE=03 && make lab STAGE=03`; in the
 `control` pane compare `nload round_robin 40 10` vs `nload adaptive 40 10` — adaptive steers away
 from the weak node. (Restart the node panes after editing: `Ctrl-C` then `↑ Enter` in each.)
 
@@ -340,14 +342,14 @@ from the weak node. (Restart the node panes after editing: `Ctrl-C` then `↑ En
 fixed-window core (the metadata is pre-filled): reset the counter when the window expires, then
 allow while `count < max` (incrementing), else reject.
 ```bash
-make gap STAGE=04
+make todo STAGE=04
 make up STAGE=04         # shell A
 make incident STAGE=04   # shell B — ❌ nothing blocked (no rate limiting in effect)
 # …edit kvstore/rate_limiter.py → FixedWindowStrategy.is_allowed, then restart…
 make down ; make up STAGE=04
 make incident STAGE=04   # shell B — ✅ first N succeed, the rest get 429
 ```
-🖥️ **One-window demo:** `make gap STAGE=04 && make lab STAGE=04`; press Enter in the `incident`
+🖥️ **One-window demo:** `make todo STAGE=04 && make lab STAGE=04`; press Enter in the `incident`
 pane (❌), implement the gap, restart the node pane (`Ctrl-C`, `↑ Enter`), re-run incident (✅).
 
 ### 05 — Replication ⌨️ **code**  *(chapter boundary: coordinator + leader/followers appear)*
@@ -359,14 +361,14 @@ if that node dies.
 replication (the try/except and result handling are pre-filled):
 `resp = requests.post(f"{follower_url}/replicate", json={"key": key, "value": value, "version": version, "source": NODE_ID}, timeout=10)`.
 ```bash
-make gap STAGE=05
+make todo STAGE=05
 make up STAGE=05         # shell A
 make incident STAGE=05   # shell B — ❌ data is stranded on the leader; the read-tier is empty
 # …edit kvstore/node.py → replicate_to_follower, then restart…
 make down ; make up STAGE=05
 make incident STAGE=05   # shell B — ✅ the write reaches the replicas; reads now succeed
 ```
-🖥️ **One-window demo:** `make gap STAGE=05 && make lab STAGE=05`. In the `control` pane,
+🖥️ **One-window demo:** `make todo STAGE=05 && make lab STAGE=05`. In the `control` pane,
 `kvwrite cart shoes` then `kvread cart` (❌ before you implement). Implement, restart the
 `coordinator` pane (`Ctrl-C`, `↑ Enter`), and `kvread cart` succeeds. The `coordinator` pane
 shows the leader + followers, so you can watch replication land.
@@ -399,11 +401,11 @@ every node has the key, but one is behind. This is different from stage 05 where
 
 ```bash
 # feel the failure first — run against the WEAK stage-05 quorum:
-make reset STAGE=05 ; make up STAGE=05   # shell A: W=1, R=1
+make checkpoint STAGE=05 ; make up STAGE=05   # shell A: W=1, R=1
 make incident STAGE=06                   # shell B: ❌ 4/4 reads returned "old" (stale)
 make down
 # now make every follower sync (05/06/07 share code; only W/R differ):
-make reset STAGE=06 ; make up STAGE=06   # shell A: W=3, R=1 (all followers sync)
+make checkpoint STAGE=06 ; make up STAGE=06   # shell A: W=3, R=1 (all followers sync)
 make incident STAGE=06                   # shell B: ✅ 0/4 stale — every write reaches all followers
 ```
 🖥️ **One-window demo:** `make lab STAGE=05` (weak quorum) → `incident` pane shows stale reads;
@@ -431,11 +433,11 @@ system would instead accept the write and reconcile later. You pick the corner b
 
 ```bash
 # fail first — stage 06's all-sync quorum (W=3=N); one kill loses the write quorum:
-make reset STAGE=06 ; make up STAGE=06   # shell A — W=3, R=1 (all followers sync)
+make checkpoint STAGE=06 ; make up STAGE=06   # shell A — W=3, R=1 (all followers sync)
 make incident STAGE=07                   # shell B — ❌ writes REFUSED (503) but reads still succeed (CP)
 make down
 # fix — W=2 is the majority: tolerates floor(N/2)=1 death and stays consistent:
-make reset STAGE=07 ; make up STAGE=07   # shell A — W=2, R=2
+make checkpoint STAGE=07 ; make up STAGE=07   # shell A — W=2, R=2
 make incident STAGE=07                   # shell B — ✅ writes AND reads survive the failure
 ```
 🖥️ **One-window demo (the CAP moment, by hand):** `make lab STAGE=07` (W=2,R=2). In the `control`
@@ -461,14 +463,14 @@ balancing shift: the routing smarts now live in the coordinator, not the client.
 the node is alive (the `while` loop, try/except and pacing are pre-filled):
 `resp = requests.post(f"{REGISTRY_URL}/heartbeat", json={"node_id": NODE_ID, "port": NODE_PORT, "url": f"http://localhost:{NODE_PORT}", "role": NODE_ROLE}, timeout=2)`.
 ```bash
-make gap STAGE=08
+make todo STAGE=08
 make up STAGE=08         # shell A
 make incident STAGE=08   # shell B — ❌ killed node still shows "alive" (registry never saw it)
 # …edit kvstore/node.py → heartbeat_loop, then restart…
 make down ; make up STAGE=08
 make incident STAGE=08   # shell B — ✅ a killed node is correctly reported "dead"
 ```
-🖥️ **One-window demo:** `make gap STAGE=08 && make lab STAGE=08` → watch the `registry` and
+🖥️ **One-window demo:** `make todo STAGE=08 && make lab STAGE=08` → watch the `registry` and
 `coordinator` panes side by side. `kvkill 1`, then `kvstatus`: before you implement heartbeats the
 registry never marks it dead; after (restart the `coordinator` pane), the death is detected.
 
@@ -482,11 +484,11 @@ the leader's snapshot.
 > with their own hands, then close with the [stage-10 demo](#7-the-finale-stage-10-a-5-minute-whole-system-demo).
 ```bash
 # fail first — stage 08 has discovery but no auto-spawn, so a killed follower stays dead:
-make reset STAGE=08 ; make up STAGE=08   # shell A — registry (no auto-spawn) + coordinator
+make checkpoint STAGE=08 ; make up STAGE=08   # shell A — registry (no auto-spawn) + coordinator
 make incident STAGE=09                   # shell B — ❌ killed follower stays dead
 make down
 # fix — stage 09 turns on auto-spawn + catchup:
-make reset STAGE=09 ; make up STAGE=09   # shell A — registry auto-spawn + coordinator
+make checkpoint STAGE=09 ; make up STAGE=09   # shell A — registry auto-spawn + coordinator
 make incident STAGE=09                   # shell B — ✅ killed follower is respawned AND has the data
 ```
 🖥️ **One-window demo (watch self-healing):** `make lab STAGE=09`. In the `control` pane:
@@ -556,7 +558,7 @@ make lab STAGE=10        # registry + coordinator + gateway panes, all visible
    (~3.5 min). Re-run it after *any* edit to a coordinator/registry/node/incident or
    to `tools/up.sh`/`down.sh` — it is your correctness gate.
 3. **Rehearse the human flow** end-to-end: `make start`, then walk `00 → 09` using
-   gap/up/incident/reset, and finish with the stage-10 demo (§7). The regression suite proves
+   todo/up/incident/checkpoint, and finish with the stage-10 demo (§7). The regression suite proves
    correctness mechanically; the rehearsal is about *pacing* and the couple of machine-dependent
    thresholds (see 8.4).
 
@@ -565,7 +567,7 @@ make lab STAGE=10        # registry + coordinator + gateway panes, all visible
 There are 11 stages but only **4 require writing code** (`03, 04, 05, 08`) — budget the most
 time there. The config/observe stages move fast and are where you narrate the concept. Give the
 room a hard checkpoint at each **chapter boundary** (after 04, after 07): everyone runs
-`make reset STAGE=04` / `make reset STAGE=07` so the whole room re-synchronizes regardless of who
+`make checkpoint STAGE=04` / `make checkpoint STAGE=07` so the whole room re-synchronizes regardless of who
 fell behind.
 
 <a id="2-hour-core-path"></a>
@@ -652,14 +654,14 @@ between stages with `make lab-down`.
 |---|---|---|
 | `make up` fails with "address already in use" | a previous stage's process is still holding the port | `make down`, then retry |
 | Reads return stale / wrong data for no reason | orphaned followers from a prior run on `7002–7004` | `make down`; confirm `ss -ltn \| grep -cE ':7000\|:9000'` is `0` |
-| `NotImplementedError: STAGE NN: …` | you're on a code stage and the gap isn't filled | implement the function in `kvstore/`, or `make reset STAGE=NN` to see the solution |
-| An attendee is hopelessly behind | — | `make reset STAGE=NN` jumps their `kvstore/` to a known-good stage instantly |
+| `NotImplementedError: STAGE NN: …` | you're on a code stage and the gap isn't filled | implement the function in `kvstore/`, or `make checkpoint STAGE=NN` to see the solution |
+| An attendee is hopelessly behind | — | `make checkpoint STAGE=NN` jumps their `kvstore/` to a known-good stage instantly |
 | `incident_01` fails on a slow machine | p95 budget too tight for that hardware | `P95_BUDGET_MS=500 make incident STAGE=01` |
 | `incident_03` green flakes (adaptive ≥ round-robin) | timing noise in the relative p95 comparison | re-run it; not a real regression |
 | `make: command not found` | you're on the host, not in the container | `docker-compose exec workshop bash` then `cd build-kvstore` |
-| Lost all your edits | you ran `make start`/`make gap`/`make reset` (they overwrite `kvstore/`) | expected — `kvstore/` is disposable; commit your own work elsewhere if you want to keep it |
+| Lost all your edits | you ran `make start`/`make todo`/`make checkpoint` (they overwrite `kvstore/`) | expected — `kvstore/` is disposable; commit your own work elsewhere if you want to keep it |
 | `make lab` edits don't take effect (code stage) | the service pane is still running your old code | in the relevant service pane (e.g. `coordinator`): `Ctrl-C`, then `↑ Enter` to relaunch |
-| `make lab STAGE=05/08` boots the solution, not the gap | `make lab` is non-destructive on code stages and reused existing `kvstore/` | run `make gap STAGE=NN` first, then `make lab STAGE=NN` |
+| `make lab STAGE=05/08` boots the solution, not the gap | `make lab` is non-destructive on code stages and reused existing `kvstore/` | run `make todo STAGE=NN` first, then `make lab STAGE=NN` |
 | `tmux not found` | rare; tmux missing in the container | `apt-get install -y tmux` (or use the two-shell model) |
 | Stuck inside tmux | — | detach with `Ctrl-b` then `d`; re-attach `tmux attach -t kvlab`; kill all `make lab-down` |
 | Container slow / `fork`/exec hangs after many runs | (only on a container created *without* `init: true`) zombie buildup | `docker-compose up -d` to recreate with the init, or `docker-compose restart workshop` |

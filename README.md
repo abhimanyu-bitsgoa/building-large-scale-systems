@@ -23,13 +23,30 @@ docker-compose exec workshop bash
 
 ### 2. Verify Setup
 
-Inside the container, test a simple node:
+Inside the container, run the preflight check — it verifies Python, the workshop
+libraries, tmux, and boots a real node end-to-end (~15 seconds):
 
 ```bash
-python labs/scalability/node.py --port 5001 --id 1
+cd build-kvstore
+make verify
 ```
 
-If you see `Node 1 starting on port 5001`, you're ready for the workshop.
+If you see the **`SETUP VERIFIED`** banner, you're ready for the workshop. If any
+line shows `[FAIL]`, it prints the one-line fix next to it — apply it and re-run.
+
+> **Please run this the day before the workshop** — the first `docker-compose up -d`
+> downloads and builds the image; don't save that for conference wifi.
+
+### Platform notes
+
+- **Windows:** run the `docker-compose` commands from **PowerShell or Windows
+  Terminal** — not Git Bash. (Git Bash's terminal breaks `docker-compose exec`
+  with *"the input device is not a TTY"*, and legacy consoles render the
+  dashboards poorly.)
+- **`docker-compose` vs `docker compose`:** newer Docker Desktop installs ship the
+  command as `docker compose` (with a space). If `docker-compose` says *command
+  not found*, use `docker compose` — same arguments everywhere.
+- **Linux:** start the Docker daemon first if needed (`sudo systemctl start docker`).
 
 ***Once done, please register your completion [here](https://forms.gle/fBfvTbLwgAKH13yd9)***
 
