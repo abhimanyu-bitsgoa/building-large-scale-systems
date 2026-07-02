@@ -364,7 +364,7 @@ kvwrite cart shoes       # trace it: gateway (:8000) → coordinator (:7000) →
 kvread cart
 kvflood 15               # hammer the edge — the rate limiter sheds the overflow as 429s
 kvwrite order paid
-kvkill 1                 # crash a follower — quorum holds, then it auto-respawns and catches up
+kvcrash 1                # unannounced crash — quorum holds, then it auto-respawns and catches up
 kvread order             # still fresh
 ```
 

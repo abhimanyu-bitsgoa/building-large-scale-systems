@@ -16,20 +16,20 @@ nwrite() {  # nwrite <key> <value>
 }
 nread()   { curl -s "$NODE_URL/data/${1:?usage: nread <key>}"; echo; }
 nhealth() { curl -s "$NODE_URL/health"; echo; }
-nload() {   # fire load across all nodes
-  # Stages with a load balancer (03/04, HAS_LB=1): nload [strategy] [requests] [concurrency]
-  #   — on stage 03 compare  nload round_robin 96 12  vs  nload adaptive 96 12.
-  # Single-node stages (01/02, no balancer): nload [requests] [concurrency] — fire concurrent load
-  #   at the one node (on stage 02 with WORKERS=1 you watch the GIL choke the tail).
-  if [ -n "${HAS_LB:-}" ]; then
-    ( cd "${KVDIR:?KVDIR not set}" && \
-      python client.py --nodes "$NODES" --strategy "${1:-adaptive}" \
-        --requests "${2:-30}" --concurrent "${3:-10}" -v )
-  else
-    ( cd "${KVDIR:?KVDIR not set}" && \
-      python client.py --nodes "$NODES" \
-        --requests "${1:-30}" --concurrent "${2:-10}" -v )
+nload() {   # fire load across the nodes via the load balancer (stages 03/04 only)
+  # nload lives in client.py, which only the load-balancer stages (03/04) ship. The single-node
+  # stages (01/02) have no client.py — their concurrent-load story is driven by the incident pane
+  # instead (on stage 02, WORKERS=1 shows the GIL choke). So nload is a no-op there.
+  #   nload [strategy] [requests] [concurrency] — on stage 03 compare
+  #   nload round_robin 96 12  vs  nload adaptive 96 12.
+  if [ -z "${HAS_LB:-}" ]; then
+    echo "nload needs the load balancer — it's available on stages 03/04."
+    echo "On stage 02, press Enter in the incident pane to drive load (WORKERS=1 shows the GIL choke)."
+    return 1
   fi
+  ( cd "${KVDIR:?KVDIR not set}" && \
+    python client.py --nodes "$NODES" --strategy "${1:-adaptive}" \
+      --requests "${2:-30}" --concurrent "${3:-10}" -v )
 }
 
 # ── cluster tier (05-10): data via WR_URL, membership via ADMIN_URL ──────────
@@ -83,8 +83,6 @@ EOF
     nwrite <key> <value>    write a value
     nread  <key>            read it back
     nhealth                 node health + in-flight requests
-    nload [reqs] [conc]     fire concurrent load at the node
-                            e.g.  nload 40 10  — on stage 02 with WORKERS=1 the GIL chokes the tail
 
   Run the graded check any time:  make incident STAGE=NN
 EOF

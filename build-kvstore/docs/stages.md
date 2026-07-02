@@ -17,8 +17,9 @@ config/observe. Stuck? `make checkpoint STAGE=NN` jumps you to a known-good solu
 > **`make lab` vs `make up`:** `make up` runs the stage in one shell (what the incident drives).
 > `make lab` (any stage, **01–10**) is the *observe-and-play* view — every process gets its own
 > pane so you watch them react, plus a control pane of helpers:
-> - **01–04 (nodes):** `nwrite` / `nread` / `nhealth`, and `nload <strategy>` to fire load across
->   the cluster (compare `nload adaptive` vs `nload round_robin` on stage 03).
+> - **01–04 (nodes):** `nwrite` / `nread` / `nhealth`; on the load-balancer stages (**03/04**) also
+>   `nload <strategy>` to fire load across the nodes (compare `nload adaptive` vs `nload round_robin`
+>   on stage 03). *(01/02 are single-node — no `nload`; their load is driven by the incident pane.)*
 > - **05–10 (cluster):** `kvwrite` / `kvread` / `kvstatus`, plus `kvkill <n>` / `kvspawn` to crash
 >   a follower and watch recovery yourself instead of only running the checker.
 >
