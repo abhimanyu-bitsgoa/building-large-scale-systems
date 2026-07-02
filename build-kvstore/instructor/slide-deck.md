@@ -367,7 +367,7 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 - **Text:** "Return the lowest-load node. One line."
 - **Say:** "Open `kvstore/load_balancer.py`. One line: pick the node with the lowest load score. Two
   minutes — go." (Walk the room.)
-- **Do:** `make gap STAGE=03` (loads the blank); rescue is `make reset STAGE=03`.
+- **Do:** `make todo STAGE=03` (loads the blank); rescue is `make checkpoint STAGE=03`.
 
 ### Slide 34 — [LIVE] the tax appears, then vanishes  ⏱ ~2.5m
 - **Do [LIVE]:** `make lab STAGE=03` → `nload round_robin 96 12` vs `nload adaptive 96 12`. The weak
@@ -407,7 +407,7 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
   (increment) → else reject.
 - **Text:** "Reset on rollover · allow under limit · else reject."
 - **Say:** "Open `kvstore/rate_limiter.py`. Reset the counter when the window rolls over, allow while
-  under the limit, reject once it's hit." `make gap STAGE=04`.
+  under the limit, reject once it's hit." `make todo STAGE=04`.
 
 ### Slide 40 — [LIVE] watch the 429s appear  ⏱ ~1.5m
 - **Do [LIVE]:** `make lab STAGE=04` → flood past the limit in the control pane; before the fix, no
@@ -449,7 +449,7 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 - **Show:** The blank: POST `{key, value, version}` to the follower's `/replicate`; success on `200`.
 - **Text:** "POST the write to the follower. Return on 200."
 - **Say:** "Open `kvstore/node.py`. The leader POSTs each write to the follower's `/replicate` route."
-  `make gap STAGE=05`.
+  `make todo STAGE=05`.
 
 ### Slide 47 — [LIVE] the stranded write  ⏱ ~2m
 - **Do [LIVE]:** `make lab STAGE=05` → `kvwrite order paid`, `kvstatus` (leader + 3 followers),
@@ -547,7 +547,7 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 - **Show:** The blank: each interval, POST `{node_id, port, url, role}` to the registry's `/heartbeat`.
 - **Text:** "POST your identity to /heartbeat, every interval."
 - **Say:** "Open `kvstore/node.py`. Each node POSTs its identity to the registry every interval."
-  `make gap STAGE=08`.
+  `make todo STAGE=08`.
 
 ### Slide 61 — [LIVE] death gets detected  ⏱ ~2m
 - **Do [LIVE]:** `make lab STAGE=08` → before the fix, `kvkill 1` then `kvstatus` — the registry never
@@ -695,14 +695,14 @@ keep **10** as a pure speaker demo. Never cut the scar slides — they're the ta
 |---|---|---|---|
 | 01 | 21–23 | (auto) | `make lab STAGE=01` → `nwrite` / `nread` |
 | 02 | 24–27 (+26b) | (auto) | `make lab STAGE=02`; then `WORKERS=1 make lab STAGE=02` |
-| 03 ✏️ | 28–35 (+28b) | `make gap STAGE=03` | `make lab STAGE=03` → `nload round_robin 96 12` vs `nload adaptive 96 12` |
-| 04 ✏️ | 36–43 | `make gap STAGE=04` | `make lab STAGE=04` → flood |
-| 05 ✏️ | 44–48 | `make gap STAGE=05` | `make lab STAGE=05` → `kvwrite/kvstatus/kvread` |
+| 03 ✏️ | 28–35 (+28b) | `make todo STAGE=03` | `make lab STAGE=03` → `nload round_robin 96 12` vs `nload adaptive 96 12` |
+| 04 ✏️ | 36–43 | `make todo STAGE=04` | `make lab STAGE=04` → flood |
+| 05 ✏️ | 44–48 | `make todo STAGE=05` | `make lab STAGE=05` → `kvwrite/kvstatus/kvread` |
 | 06 | 49–52 | (auto) | `make lab STAGE=06` → `kvwrite/kvread` |
 | 07 | 53–57 | (auto) | `make lab STAGE=07` → `kvkill 1` then write/read |
-| 08 ✏️ | 58–62 | `make gap STAGE=08` | `make lab STAGE=08` → `kvkill 1`, `kvstatus` |
+| 08 ✏️ | 58–62 | `make todo STAGE=08` | `make lab STAGE=08` → `kvkill 1`, `kvstatus` |
 | 09 | 63–65 | (auto) | `make lab STAGE=09` → `kvkill 1`, watch respawn |
 | 10 | 66–67 | (auto) | `make lab STAGE=10` → `kvwrite/kvread/kvflood/kvkill` |
 
-Rescue any stage with `make reset STAGE=NN`; tear down with `make lab-down`. Full command reference:
+Rescue any stage with `make checkpoint STAGE=NN`; tear down with `make lab-down`. Full command reference:
 [`../LAB-MANUAL.md`](../LAB-MANUAL.md). Pacing & caveats: [`INSTRUCTOR-GUIDE.md`](INSTRUCTOR-GUIDE.md).

@@ -25,7 +25,7 @@
 #
 # NOTE: it does NOT reset kvstore/ — your current code stays put (so it won't
 # wipe a code-stage solution). Load the stage first if needed:
-#   make reset STAGE=NN   (config/observe stages)   or   make gap STAGE=NN (code stages)
+#   make checkpoint STAGE=NN   (config/observe stages)   or   make todo STAGE=NN (code stages)
 # ============================================================================
 set -euo pipefail
 

@@ -15,7 +15,7 @@
 #
 # NON-DESTRUCTIVE on code stages (03/04/05/08): won't overwrite your solution.
 # Other stages are seeded fresh from their checkpoint so the code is always correct.
-# Load a code stage first with:  make gap STAGE=NN  (then implement the gap).
+# Load a code stage first with:  make todo STAGE=NN  (then implement the gap).
 #
 # Standalone & disposable: delete this one file to remove it (grep "tmux_lab").
 #
@@ -64,9 +64,9 @@ CODE_STAGES=" 03 04 05 08 "
 if [[ "$CODE_STAGES" == *" $STAGE "* ]]; then
   if [ ! -e "$KV" ] || [ -z "$(ls -A "$KV" 2>/dev/null)" ]; then
     seed_from_checkpoint
-    echo "  (code stage — implement the gap, or 'make reset STAGE=$STAGE' for the solution)"
+    echo "  (code stage — implement the gap, or 'make checkpoint STAGE=$STAGE' for the solution)"
   else
-    echo "kvstore/ left as-is (code stage — your work is preserved; 'make gap STAGE=$STAGE' to restart)"
+    echo "kvstore/ left as-is (code stage — your work is preserved; 'make todo STAGE=$STAGE' to restart)"
   fi
 else
   seed_from_checkpoint

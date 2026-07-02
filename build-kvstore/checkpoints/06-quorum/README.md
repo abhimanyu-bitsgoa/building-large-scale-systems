@@ -1,7 +1,7 @@
 # Stage 06 — Synchronous replication (checkpoint snapshot)
 
 This folder is a frozen, known-good snapshot of the workshop at **stage 06 (synchronous
-replication, `W = N`)** — the version `make reset STAGE=06` restores. You don't run these files
+replication, `W = N`)** — the version `make checkpoint STAGE=06` restores. You don't run these files
 directly.
 
 Follow the workshop flow in the lab manual: [`LAB-MANUAL.md`](../../LAB-MANUAL.md).

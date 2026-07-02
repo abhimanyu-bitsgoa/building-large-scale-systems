@@ -1,17 +1,17 @@
 # Stage-by-stage guide
 
 The loop for every stage: **run the incident** (watch it fail) → **make the change** → **run it
-again** (watch it pass). `⌨️ code` = you write code (start from `make gap STAGE=NN`); the rest are
-config/observe. Stuck? `make reset STAGE=NN` jumps you to a known-good solution.
+again** (watch it pass). `⌨️ code` = you write code (start from `make todo STAGE=NN`); the rest are
+config/observe. Stuck? `make checkpoint STAGE=NN` jumps you to a known-good solution.
 
 | | command |
 |---|---|
 | begin | `make start` |
-| load a code-stage gap | `make gap STAGE=NN` |
+| load a code-stage gap | `make todo STAGE=NN` |
 | run the stage | `make up STAGE=NN` (separate shell) |
 | **play (any stage)** | `make lab STAGE=NN` — every process in its own tmux pane + a control pane to drive it by hand |
 | check red→green | `make incident STAGE=NN` |
-| rescue | `make reset STAGE=NN` |
+| rescue | `make checkpoint STAGE=NN` |
 | progress | `make status` |
 
 > **`make lab` vs `make up`:** `make up` runs the stage in one shell (what the incident drives).

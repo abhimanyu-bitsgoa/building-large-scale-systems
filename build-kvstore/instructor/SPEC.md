@@ -22,7 +22,7 @@ faithful/random quorum rewrite (v1 keeps the deterministic port-pinned model).
 - **Reuse lab code verbatim** where possible.
 - **Black-box incident scripts** over HTTP, so one script is red before / green after an upgrade.
 - **One working dir (`kvstore/`) + numbered checkpoints.** Attendees use 4 `make` verbs.
-- **Never block on attendee code.** Every checkpoint is complete & runnable; `make reset` is the panic button.
+- **Never block on attendee code.** Every checkpoint is complete & runnable; `make checkpoint` is the panic button.
 
 ## 3. Directory structure
 
@@ -98,7 +98,7 @@ records into `progress.json`, exits `0` (green) / `1` (red). Each `incident_N.py
 ## 6. Makefile + tooling
 
 Attendee verbs: `make start` · `make up STAGE=NN` · `make down` · `make incident STAGE=NN`
-· `make reset STAGE=NN` · `make status`. Author verbs: `make validate` · `make snapshot`.
+· `make checkpoint STAGE=NN` · `make status`. Author verbs: `make validate` · `make snapshot`.
 `tools/up.sh` is a per-stage `case` hiding multi-process startup. Everything runs inside the
 existing Docker container (no host ports — `7000` collides with macOS Control Center on host).
 
@@ -140,7 +140,7 @@ existing Docker container (no host ports — `7000` collides with macOS Control 
 | 3 | `checkpoints/04…00` | ✅ — built & verified (00 bare RW, 01 load-sim, 03 adaptive<RR, 04 429s) |
 | 4 | `incidents/01…09` | ✅ — all 9 validated green on checkpoints, red on gaps |
 | 5 | `stages/` gaps + per-stage guide | ✅ — 4 gaps (03/04/05/08) + `docs/stages.md` |
-| 6 | Makefile/tools + end-to-end smoke | ✅ — start/gap/up/down/incident/reset/status all work |
+| 6 | Makefile/tools + end-to-end smoke | ✅ — start/todo/up/down/incident/checkpoint/status all work |
 
 **The build is complete:** 10 checkpoints, 9 incidents (stages 01–09; stage 10 is a demo), 4 code
 gaps, the Makefile toolchain, the per-stage guide, and the bug log — all verified inside the

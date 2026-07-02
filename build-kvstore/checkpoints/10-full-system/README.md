@@ -1,7 +1,7 @@
 # Stage 10 — The full system (checkpoint snapshot)
 
 This folder is a frozen, known-good snapshot of the **complete system**: the cluster (registry,
-coordinator, leader, followers) with an **edge gateway** in front. It's the version `make reset
+coordinator, leader, followers) with an **edge gateway** in front. It's the version `make checkpoint
 STAGE=10` restores, and it's the source the earlier stages are derived from by subtraction.
 
 **Stage 10 has no incident and no exercise** — it's the synthesis of everything from stages 00–09.

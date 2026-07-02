@@ -44,7 +44,7 @@ In a talk, lost audience is invisible and harmless. In a tutorial it's a *failed
 
 - **Red/green sticky notes** (Software Carpentry's signature system): each laptop lid gets a green and a red sticky. Green = done/fine, red = stuck. It's discreet, lets people keep typing while flagged, and a glance reads the whole room's state. A wall of red corners means *slow down*.
 - **Get 1–2 TAs minimum** (PyCon heuristic: ~2 per 20 attendees; for a 40–100 room, more). Their job is to catch people falling behind in the first exercise or two and **intervene before frustration sets in**. Register them in Pretalx now.
-- **Stage rescue checkpoints** — you already have this infrastructure: every stage ships a known-good checkpoint reachable with `make reset STAGE=NN`. Make it explicit to attendees: "if you're stuck or you broke something, `make reset STAGE=05` drops you to a working solution and you're back in sync with everyone." This is the highest-value technique for keeping a heterogeneous room converged, and your repo is already built for it.
+- **Stage rescue checkpoints** — you already have this infrastructure: every stage ships a known-good checkpoint reachable with `make checkpoint STAGE=NN`. Make it explicit to attendees: "if you're stuck or you broke something, `make checkpoint STAGE=05` drops you to a working solution and you're back in sync with everyone." This is the highest-value technique for keeping a heterogeneous room converged, and your repo is already built for it.
 
 ### Risk #3 — Time runs away (or you finish early)
 Tutorials are not rehearsable to a fixed length like talks — pace depends on the room. Real attendees run *much* longer than your solo rehearsal (one presenter's 60-min solo run took 80 min live).

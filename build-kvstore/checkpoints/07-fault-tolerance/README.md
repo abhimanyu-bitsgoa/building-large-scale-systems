@@ -1,7 +1,7 @@
 # Stage 07 — Quorum & fault tolerance (checkpoint snapshot)
 
 This folder is a frozen, known-good snapshot of the workshop at **stage 07 (majority quorum,
-`W = 2, R = 2`)** — the version `make reset STAGE=07` restores. You don't run these files directly.
+`W = 2, R = 2`)** — the version `make checkpoint STAGE=07` restores. You don't run these files directly.
 
 Follow the workshop flow in the lab manual: [`LAB-MANUAL.md`](../../LAB-MANUAL.md).
 

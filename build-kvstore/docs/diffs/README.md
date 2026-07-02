@@ -62,7 +62,7 @@ across the wide cluster intelligently.
   worker), two strong (load 25, 4 workers). The simplest spread, **round-robin by turn**, ignores
   that: it bombards the weak node with its fair 1/3 share, the weak node queues, and the global p95
   tanks. Run `nload round_robin 96 12` and watch node-1 drag the tail.
-- **The green — the exercise:** in the gapped start (`make gap STAGE=03`) you implement the one line
+- **The green — the exercise:** in the gapped start (`make todo STAGE=03`) you implement the one line
   at the heart of `AdaptiveStrategy.get_node` — pick the node with the lowest score (latency +
   in-flight load). Adaptive watches each node and steers away from the weak one. Compare
   `nload adaptive 96 12` — the p95 recovers, reproducibly. (This is **client-side** load balancing;

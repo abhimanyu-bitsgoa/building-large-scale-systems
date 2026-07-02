@@ -34,7 +34,7 @@ docker compose exec workshop bash -c 'cd build-kvstore && make validate'
 ```
 
 Rehearse the human flow end-to-end at least once: `make start`, then walk `00 → 09` with
-gap/up/incident/reset, and finish with the stage-10 demo. The suite proves correctness mechanically;
+todo/up/incident/checkpoint, and finish with the stage-10 demo. The suite proves correctness mechanically;
 the rehearsal is about *pacing* and the couple of machine-dependent timing thresholds.
 
 Re-run `make validate` after **any** edit to a coordinator/registry/node/incident or to
@@ -122,7 +122,7 @@ Each gap is a single core line; the surrounding boilerplate is pre-filled. The *
 solution** for any stage is its checkpoint — load it with:
 
 ```
-make reset STAGE=NN
+make checkpoint STAGE=NN
 ```
 
 This overwrites the working copy with the correct, passing version (useful for an attendee who's
@@ -138,7 +138,7 @@ stuck, or to demo the answer). Brief descriptions:
 - **08 — `heartbeat_loop`** (`node.py`): on each interval, `POST` the node's identity
   (`node_id`, `port`, `url`, `role`) to the registry's `/heartbeat` endpoint.
 
-After loading a code stage with `make gap STAGE=NN`, the gap raises a clear error until filled. Note
+After loading a code stage with `make todo STAGE=NN`, the gap raises a clear error until filled. Note
 the code stages seed **non-destructively** where the dashboard is concerned — see troubleshooting.
 
 ---
@@ -166,9 +166,9 @@ the code stages seed **non-destructively** where the dashboard is concerned — 
 - **Stuck inside tmux.** Detach with `Ctrl-b` then `d`; re-attach with `tmux attach -t kvlab`; kill
   everything with `make lab-down`.
 
-- **A code stage seems to "wipe" my work.** `make gap` / `make reset` overwrite `kvstore/`. The
+- **A code stage seems to "wipe" my work.** `make todo` / `make checkpoint` overwrite `kvstore/`. The
   dashboard (`make lab`) preserves an existing `kvstore/` for code stages so it won't clobber a
-  solution; `gap`/`reset` are the explicit "reset my working copy" commands.
+  solution; `todo`/`checkpoint` are the explicit "reset my working copy" commands.
 
 ---
 

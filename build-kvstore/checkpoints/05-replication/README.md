@@ -1,7 +1,7 @@
 # Stage 05 — Replication (checkpoint snapshot)
 
 This folder is a frozen, known-good snapshot of the workshop at **stage 05 (single-leader
-replication)** — the version `make reset STAGE=05` restores. You don't run these files directly.
+replication)** — the version `make checkpoint STAGE=05` restores. You don't run these files directly.
 
 Follow the workshop flow in the lab manual: [`LAB-MANUAL.md`](../../LAB-MANUAL.md).
 

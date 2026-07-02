@@ -1,12 +1,12 @@
 STAGE ?= 01
 CP := $(shell ls -d checkpoints/$(STAGE)-* 2>/dev/null | head -1)
 
-.PHONY: help start gap up lab lab-down down incident reset status validate snapshot
+.PHONY: help start todo up lab lab-down down incident checkpoint status validate snapshot
 
 help:
 	@echo "Build-a-KVStore — workshop commands"
 	@echo "  make start              seed kvstore/ from checkpoint 01"
-	@echo "  make gap STAGE=NN       load the gapped start for a code stage (03/04/05/08)"
+	@echo "  make todo STAGE=NN      load the TODO start for a code stage (03/04/05/08)"
 	@echo "  make up STAGE=NN        start this stage's processes"
 	@echo "                          (stage 02: add WORKERS=1 to demo the single-thread choke)"
 	@echo "  make lab STAGE=NN       tmux dashboard for ANY stage (01-10): every process in its"
@@ -15,16 +15,16 @@ help:
 	@echo "  make lab-down           tear down the tmux dashboard + its processes"
 	@echo "  make down               stop all workshop processes"
 	@echo "  make incident STAGE=NN  run this stage's red->green check"
-	@echo "  make reset STAGE=NN     reset kvstore/ to a known-good checkpoint"
+	@echo "  make checkpoint STAGE=NN restore kvstore/ to a known-good checkpoint"
 	@echo "  make status             show the ladder of resolved incidents"
 
 start:
 	rm -rf kvstore && cp -r checkpoints/01-* kvstore
 	@echo "kvstore/ seeded from checkpoint 01"
 
-gap:
+todo:
 	rm -rf kvstore && cp -r stages/$(STAGE)-* kvstore
-	@echo "kvstore/ loaded with the GAPPED starting point for stage $(STAGE)"
+	@echo "kvstore/ loaded with the TODO starting point for stage $(STAGE)"
 
 up:
 	WORKERS=$(WORKERS) bash tools/up.sh $(STAGE)
@@ -46,9 +46,9 @@ incident:
 	  python "$$f"; \
 	fi
 
-reset:
+checkpoint:
 	rm -rf kvstore && cp -r $(CP) kvstore
-	@echo "kvstore/ reset to $(CP)"
+	@echo "kvstore/ restored to $(CP)"
 
 status:
 	python tools/status.py

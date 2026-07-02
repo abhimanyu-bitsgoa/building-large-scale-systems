@@ -49,12 +49,12 @@ Every stage is the same three beats: **load it → explore it in the dashboard �
 **1. Load the stage's code into your working copy (`kvstore/`).** Two commands do this:
 
 ```bash
-make gap STAGE=NN      # the ✏️ code stages (03/04/05/08): loads the exercise with one blank function
-make reset STAGE=NN    # any stage: loads the complete, working code (also your "rescue" button)
+make todo STAGE=NN      # the ✏️ code stages (03/04/05/08): loads the exercise with one blank function
+make checkpoint STAGE=NN    # any stage: loads the complete, working code (also your "rescue" button)
 ```
 
 For the run-and-explore stages, `make lab` (below) loads the stage for you automatically — you only
-need `make gap`/`make reset` by hand on the ✏️ code stages (or to rescue a stage you broke).
+need `make todo`/`make checkpoint` by hand on the ✏️ code stages (or to rescue a stage you broke).
 
 **2. Explore it — this is the main way to learn.** Open the live dashboard:
 
@@ -95,7 +95,7 @@ nread cart               # GET /data/cart  → "shoes"
 ```
 
 When you're ready, press **Enter** in the **incident pane** to confirm the round-trip works (✅).
-Reload this stage by hand any time with `make reset STAGE=01`.
+Reload this stage by hand any time with `make checkpoint STAGE=01`.
 
 ## Stage 02 — Vertical scaling
 
@@ -116,7 +116,7 @@ WORKERS=1 make lab STAGE=02     # same check, one worker → latency spikes
 ```
 
 (The control pane's `nwrite` / `nread` / `nhealth` confirm the node serves. Reload by hand:
-`make reset STAGE=02`.)
+`make checkpoint STAGE=02`.)
 
 ## Stage 03 — Horizontal scaling + load balancing ✏️
 
@@ -127,7 +127,7 @@ to that. It bombards the weak node with its fair 1/3 share; the weak node queues
 tanks. You'll fix it by implementing a **capacity-aware** strategy that prefers the least-loaded node.
 
 ```bash
-make gap STAGE=03        # load the exercise: AdaptiveStrategy.get_node is left blank
+make todo STAGE=03        # load the exercise: AdaptiveStrategy.get_node is left blank
 make lab STAGE=03        # dashboard: 3 node panes (1 weak, 2 strong) + control + incident pane
 ```
 
@@ -149,7 +149,7 @@ make lab STAGE=03        # your code is preserved; adaptive now steers around th
 ```
 
 Press **Enter** in the incident pane → ✅ (adaptive p95 clearly below round-robin p95). Stuck?
-`make reset STAGE=03` loads the worked solution.
+`make checkpoint STAGE=03` loads the worked solution.
 
 ## Stage 04 — Rate limiting ✏️
 
@@ -157,7 +157,7 @@ Load balancing shares load; it doesn't *cap* it. A burst can still overwhelm a n
 a fixed-window limiter that sheds excess requests.
 
 ```bash
-make gap STAGE=04        # load the exercise: FixedWindowStrategy.is_allowed is left blank
+make todo STAGE=04        # load the exercise: FixedWindowStrategy.is_allowed is left blank
 make lab STAGE=04        # dashboard: the node + control + incident pane
 ```
 
@@ -173,7 +173,7 @@ make lab-down
 make lab STAGE=04        # requests over the limit now come back as 429
 ```
 
-Press **Enter** in the incident pane → ✅. Rescue: `make reset STAGE=04`.
+Press **Enter** in the incident pane → ✅. Rescue: `make checkpoint STAGE=04`.
 
 ## Stage 05 — Replication ✏️
 
@@ -182,7 +182,7 @@ service. Reads are served from the followers, so a write that never reaches them
 implement the replication call.
 
 ```bash
-make gap STAGE=05        # load the exercise: replicate_to_follower is left blank
+make todo STAGE=05        # load the exercise: replicate_to_follower is left blank
 make lab STAGE=05        # dashboard: coordinator pane (it spawns leader + followers) + control
 ```
 
@@ -222,7 +222,7 @@ kvread order             # read immediately → "paid" (stale!); read again afte
 ```
 
 You're watching one follower lag behind the leader in real time. That fleeting wrong answer is
-exactly what **stage 06** removes. Rescue: `make reset STAGE=05`.
+exactly what **stage 06** removes. Rescue: `make checkpoint STAGE=05`.
 
 ## Stage 06 — Synchronous replication
 
@@ -251,7 +251,7 @@ kvwrite order delivered  # → 503: the write can't reach all N followers anymor
 ```
 
 Zero fault tolerance — the price of strong consistency. **Stage 07** finds the middle ground. Reload
-by hand: `make reset STAGE=06`.
+by hand: `make checkpoint STAGE=06`.
 
 ## Stage 07 — Quorum & fault tolerance
 
@@ -275,7 +275,7 @@ kvread order             # still fresh
 ```
 
 Press **Enter** in the incident pane → ✅ (writes survive a follower failure). Reload:
-`make reset STAGE=07`.
+`make checkpoint STAGE=07`.
 
 > **Notice something.** The coordinator coped because *you told it* — `kvkill` is an administrative
 > removal that runs through the coordinator's own API. It isn't *detecting* anything; it's the one
@@ -294,7 +294,7 @@ First, watch the coordinator go blind. Load the gapped stage (no heartbeats yet)
 follower out-of-band — `kvcrash` kills the node directly, *without* going through the coordinator:
 
 ```bash
-make gap STAGE=08        # load the exercise: heartbeat_loop is left blank
+make todo STAGE=08        # load the exercise: heartbeat_loop is left blank
 make lab STAGE=08        # dashboard: registry + coordinator panes + control
 ```
 
@@ -320,7 +320,7 @@ kvstatus                 # follower-1 now flips to "dead" — the registry detec
 ```
 
 Press **Enter** in the incident pane → ✅ (the unannounced crash is detected). Rescue:
-`make reset STAGE=08`.
+`make checkpoint STAGE=08`.
 
 ## Stage 09 — Auto-recovery
 
@@ -344,7 +344,7 @@ kvread order             # the revived node has the data
 ```
 
 Press **Enter** in the incident pane → ✅ (respawned and caught up). This is the cluster healing
-itself — the high point of what you build by hand. Reload: `make reset STAGE=09`.
+itself — the high point of what you build by hand. Reload: `make checkpoint STAGE=09`.
 
 ## Stage 10 — The full system (demo)
 
@@ -375,15 +375,15 @@ Tear it down with `make lab-down`.
 
 ```bash
 make start               # seed your working copy (once, at the very beginning)
-make gap STAGE=NN        # load a ✏️ code stage's exercise (03/04/05/08)
-make reset STAGE=NN      # load a stage's complete, working code (also the rescue button)
+make todo STAGE=NN        # load a ✏️ code stage's exercise (03/04/05/08)
+make checkpoint STAGE=NN      # load a stage's complete, working code (also the rescue button)
 make lab STAGE=NN        # the dashboard: explore the stage by hand (loads non-code stages for you)
 make lab-down            # tear the dashboard down
 make incident STAGE=NN   # run a stage's check on its own (or just press Enter in the lab's incident pane)
 make status              # show your progress across the ladder
 ```
 
-The typical loop: **code stage** → `make gap` → `make lab` → edit the one function → `make lab-down`,
+The typical loop: **code stage** → `make todo` → `make lab` → edit the one function → `make lab-down`,
 `make lab` → press Enter in the incident pane. **Run-and-explore stage** → `make lab` → poke it →
 press Enter in the incident pane.
 
@@ -399,7 +399,7 @@ docker compose restart   # last resort: restart the whole container
 
 If a stage won't start because a port is busy, it's almost always a leftover process from a previous
 stage — `make lab-down` (or `make down`) clears it. If you've tangled up a stage's code, jump back to
-a known-good state with `make reset STAGE=NN`.
+a known-good state with `make checkpoint STAGE=NN`.
 
 ### Windows: `make lab` fails with "invalid option name: pipefail"
 
