@@ -7,7 +7,7 @@ setup, the run model, every stage, the finale demo, and what to do when things g
 > **What attendees build:** starting from a single in-memory dict behind HTTP, they grow a
 > distributed key-value store — single-leader replication and snapshot resync *like Redis*,
 > tunable read/write quorums *like Dynamo* — and watch it survive failures injected at each
-> step. The system is built in **11 stages (00 → 10)**, each motivated by an **incident** that
+> step. The system is built in **10 stages (01 → 10)**, each motivated by an **incident** that
 > breaks the previous version and only passes once the next feature is added.
 
 The primary workshop lives in [`build-kvstore/`](build-kvstore/). The original three labs under
@@ -35,12 +35,12 @@ The primary workshop lives in [`build-kvstore/`](build-kvstore/). The original t
 Every stage follows the same **red → green** loop:
 
 ```
-make checkpoint STAGE=NN       # load this stage into kvstore/ (use `make todo` for code stages)
-make up STAGE=NN          # start the system               (in shell A — it keeps running)
-make incident STAGE=NN    # ❌ reproduce the incident       (in shell B) — watch it FAIL
+make checkpoint STAGE=NN   # load this stage into kvstore/ (use `make todo` for code stages)
+make up STAGE=NN           # start the system               (in shell A — it keeps running)
+make incident STAGE=NN     # ❌ reproduce the incident       (in shell B) — watch it FAIL
    …you add the next feature (write code) or change config…
-make incident STAGE=NN    # ✅ run it again — watch it PASS
-make status               # see the ladder of resolved incidents
+make incident STAGE=NN     # ✅ run it again — watch it PASS
+make status                # see the ladder of resolved incidents
 ```
 
 Two kinds of stage:
@@ -49,7 +49,7 @@ Two kinds of stage:
   gapped code with `make todo STAGE=NN`. **The gap is deliberately tiny** — all the boilerplate
   (loops, try/except, metadata, logging) is pre-filled and a single `raise NotImplementedError(...)`
   marks the **one core line** you write. You're adding the *idea*, not the plumbing.
-- **⚙️ Config / observe stages — `00, 01, 02, 06, 07, 09, 10`.** No code to write; load the
+- **⚙️ Config / observe stages — `01, 02, 06, 07, 09, 10`.** No code to write; load the
   stage with `make checkpoint STAGE=NN`, then launch and observe (the corrected configuration is
   baked into the launcher).
 
@@ -96,7 +96,7 @@ pre-activated). Verify you're ready:
 ```bash
 make verify        # preflight: checks Python/tmux + boots a real node (~15s) — do this the day before
 make help          # prints the workshop commands
-make start         # seed the working dir from checkpoint 00 (do this once)
+make start         # seed the working dir from checkpoint 01 (do this once)
 ```
 
 > **Editing files:** the repo is bind-mounted, so you can edit files in
@@ -112,18 +112,18 @@ Run all of these from inside the container, in the `build-kvstore/` directory.
 | Command | What it does |
 |---|---|
 | `make verify` | **Preflight check** (~15s): Python, libraries, tmux, and a real node boot + write/read. Run it once before the workshop. |
-| `make start` | Seed the working dir `kvstore/` from checkpoint 00. **Run once at the beginning.** |
+| `make start` | Seed the working dir `kvstore/` from checkpoint 01. **Run once at the beginning.** |
 | `make todo STAGE=NN` | Load the **gapped** starting point for a code stage (`03/04/05/08`) into `kvstore/`. |
 | `make up STAGE=NN` | Start this stage's process(es). **Blocks the terminal** — run it in its own shell. |
 | `make down` | Stop **all** workshop processes (safe to run between every stage). |
 | `make incident STAGE=NN` | Run this stage's red→green check. Exit `0` = ✅ resolved, `1` = ❌ active. |
 | `make checkpoint STAGE=NN` | Overwrite `kvstore/` with the known-good code for stage `NN` (the rescue). |
-| `make lab STAGE=NN` | **tmux dashboard for any stage (00–10):** every process in its own pane + a control pane to drive it by hand. See [§4](#4-running-the-system-two-shells-or-the-tmux-dashboard). |
+| `make lab STAGE=NN` | **tmux dashboard for any stage (01–10):** every process in its own pane + a control pane to drive it by hand. See [§4](#4-running-the-system-two-shells-or-the-tmux-dashboard). |
 | `make lab-down` | Tear down the `make lab` tmux session **and** all stage processes. |
 | `make status` | Show the ladder of resolved incidents (reads `progress.json`). |
 | `make validate` | **Author/instructor only.** Run the whole regression suite (~3.5 min). |
 
-`STAGE` is always a two-digit number (`00`, `01`, … `10`). Tear down a `make lab` session with
+`STAGE` is always a two-digit number (`01`, `02`, … `10`). Tear down a `make lab` session with
 `make lab-down` (it kills the tmux session **and** all stage processes).
 
 ---
@@ -140,7 +140,7 @@ Ports shift once, at the architecture jump from a single service to a cluster:
 
 | Stages | Ports |
 |---|---|
-| `00`–`04` (single-service tier) | nodes on `5001`, `5002`, `5003` |
+| `01`–`04` (single-service tier) | nodes on `5001`, `5002`, `5003` |
 | `05`–`10` (cluster tier) | registry `9000`, coordinator `7000` (it spawns leader `7001` + followers `7002`–`7004`), gateway `8000` |
 
 **Always run `make down` (or `make lab-down`) before starting a different stage** —
@@ -171,7 +171,7 @@ make lab STAGE=07        # build the dashboard for stage 07 and attach
 
 **What you get (panes):**
 
-- **One pane per process** — the node(s) on stages `00`–`04`; `registry` / `coordinator` /
+- **One pane per process** — the node(s) on stages `01`–`04`; `registry` / `coordinator` /
   `gateway` (as the stage requires) on `05`–`10`. Each pane is labelled in its top border.
   *(The leader + followers are children the coordinator spawns, so their logs share the
   **coordinator** pane — there's no separate pane for them.)*
@@ -185,15 +185,16 @@ make lab STAGE=07        # build the dashboard for stage 07 and attach
 
 | Stages | Helper | What it does |
 |---|---|---|
-| `00`–`04` | `nwrite <key> <value>` | write to the node (`POST /data`) |
-| `00`–`04` | `nread <key>` | read it back |
-| `00`–`04` | `nhealth` | node health + in-flight request count |
-| `02` | `nload [reqs] [conc]` | fire load across all nodes — **naive round-robin, no load balancer** (watch the weak node drag p95) |
-| `03`–`04` | `nload [strategy] [reqs] [conc]` | fire load via the load balancer — compare `nload adaptive` vs `nload round_robin` |
+| `01`–`04` | `nwrite <key> <value>` | write to the node (`POST /data`) |
+| `01`–`04` | `nread <key>` | read it back |
+| `01`–`04` | `nhealth` | node health + in-flight request count |
+| `03`–`04` | `nload [strategy] [reqs] [conc]` | fire load via the load balancer — compare `nload adaptive` vs `nload round_robin` (the stage-03 lesson) |
 | `05`–`10` | `kvwrite <key> <value>` / `kvread <key>` | write / read via the cluster (gateway on stage 10, coordinator otherwise) |
 | `05`–`10` | `kvstatus` | show the leader + followers (alive/dead) |
-| `05`–`10` | `kvkill <n>` | **crash** `follower-<n>` (a hard kill — simulates a real crash) |
+| `05`–`10` | `kvkill <n>` | take `follower-<n>` offline — a **planned** removal *through the coordinator* (it's told) |
+| `08`–`10` | `kvcrash <n>` | **crash** `follower-<n>` unannounced — it dies telling no one; only the registry (heartbeats) notices |
 | `05`–`10` | `kvspawn` | respawn a follower (auto-catchup on stages 09/10) |
+| `10` | `kvflood [n]` | fire n quick writes; the edge gateway sheds the overflow as `429` |
 
 Type `kvhelp` in the control pane at any time to reprint the menu for the current stage.
 
@@ -223,7 +224,7 @@ make lab STAGE=05            # boots with the gapped code
 #   → press Enter in the incident pane again: ✅
 ```
 
-> `make lab STAGE=01` runs 4 workers by default; **`WORKERS=1 make lab STAGE=01`** demos the
+> `make lab STAGE=02` runs 4 workers by default; **`WORKERS=1 make lab STAGE=02`** demos the
 > single-thread choke.
 
 ---
@@ -232,15 +233,14 @@ make lab STAGE=05            # boots with the gapped code
 
 | # | Stage | Type | You learn | Real-world anchor |
 |---|---|---|---|---|
-| 00 | single node | ⚙️ | a KV store is a dict behind HTTP | Redis in-memory keyspace |
-| 01 | vertical scaling | ⚙️ | the single-thread (GIL) ceiling | Redis is single-threaded on purpose |
-| 02 | horizontal scaling | ⚙️ | more nodes; why naive copies diverge | sharding splits your data |
-| 03 | load balancing | ⌨️ | round-robin vs adaptive routing | power-of-two / least-connections (Nginx, HAProxy) |
+| 01 | single node | ⚙️ | a KV store is a dict behind HTTP | Redis in-memory keyspace |
+| 02 | vertical scaling | ⚙️ | the single-thread (GIL) ceiling | Redis is single-threaded on purpose |
+| 03 | horizontal scaling + load balancing | ⌨️ | more nodes (why naive copies diverge), then round-robin vs adaptive routing | power-of-two / least-connections (Nginx, HAProxy) |
 | 04 | rate limiting | ⌨️ | protecting the store from floods | Redis `INCR`+`EXPIRE` fixed window |
-| 05 | replication | ⌨️ | single-leader replication | Redis primary–replica async replication |
+| 05 | replication | ⌨️ | single-leader replication + the stale read a weak quorum serves | Redis primary–replica async replication |
 | 06 | synchronous replication | ⚙️ | all followers sync (`W = N`) → no stale reads | synchronous replication / read-from-any |
 | 07 | quorum & fault tolerance | ⚙️ | majority quorum (`W + R > N`) & the CAP tradeoff | Dynamo/Cassandra tunable consistency; CP choice |
-| 08 | service discovery | ⌨️ | heartbeats that detect death | Redis Cluster gossip / etcd / Consul |
+| 08 | service discovery | ⌨️ | heartbeats that detect an unannounced death | Redis Cluster gossip / etcd / Consul |
 | 09 | auto-recovery | ⚙️ | respawn + catchup (*follower* recovery) | Redis `PSYNC` resync |
 | 10 | full system | 🖥️ demo | edge gateway + whole-system synthesis (no incident) | the whole thing, working end-to-end |
 
@@ -270,71 +270,57 @@ skipping the load step runs a new stage's command against old code and errors ou
 loop is then *run the incident → watch it fail → make the change → run it again → watch it pass*.
 Stuck? `make checkpoint STAGE=NN` jumps you to a known-good solution.
 
-### 00 — Single node ⚙️
+### 01 — Single node ⚙️
 A KV store is just a dict behind HTTP: `POST /data`, `GET /data/{key}`. There's no failure to
-fix yet — stage 00 is the **baseline smoke test**: start the node and confirm a write reads back,
+fix yet — stage 01 is the **baseline smoke test**: start the node and confirm a write reads back,
 so you know the foundation works before building on it.
 ```bash
-make up STAGE=00         # shell A — single node on :5001
-make incident STAGE=00   # shell B — ✅ write+read round-trip succeeds ("the store works")
+make up STAGE=01         # shell A — single node on :5001
+make incident STAGE=01   # shell B — ✅ write+read round-trip succeeds ("the store works")
 ```
-🖥️ **One-window demo:** `make lab STAGE=00` → in the `control` pane: `nwrite hello world` then
+🖥️ **One-window demo:** `make lab STAGE=01` → in the `control` pane: `nwrite hello world` then
 `nread hello`; press Enter in the `incident` pane to run the smoke test.
 
-Stage 00 is the one green baseline with no "before" state to break; from stage **01** onward,
+Stage 01 is the one green baseline with no "before" state to break; from stage **02** onward,
 each stage *starts* with a failing incident you then fix.
 
-### 01 — Vertical scaling ⚙️
+### 02 — Vertical scaling ⚙️
 **Incident:** one node saturates under concurrent load — its single thread (the GIL) is the
 ceiling, exactly the constraint Redis chose on purpose.
 **Do:** first watch it choke with a single worker, then scale up — *same node*, more workers.
 ```bash
-make checkpoint STAGE=01            # load this stage into kvstore/
-make up STAGE=01 WORKERS=1     # shell A — one worker (one GIL)
-make incident STAGE=01         # shell B — ❌ p95 over budget (CPU-bound requests serialize)
+make checkpoint STAGE=02        # load this stage into kvstore/
+make up STAGE=02 WORKERS=1      # shell A — one worker (one GIL)
+make incident STAGE=02          # shell B — ❌ p95 over budget (CPU-bound requests serialize)
 make down
-make up STAGE=01               # shell A — 4 workers (the default)
-make incident STAGE=01         # shell B — ✅ p95 drops
+make up STAGE=02                # shell A — 4 workers (the default)
+make incident STAGE=02          # shell B — ✅ p95 drops
 ```
-🖥️ **One-window demo:** `WORKERS=1 make lab STAGE=01` → run the `incident` pane (❌); tear down
-(`make lab-down`), then `make lab STAGE=01` (4 workers) → `incident` pane (✅).
+🖥️ **One-window demo:** `WORKERS=1 make lab STAGE=02` → run the `incident` pane (❌); tear down
+(`make lab-down`), then `make lab STAGE=02` (4 workers) → `incident` pane (✅).
 
-### 02 — Horizontal scaling ⚙️
-**Incident:** a single node is both a single point of failure and a capacity wall.
-**Do:** see one node fail the spread, then run 3 nodes so the load is shared.
-```bash
-# fail first — incident 02 fans 30 requests across :5001-:5003, but only one node is up:
-make checkpoint STAGE=01 ; make up STAGE=01   # shell A — a single node on :5001
-make incident STAGE=02                   # shell B — ❌ ~10/30 served (5002/5003 unreachable)
-make down
-# fix — three nodes share the load:
-make checkpoint STAGE=02 ; make up STAGE=02   # shell A — 3 nodes on :5001-:5003
-make incident STAGE=02                   # shell B — ✅ 30/30 served
-```
-🖥️ **One-window demo:** `make lab STAGE=02` → three node panes are visible; in the `control`
-pane run `nload 40 10` (naive round-robin — **no load balancer yet**) and watch a third of the
-requests pile onto the weak node (node-1, 1 worker) and drag the global p95. That pain is the setup
-for stage 03.
-
-*Note:* the three nodes have **separate** dicts — naive horizontal scaling splits your data.
-That's exactly what motivates replication at stage 05. And round-robin's blindness to capacity is
-what motivates the load balancer at stage 03.
-
-### 03 — Load balancing ⌨️ **code**
-**Incident:** round-robin ignores node capacity and tanks on the slow node.
+### 03 — Horizontal scaling + load balancing ⌨️ **code**
+**Incident:** one box is a single point of failure and a capacity wall, so we go wide — **3
+heterogeneous nodes** (one weak, two strong). But the simplest spread, **round-robin by turn**, is
+blind to capacity: it bombards the weak node with its fair 1/3 share, the weak node queues, and the
+global p95 tanks.
 **Do (one line):** in `kvstore/load_balancer.py` → `AdaptiveStrategy.get_node`, return the
-lowest-score node — `return min(nodes, key=node_stats.get_score)`.
+lowest-score node — `return min(nodes, key=node_stats.get_score)`. Adaptive steers traffic off the
+weak node and the tail recovers.
 ```bash
 make todo STAGE=03        # load the gapped code (raises NotImplementedError where you write)
-make up STAGE=03         # shell A
+make up STAGE=03         # shell A — 3 nodes (1 weak, 2 strong)
 make incident STAGE=03   # shell B — ❌ adaptive can't be measured (NotImplementedError)
 # …edit kvstore/load_balancer.py → AdaptiveStrategy.get_node, then restart…
 make down ; make up STAGE=03
-make incident STAGE=03   # shell B — ✅ adaptive p95 < round-robin p95
+make incident STAGE=03   # shell B — ✅ adaptive p95 clearly below round-robin p95
 ```
 🖥️ **One-window demo:** after implementing, `make todo STAGE=03 && make lab STAGE=03`; in the
-`control` pane compare `nload round_robin 40 10` vs `nload adaptive 40 10` — adaptive steers away
+`control` pane compare `nload round_robin 96 12` vs `nload adaptive 96 12` — adaptive steers away
 from the weak node. (Restart the node panes after editing: `Ctrl-C` then `↑ Enter` in each.)
+
+*Note:* the three nodes also have **separate** dicts — naive horizontal scaling splits your data.
+That's exactly what motivates replication at stage 05.
 
 ### 04 — Rate limiting ⌨️ **code**
 **Incident:** a flood overwhelms the node (no `429`s — every request gets in).
@@ -471,8 +457,9 @@ make down ; make up STAGE=08
 make incident STAGE=08   # shell B — ✅ a killed node is correctly reported "dead"
 ```
 🖥️ **One-window demo:** `make todo STAGE=08 && make lab STAGE=08` → watch the `registry` and
-`coordinator` panes side by side. `kvkill 1`, then `kvstatus`: before you implement heartbeats the
-registry never marks it dead; after (restart the `coordinator` pane), the death is detected.
+`coordinator` panes side by side. `kvcrash 1` (an **unannounced** crash — it doesn't go through the
+coordinator), then `kvstatus`: before you implement heartbeats the registry never saw the node so it
+never marks it dead; after (restart the `coordinator` pane), the missed heartbeats are detected.
 
 ### 09 — Auto-recovery ⚙️  *(⭐ the hands-on finale — end the lab here in a 2-hour slot)*
 **Incident:** a dead follower stays dead and the cluster runs degraded.
@@ -492,9 +479,9 @@ make checkpoint STAGE=09 ; make up STAGE=09   # shell A — registry auto-spawn 
 make incident STAGE=09                   # shell B — ✅ killed follower is respawned AND has the data
 ```
 🖥️ **One-window demo (watch self-healing):** `make lab STAGE=09`. In the `control` pane:
-`kvwrite cart shoes` → `kvkill 2` → `kvstatus` (dead) → wait ~5s → `kvstatus` again: the registry
-auto-respawned it and the `coordinator` pane shows the catchup. `kvread cart` confirms the revived
-follower has the data. (Compare with stage 08, where it would just stay dead.)
+`kvwrite cart shoes` → `kvcrash 2` (unannounced crash) → `kvstatus` (dead) → wait ~5s → `kvstatus`
+again: the registry auto-respawned it and the `coordinator` pane shows the catchup. `kvread cart`
+confirms the revived follower has the data. (Compare with stage 08, where it would just stay dead.)
 
 *This is **follower** recovery (replace + resync), not leader failover (that's Sentinel — out of
 scope).*
@@ -525,14 +512,15 @@ make lab STAGE=10        # registry + coordinator + gateway panes, all visible
 1. **One request through the whole stack.** `kvwrite cart shoes` → narrate it: gateway (`:8000`) →
    coordinator (`:7000`) → leader (`:7001`) → followers replicate. Then `kvread cart` — point at
    `served_by` and `quorum_responses` in the JSON.
-   *Say:* "The client is **dumb** now — it just hits the gateway. The smart routing it did back in
-   stages 02–04 moved **server-side**: the coordinator decides which followers serve this read (the
+   *Say:* "The client is **dumb** now — it just hits the gateway. The smart routing it did back at
+   stage 03 moved **server-side**: the coordinator decides which followers serve this read (the
    read quorum). That's the client-side→server-side load-balancing shift, made real."
 2. **Protect — the edge sheds load.** `kvflood 15` → the first ~10 succeed, the rest come back **429**.
    *Say:* "That's the `rate_limiter.py` you wrote at stage 04 — now living on the gateway, at the edge."
-3. **Survive + self-heal (the climax).** `kvwrite order paid` → `kvkill 1` → `kvstatus` (one follower
-   dead, **writes still work** — the W=2 quorum holds) → wait ~5s → `kvstatus` again (the registry
-   **auto-respawned** it; the `coordinator` pane shows catchup) → `kvread order` still returns `paid`.
+3. **Survive + self-heal (the climax).** `kvwrite order paid` → `kvcrash 1` (an unannounced crash) →
+   `kvstatus` (one follower dead, **writes still work** — the W=2 quorum holds) → wait ~5s →
+   `kvstatus` again (the registry **auto-respawned** it; the `coordinator` pane shows catchup) →
+   `kvread order` still returns `paid`.
    *Say:* "Detected the death → held quorum → respawned → caught up → never lost the write."
 4. **The closing line.** "From a `dict` behind HTTP, you built a rate-limited, replicated,
    quorum-consistent, **self-healing** distributed key-value store."
@@ -554,31 +542,31 @@ make lab STAGE=10        # registry + coordinator + gateway panes, all visible
    docker-compose exec workshop bash -c 'cd build-kvstore && make validate'
    ```
    This boots every checkpoint, asserts each incident is **GREEN on its stage** and **RED on the
-   "before" state**, and confirms ports are free between cases. Expect **18/18 cases pass**
+   "before" state**, and confirms ports are free between cases. Expect **16/16 cases pass**
    (~3.5 min). Re-run it after *any* edit to a coordinator/registry/node/incident or
    to `tools/up.sh`/`down.sh` — it is your correctness gate.
-3. **Rehearse the human flow** end-to-end: `make start`, then walk `00 → 09` using
+3. **Rehearse the human flow** end-to-end: `make start`, then walk `01 → 09` using
    todo/up/incident/checkpoint, and finish with the stage-10 demo (§7). The regression suite proves
    correctness mechanically; the rehearsal is about *pacing* and the couple of machine-dependent
    thresholds (see 8.4).
 
 ### 8.2 Pacing
 
-There are 11 stages but only **4 require writing code** (`03, 04, 05, 08`) — budget the most
+There are 10 stages but only **4 require writing code** (`03, 04, 05, 08`) — budget the most
 time there. The config/observe stages move fast and are where you narrate the concept. Give the
 room a hard checkpoint at each **chapter boundary** (after 04, after 07): everyone runs
 `make checkpoint STAGE=04` / `make checkpoint STAGE=07` so the whole room re-synchronizes regardless of who
 fell behind.
 
 <a id="2-hour-core-path"></a>
-**The 2-hour core path.** You cannot run 11 stages hands-on in a 2-hour slot with a mixed-skill
+**The 2-hour core path.** You cannot run 10 stages hands-on in a 2-hour slot with a mixed-skill
 room. Triage like this — put your minutes on the four code gaps, and **end the hands-on at stage 09**
 (self-healing is the climax); close with the stage-10 demo:
 
 | Bucket | Stages | How to run it |
 |---|---|---|
-| Quick framing | `00`, `02` | show, ~2 min each |
-| Fast config "aha" | `01`, `06`, `07` | run the incident, narrate — ~5 min each |
+| Quick framing | `01` | show, ~2 min |
+| Fast config "aha" | `02`, `06`, `07` | run the incident, narrate — ~5 min each |
 | **Hands-on code (the heart)** | **`03`, `04`, `05`, `08`** | the one-line gaps — most of your time |
 | Hands-on climax | `09` | self-healing — the last thing they *do* |
 | Synthesis | `10` | **5-min speaker demo** (§7) — no incident |
@@ -588,7 +576,7 @@ the room write it.
 
 ### 8.3 Framing (the talking points that make it land)
 
-- **The GIL = Redis's single thread for free.** Stage 01's single-thread ceiling is the exact
+- **The GIL = Redis's single thread for free.** Stage 02's single-thread ceiling is the exact
   constraint Redis embraces; you scale by running more instances.
 - **Per-stage real-world anchors** (see the ladder table) — name-drop the real system each
   concept comes from so attendees map the toy to production.
@@ -606,13 +594,14 @@ the room write it.
 
 Almost everything is deterministic, with two machine-dependent exceptions:
 
-- **`incident_01`** asserts a p95 latency budget (`P95_BUDGET_MS=300`). It passes comfortably on
-  normal hardware. If it flakes on a slow laptop, widen it via the env var rather than weakening
-  the suite: `P95_BUDGET_MS=500 make incident STAGE=01`.
-- **`incident_03`** compares adaptive vs round-robin p95 (relative, not absolute). It usually
-  passes, but with only 24 requests the two can occasionally invert on a quiet or noisy machine
-  (adaptive measuring slower). If its GREEN case flakes, just **re-run it** — it's a timing
-  artifact, not a real regression (`bash tools/validate_ladder.sh 03`).
+- **`incident_02`** (vertical scaling) asserts a p95 latency budget (`P95_BUDGET_MS=300`). It
+  passes comfortably on normal hardware. If it flakes on a slow laptop, widen it via the env var
+  rather than weakening the suite: `P95_BUDGET_MS=500 make incident STAGE=02`.
+- **`incident_03`** compares adaptive vs round-robin p95 (relative, not absolute), over 96 requests
+  and taking the best of 3 trials to damp noise. It usually passes, but on a very quiet or very
+  noisy machine the two can still occasionally invert (adaptive measuring slower). If its GREEN
+  case flakes, just **re-run it** — it's a timing artifact, not a real regression
+  (`bash tools/validate_ladder.sh 03`).
 
 ### 8.5 Foot-guns (these have cost real time — honor them)
 
@@ -638,10 +627,10 @@ whole system in one window (one pane per process) and lets you drive it by hand 
 pane (see [§4.2](#42-the-tmux-dashboard--make-lab-stagenn-recommended-for-demos)). The highest-
 impact moments to do *live* rather than via the incident script:
 
-- **02 → 03:** on 02 run `nload 40 10` (naive round-robin) and watch the weak node drag p95; on 03
-  compare `nload round_robin 40 10` vs `nload adaptive 40 10` — the load balancer redistributes.
+- **03 (load balancing):** compare `nload round_robin 96 12` vs `nload adaptive 96 12` — round-robin's
+  blind 1/3 share piles onto the weak node and drags global p95; adaptive redistributes off it.
 - **07:** `kvkill 1` (survives) then `kvkill 2` (writes refused, reads survive) — the CAP choice.
-- **09:** `kvkill 2`, wait, `kvstatus` — the cluster respawns and catches up the follower itself.
+- **09:** `kvcrash 2` (unannounced), wait, `kvstatus` — the cluster respawns and catches up the follower itself.
 
 Mouse mode is on, so you can click/scroll panes without teaching tmux keybindings. Tear down
 between stages with `make lab-down`.
@@ -656,7 +645,7 @@ between stages with `make lab-down`.
 | Reads return stale / wrong data for no reason | orphaned followers from a prior run on `7002–7004` | `make down`; confirm `ss -ltn \| grep -cE ':7000\|:9000'` is `0` |
 | `NotImplementedError: STAGE NN: …` | you're on a code stage and the gap isn't filled | implement the function in `kvstore/`, or `make checkpoint STAGE=NN` to see the solution |
 | An attendee is hopelessly behind | — | `make checkpoint STAGE=NN` jumps their `kvstore/` to a known-good stage instantly |
-| `incident_01` fails on a slow machine | p95 budget too tight for that hardware | `P95_BUDGET_MS=500 make incident STAGE=01` |
+| `incident_02` fails on a slow machine | p95 budget too tight for that hardware | `P95_BUDGET_MS=500 make incident STAGE=02` |
 | `incident_03` green flakes (adaptive ≥ round-robin) | timing noise in the relative p95 comparison | re-run it; not a real regression |
 | `make: command not found` | you're on the host, not in the container | `docker-compose exec workshop bash` then `cd build-kvstore` |
 | Lost all your edits | you ran `make start`/`make todo`/`make checkpoint` (they overwrite `kvstore/`) | expected — `kvstore/` is disposable; commit your own work elsewhere if you want to keep it |
