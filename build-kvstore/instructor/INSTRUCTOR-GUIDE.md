@@ -15,6 +15,44 @@ In the attendee/template repo, the workshop **is** the repository root — the m
 lives under `build-kvstore/`, so inside the container you first `cd build-kvstore` before any `make`.
 Everything else is identical.
 
+### Reconciling changes to the attendee repo
+
+**`build-kvstore/` in this monorepo is the single source of truth.** The attendee repo
+(`github.com/<you>/europython-planetscale-systems`) is a byte-exact copy of `build-kvstore/` **minus**
+the instructor-only and working-state files. Never hand-edit the attendee repo — edit here, then
+re-mirror. The curation (what is copied vs. excluded) is encoded once in
+[`export-student-repo.sh`](export-student-repo.sh); the excludes are:
+
+| Excluded from attendees | Why |
+|---|---|
+| `instructor/` (this folder — incl. `official-deck.pdf`, exercise answers, and the build-narrative `docs/`) | spoilers + speaker material |
+| `kvstore/`, `progress.json` | the attendee's own working state (git-ignored; seeded by `make start`) |
+| `__pycache__/`, `*.pyc`, `.DS_Store`, `.git/` | build artifacts / never mirror history |
+
+The build-narrative docs (`docs/diffs/`, `docs/load-balancing-client-vs-server.md`) live under
+`instructor/docs/` — the slides carry that "why" for attendees, so they ship as speaker reference only.
+
+Everything else — `Makefile`, `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `.gitattributes`,
+`.gitignore`, `LICENSE`, `README.md`, `LAB-MANUAL.md`, `checkpoints/`, `stages/`, `incidents/`, and
+`tools/` — is copied **verbatim**.
+
+**Whenever you change anything under `build-kvstore/`**, re-sync so the two never drift:
+
+```bash
+# 1. Preview exactly what would change in the attendee repo (safe, writes nothing):
+instructor/export-student-repo.sh -n /path/to/europython-planetscale-systems
+
+# 2. Apply the mirror (uses rsync --delete, so deletions here propagate there too):
+instructor/export-student-repo.sh /path/to/europython-planetscale-systems
+
+# 3. In the attendee repo, review + publish:
+cd /path/to/europython-planetscale-systems
+git status && git add -A && git commit -m "sync from monorepo" && git push
+```
+
+Run `make validate` here (16/16) **before** re-syncing — the mirror copies code as-is, so a green
+ladder here is a green ladder there.
+
 ---
 
 ## 1. Pre-flight (do this before the session — ideally the day before)
@@ -27,7 +65,7 @@ docker compose up -d
 
 Run the regression suite to prove the whole ladder is intact on your machine. It boots every
 checkpoint, asserts each incident is **GREEN on its stage** and **RED on the "before" state**, and
-checks ports are free between cases. Expect **18/18 cases pass** (~3.5 min):
+checks ports are free between cases. Expect **16/16 cases pass** (~3.5 min):
 
 ```
 docker compose exec workshop bash -c 'cd build-kvstore && make validate'

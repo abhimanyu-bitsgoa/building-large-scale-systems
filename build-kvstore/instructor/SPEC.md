@@ -147,7 +147,7 @@ gaps, the Makefile toolchain, the per-stage guide, and the bug log — all verif
 container. As of 2026-06-15, `tools/validate_ladder.sh` is a **working regression suite**
 (`make validate`): it boots each checkpoint via its own `up.sh`, asserts `incident_N` GREEN on
 `checkpoints/N` and RED on a per-stage "before" state, and confirms ports free between cases —
-18/18 cases pass. See
+16/16 cases pass. See
 [`wiki/decisions/2026-06-15_build-kvstore-validate-ladder.md`].
 
 As of 2026-06-25 the former "optional polish" is **done**: `docs/diffs/` now holds the full

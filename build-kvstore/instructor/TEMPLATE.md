@@ -15,14 +15,17 @@ development-only files. Because `build-kvstore/` now contains its own self-conta
 
 ## Include (everything in build-kvstore/ except the excludes below)
 
-- `LAB-MANUAL.md`, `README.md`
+- `LAB-MANUAL.md`, `README.md`, `LICENSE`
 - `Makefile`, `tools/`, `checkpoints/`, `stages/`, `incidents/`
-- `docs/` (stages.md, diffs/, load-balancing-client-vs-server.md)
-- `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `.gitignore`
+- `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `.gitignore`, `.gitattributes`
+
+> The authoritative include/exclude list is encoded in
+> [`export-student-repo.sh`](export-student-repo.sh); run it to sync. This list is a human summary.
 
 ## Exclude (do NOT copy into the template)
 
-- `instructor/` — answers, SPEC, HANDOFF, bug log, this file
+- `instructor/` — answers, SPEC, HANDOFF, bug log, this file, and the build-narrative `docs/`
+  (`docs/diffs/`, `docs/load-balancing-client-vs-server.md`, now under `instructor/docs/`)
 - `kvstore/` — git-ignored working copy (attendees create it with `make start`)
 - `progress.json` — git-ignored local scoreboard
 - `__pycache__/`, `*.pyc` — Python caches
@@ -52,7 +55,7 @@ rsync -a --delete \
 2. `git init && git add -A && git commit -m "Initial workshop template"`
 3. Verify it boots standalone:
    - `docker compose up -d`
-   - `docker compose exec workshop bash -c 'make validate'` → expect **18/18**
+   - `docker compose exec workshop bash -c 'make validate'` → expect **16/16**
    - `docker compose exec workshop bash -c 'make start && make up STAGE=01'` (sanity)
 4. Confirm `README.md` points at `LAB-MANUAL.md` and that no file links into `instructor/`
    (it's gone): `grep -rn "instructor/" .` should return nothing.
